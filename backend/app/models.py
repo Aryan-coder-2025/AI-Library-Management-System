@@ -10,9 +10,10 @@ from sqlalchemy import (
     UniqueConstraint,
     Index,
     Text,
-    LargeBinary
+    LargeBinary,
+    event,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, attributes
 
 from app.database import Base
 
@@ -48,9 +49,24 @@ class Book(Base):
     embedding_updated_at = Column(DateTime, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     copies = relationship("BookCopy", back_populates="book", cascade="all, delete-orphan", passive_deletes=True)
+
+
+@event.listens_for(Book, "before_update")
+def _book_before_update(mapper, connection, target):
+    """
+    Advances updated_at when core book metadata fields are updated.
+    Does not advance updated_at when only embedding vector storage is saved.
+    """
+    metadata_fields = {"title", "author", "isbn", "category", "description", "is_archived"}
+    state = attributes.instance_state(target)
+    for field in metadata_fields:
+        hist = state.get_history(field, True)
+        if hist.has_changes():
+            target.updated_at = datetime.utcnow()
+            break
 
 
 class BookCopy(Base):

@@ -10,6 +10,9 @@ from app.middleware.security import SecurityMiddleware
 from app.schemas import HealthResponse
 from app import models  # noqa: F401
 from app.routers.auth import router as auth_router
+from app.routers.catalogue import router as catalogue_router
+from app.routers.loans import router as loans_router
+from app.routers.semantic import router as semantic_router
 
 settings = get_settings()
 
@@ -42,6 +45,9 @@ app.add_middleware(
 
 # Register application routers
 app.include_router(auth_router)
+app.include_router(catalogue_router)
+app.include_router(loans_router)
+app.include_router(semantic_router)
 
 
 @app.get("/api/health", response_model=HealthResponse, tags=["System"])
