@@ -74,6 +74,11 @@ def return_loan(
     summary="List authenticated user's own loans",
 )
 @router.get(
+    "/my",
+    response_model=LoanPaginationResponse,
+    summary="List authenticated user's own loans (alias)",
+)
+@router.get(
     "/my-loans",
     response_model=LoanPaginationResponse,
     summary="List authenticated user's own loans (alias)",
