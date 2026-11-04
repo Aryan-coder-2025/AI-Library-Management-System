@@ -120,6 +120,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     Study Spaces
                   </button>
+                  <button
+                    type="button"
+                    className={`nav-button ${activeTab === 'knowledge' ? 'active' : ''}`}
+                    onClick={() => handleTabClick('knowledge')}
+                  >
+                    🧠 Knowledge Explorer
+                  </button>
                 </>
               )}
 
@@ -165,6 +172,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                     onClick={() => handleTabClick('embeddings')}
                   >
                     AI Embeddings
+                  </button>
+                  <button
+                    type="button"
+                    className={`nav-button ${activeTab === 'ai_studio' ? 'active' : ''}`}
+                    onClick={() => handleTabClick('ai_studio')}
+                  >
+                    ⚖️ AI Comparison Studio
                   </button>
                 </>
               )}

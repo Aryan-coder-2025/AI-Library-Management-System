@@ -580,11 +580,11 @@ def test_alembic_sequential_upgrade_and_downgrade(tmp_path: Path):
         assert t not in tables_downgraded
     assert {"books", "book_copies", "loans", "users"}.issubset(tables_downgraded)
 
-    # Step 6: Re-upgrade to head (which resolves to e5f6a7b8c9d0)
+    # Step 6: Re-upgrade to head (which resolves to a1b2c3d4e5f6)
     command.upgrade(alembic_cfg, "head")
     inspector = inspect(engine)
     tables_reupgraded = set(inspector.get_table_names())
     assert required_tables.issubset(tables_reupgraded)
     with engine.connect() as conn:
         current_rev = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert current_rev == "e5f6a7b8c9d0"
+        assert current_rev == "a1b2c3d4e5f6"

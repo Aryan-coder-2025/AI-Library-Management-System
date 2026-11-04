@@ -16,6 +16,8 @@ from app.routers.notifications import router as notifications_router
 from app.routers.semantic import router as semantic_router
 from app.routers.copilot import router as copilot_router
 from app.routers.spaces import router as spaces_router
+from app.routers.spatial import router as spatial_router
+from app.routers.knowledge import router as knowledge_router
 
 settings = get_settings()
 
@@ -59,6 +61,8 @@ app.include_router(notifications_router)
 app.include_router(semantic_router)
 app.include_router(copilot_router)
 app.include_router(spaces_router)
+app.include_router(spatial_router)
+app.include_router(knowledge_router)
 
 
 @app.get("/api/health", response_model=HealthResponse, tags=["System"])

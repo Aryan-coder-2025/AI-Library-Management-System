@@ -63,7 +63,7 @@ from app.seed_data.validator import validate_dataset, ValidationError
 
 logger = logging.getLogger(__name__)
 
-EXPECTED_ALEMBIC_HEAD = "e5f6a7b8c9d0"
+EXPECTED_ALEMBIC_HEAD = "a1b2c3d4e5f6"
 EXPECTED_BRANCHES = {"feature/aryan-ai-library-system", "main"}
 EXPECTED_BRANCH = "feature/aryan-ai-library-system"
 

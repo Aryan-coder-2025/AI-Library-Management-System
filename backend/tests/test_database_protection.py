@@ -87,7 +87,7 @@ def test_explicit_disposable_test_db_can_initialize_and_migrate(tmp_path: Path):
     conn.close()
 
     assert journal_mode.lower() == "wal"
-    assert rev == "e5f6a7b8c9d0"
+    assert rev == "a1b2c3d4e5f6"
     assert "users" in tables
     assert "books" in tables
     assert "reservations" in tables

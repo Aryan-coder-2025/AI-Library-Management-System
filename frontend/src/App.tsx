@@ -15,6 +15,8 @@ import { BookDetailModal } from './components/BookDetailModal';
 import { AICopilotDrawer } from './components/AICopilotDrawer';
 import { GuidedTourModal } from './components/GuidedTourModal';
 import { PatronProfileModal } from './components/PatronProfileModal';
+import { KnowledgeExplorer } from './components/knowledge/KnowledgeExplorer';
+import { ModelComparisonStudio } from './components/knowledge/ModelComparisonStudio';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -169,6 +171,10 @@ export const App: React.FC = () => {
               <StudentSpaces currentUser={currentUser} />
             )}
 
+            {activeTab === 'knowledge' && (
+              <KnowledgeExplorer />
+            )}
+
             {/* Librarian-Only Views */}
             {activeTab === 'manage_catalogue' && currentUser.role === 'librarian' && (
               <LibrarianCatalogue />
@@ -184,6 +190,10 @@ export const App: React.FC = () => {
 
             {activeTab === 'embeddings' && currentUser.role === 'librarian' && (
               <LibrarianEmbeddings />
+            )}
+
+            {activeTab === 'ai_studio' && currentUser.role === 'librarian' && (
+              <ModelComparisonStudio />
             )}
           </>
         )}

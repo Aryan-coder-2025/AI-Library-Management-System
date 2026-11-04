@@ -18,13 +18,14 @@ import {
 } from '../services/spacesApi';
 import { QRCodeModal } from './QRCodeModal';
 import { OccupancyAnalytics } from './OccupancyAnalytics';
+import { StudentFloorPlan } from './spatial/StudentFloorPlan';
 
 interface StudentSpacesProps {
   currentUser: UserProfile;
 }
 
 export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'my_reservations' | 'book_space' | 'occupancy'>('my_reservations');
+  const [activeSubTab, setActiveSubTab] = useState<'my_reservations' | 'book_space' | 'floor_plans' | 'occupancy'>('my_reservations');
 
   // Reservations list state
   const [reservations, setReservations] = useState<StudySpaceReservation[]>([]);
@@ -234,6 +235,13 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
             onClick={() => setActiveSubTab('book_space')}
           >
             + Reserve Space
+          </button>
+          <button
+            type="button"
+            className={`btn ${activeSubTab === 'floor_plans' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setActiveSubTab('floor_plans')}
+          >
+            🗺️ Interactive Floor Plan
           </button>
           <button
             type="button"
@@ -602,6 +610,16 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
             </div>
           )}
         </div>
+      )}
+
+      {/* Interactive Floor Plans & Wayfinding View */}
+      {activeSubTab === 'floor_plans' && (
+        <StudentFloorPlan
+          onInitiateBooking={(type, _id) => {
+            setResourceTypeFilter(type);
+            setActiveSubTab('book_space');
+          }}
+        />
       )}
 
       {/* Occupancy Analytics & Telemetry View */}

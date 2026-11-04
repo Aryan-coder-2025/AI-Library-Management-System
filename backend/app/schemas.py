@@ -1,6 +1,6 @@
 from datetime import datetime, date
 import re
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 VALID_OPERATIONAL_STATUSES = {"available", "maintenance", "lost", "retired"}
@@ -739,7 +739,7 @@ class TelemetryObservationCreate(BaseModel):
 
     zone_id: int
     recorded_at: Optional[datetime] = None
-    observed_count: int = Field(..., ge=0, description="Observed headcount in study zone")
+    observed_count: int = Field(..., description="Observed headcount in study zone")
     source_sensor_id: Optional[str] = Field(None, max_length=50)
 
 
@@ -753,5 +753,411 @@ class TelemetryObservationResponse(BaseModel):
     capacity_utilization: float
     source_sensor_id: Optional[str] = None
     status: str = "recorded"
+
+
+# ── Stage 10.5 Spatial Schemas: Floors, Floor Plans, Mapping & Wayfinding ─────
+
+class LibraryFloorBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    floor_number: int = Field(..., ge=0, description="Floor level identifier (0=Ground, 1=First, etc.)")
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    display_order: int = Field(0, description="Display sorting order")
+    width: float = Field(1000.0, gt=0, description="Canvas coordinate width")
+    height: float = Field(700.0, gt=0, description="Canvas coordinate height")
+    is_active: bool = True
+
+
+class LibraryFloorCreate(LibraryFloorBase):
+    pass
+
+
+class LibraryFloorUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    display_order: Optional[int] = None
+    width: Optional[float] = Field(None, gt=0)
+    height: Optional[float] = Field(None, gt=0)
+    is_active: Optional[bool] = None
+
+
+class LibraryFloorResponse(LibraryFloorBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    published_layout_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FloorPlanElementBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    element_type: str = Field(..., max_length=50, description="wall, door, entrance, exit, stairs, elevator, restroom, service_desk, label, facility, zone_boundary")
+    label: Optional[str] = Field(None, max_length=100)
+    geometry_type: str = Field(..., description="rect, circle, polygon, path, text")
+    geometry_data: Dict[str, Any] = Field(..., description="Normalized coordinates and dimensional attributes")
+    style_properties: Optional[Dict[str, Any]] = None
+    display_order: int = 0
+    is_active: bool = True
+
+
+class FloorPlanElementCreate(FloorPlanElementBase):
+    layout_id: Optional[int] = None
+
+
+class FloorPlanElementUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    element_type: Optional[str] = Field(None, max_length=50)
+    label: Optional[str] = Field(None, max_length=100)
+    geometry_type: Optional[str] = None
+    geometry_data: Optional[Dict[str, Any]] = None
+    style_properties: Optional[Dict[str, Any]] = None
+    display_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class FloorPlanElementResponse(FloorPlanElementBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    floor_id: int
+    layout_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FloorPlanBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    svg_viewbox: str = Field("0 0 1000 700", max_length=50)
+
+
+class FloorPlanCreate(FloorPlanBase):
+    pass
+
+
+class FloorPlanUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    svg_viewbox: Optional[str] = Field(None, max_length=50)
+
+
+class FloorPlanResponse(FloorPlanBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    floor_id: int
+    version: int
+    status: str
+    created_by_user_id: Optional[int] = None
+    published_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SpatialResourceMappingBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_type: str = Field(..., description="'zone', 'room', or 'seat'")
+    resource_id: int = Field(..., gt=0)
+    label: Optional[str] = Field(None, max_length=100)
+    x: float = Field(..., ge=0.0, le=1.05, description="Normalized X coordinate [0.0 - 1.0]")
+    y: float = Field(..., ge=0.0, le=1.05, description="Normalized Y coordinate [0.0 - 1.0]")
+    width: Optional[float] = Field(None, gt=0.0, le=1.0)
+    height: Optional[float] = Field(None, gt=0.0, le=1.0)
+    rotation: float = Field(0.0, ge=0.0, le=360.0)
+    is_active: bool = True
+
+    @field_validator("resource_type")
+    @classmethod
+    def validate_resource_type(cls, v: str) -> str:
+        if v not in ("zone", "room", "seat"):
+            raise ValueError("resource_type must be 'zone', 'room', or 'seat'")
+        return v
+
+
+class SpatialResourceMappingCreate(SpatialResourceMappingBase):
+    pass
+
+
+class SpatialResourceMappingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: Optional[str] = Field(None, max_length=100)
+    x: Optional[float] = Field(None, ge=0.0, le=1.05)
+    y: Optional[float] = Field(None, ge=0.0, le=1.05)
+    width: Optional[float] = Field(None, gt=0.0, le=1.0)
+    height: Optional[float] = Field(None, gt=0.0, le=1.0)
+    rotation: Optional[float] = Field(None, ge=0.0, le=360.0)
+    is_active: Optional[bool] = None
+
+
+class SpatialResourceMappingResponse(SpatialResourceMappingBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    floor_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SpatialResourceAvailability(BaseModel):
+    resource_type: str  # 'seat', 'room', 'zone'
+    resource_id: int
+    label: Optional[str] = None
+    availability_status: str  # 'available', 'reserved', 'occupied', 'unavailable', 'unknown'
+    current_attendees: Optional[int] = None
+    capacity: Optional[int] = None
+    provenance: str = "reservation_state"
+    x: float
+    y: float
+    width: Optional[float] = None
+    height: Optional[float] = None
+    rotation: float = 0.0
+    zone_id: Optional[int] = None
+    zone_code: Optional[str] = None
+    zone_name: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+
+
+class FloorPlanDetailResponse(BaseModel):
+    floor: LibraryFloorResponse
+    layout: Optional[FloorPlanResponse] = None
+    elements: List[FloorPlanElementResponse] = []
+    resources: List[SpatialResourceAvailability] = []
+    is_demonstration_layout: bool = True
+    disclosure: str = "ILLUSTRATIVE DEMONSTRATION LAYOUT — NOT A SURVEYED BUILDING PLAN"
+
+
+class ResourceLocationResponse(BaseModel):
+    resource_type: str
+    resource_id: int
+    label: Optional[str] = None
+    floor_id: int
+    floor_number: int
+    floor_name: str
+    zone_id: Optional[int] = None
+    zone_code: Optional[str] = None
+    zone_name: Optional[str] = None
+    x: float
+    y: float
+    availability_status: str
+    directional_guidance: Optional[str] = None
+    is_demonstration: bool = True
+    disclosure: str = "ILLUSTRATIVE DEMONSTRATION LAYOUT — NOT A SURVEYED BUILDING PLAN"
+
+
+class WayfindingStep(BaseModel):
+    step_number: int
+    instruction: str
+    floor_number: int
+    node_type: str
+    x: float
+    y: float
+
+
+class WayfindingRouteResponse(BaseModel):
+    destination_resource_type: str
+    destination_resource_id: int
+    destination_label: str
+    destination_floor_number: int
+    total_distance: float
+    is_accessible: bool
+    path_points: List[List[float]]
+    steps: List[WayfindingStep]
+    is_demonstration: bool = True
+    disclosure: str = "ILLUSTRATIVE DEMONSTRATION ROUTE — FOR VISUAL WAYFINDING GUIDANCE ONLY"
+
+
+class SpatialCompletenessReport(BaseModel):
+    total_zones: int
+    mapped_zones: int
+    unmapped_zone_ids: List[int]
+    total_seats: int
+    mapped_seats: int
+    unmapped_seat_ids: List[int]
+    total_rooms: int
+    mapped_rooms: int
+    unmapped_room_ids: List[int]
+    mapping_completeness_percentage: float
+    published_floors_count: int
+    draft_floors_count: int
+
+
+# ── PILLAR 1: Knowledge Representation Schemas ────────────────────────────────
+
+class ConceptResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    topic_id: int
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+
+
+class TopicResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    subject_id: int
+    name: str
+    description: Optional[str] = None
+    concepts: List[ConceptResponse] = []
+    created_at: datetime
+
+
+class SubjectTreeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    code: str
+    description: Optional[str] = None
+    parent_id: Optional[int] = None
+    children: List['SubjectTreeResponse'] = []
+    topics: List[TopicResponse] = []
+    created_at: datetime
+
+
+class BookKnowledgeAssociationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    book_id: int
+    book_title: str
+    author: str
+    isbn: Optional[str] = None
+    category: str
+    subjects: List[str] = []
+    topics: List[str] = []
+    concepts: List[str] = []
+
+
+class SubjectDetailResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    code: str
+    description: Optional[str] = None
+    parent_id: Optional[int] = None
+    topics: List[TopicResponse] = []
+    associated_books: List[BookKnowledgeAssociationResponse] = []
+
+
+# ── PILLAR 2: Search-Based Navigation Schemas ─────────────────────────────────
+
+class KnowledgeSearchResult(BaseModel):
+    item_type: str  # 'subject', 'topic', 'concept', 'book'
+    id: int
+    title: str
+    description: Optional[str] = None
+    relevance_score: float
+    explanation: str
+    context_path: str  # e.g. "Computer Science > Artificial Intelligence > Machine Learning"
+    associated_books_count: int = 0
+
+
+class KnowledgeSearchResponse(BaseModel):
+    query: str
+    results: List[KnowledgeSearchResult]
+    total: int
+
+
+# ── PILLAR 4: Modern AI Comparison Schemas ────────────────────────────────────
+
+class ModelComparisonRequest(BaseModel):
+    prompt: str
+    models: List[str] = Field(default=["local-deterministic", "gemini-1.5-pro", "gpt-4o"])
+    temperature: float = 0.2
+    max_tokens: int = 512
+    include_rag_context: bool = True
+
+
+class ModelExecutionResult(BaseModel):
+    model_name: str
+    provider: str
+    response_text: str
+    latency_ms: float
+    token_usage: Optional[Dict[str, int]] = None
+    factual_grounding_score: float  # 0.0 to 1.0 (overlap with retrieved library knowledge)
+    citations_count: int
+    error: Optional[str] = None
+
+
+class ModelComparisonResponse(BaseModel):
+    prompt: str
+    timestamp: datetime
+    rag_context_used: Optional[str] = None
+    results: List[ModelExecutionResult]
+
+
+# ── PILLAR 3 & 5: Enhanced Agentic Copilot & RAG Schemas ──────────────────────
+
+class CopilotToolCall(BaseModel):
+    tool_name: str
+    arguments: Dict[str, Any]
+    result: Optional[Any] = None
+    execution_time_ms: float = 0.0
+
+
+class StructuredCitation(BaseModel):
+    source_type: str  # 'policy', 'monograph', 'study_space', 'subject'
+    title: str
+    reference_id: Optional[str] = None
+    snippet: str
+    url_or_action: Optional[str] = None
+
+
+class EnhancedCopilotResponse(BaseModel):
+    answer: str
+    intent: str
+    confidence: float
+    provider: str
+    tool_calls: List[CopilotToolCall] = []
+    citations: List[StructuredCitation] = []
+    spatial_card: Optional[Dict[str, Any]] = None
+    book_cards: List[Dict[str, Any]] = []
+    suggested_followups: List[str] = []
+
+
+class ChatMessageInput(BaseModel):
+    role: str = Field(..., description="Role of the message sender: 'user' or 'assistant'")
+    content: str = Field(..., min_length=1, max_length=1000, description="Message content")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        role_cleaned = v.strip().lower()
+        if role_cleaned not in ("user", "assistant"):
+            raise ValueError(f"Role must be 'user' or 'assistant', got '{v}'. 'system' and other roles are rejected.")
+        return role_cleaned
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Message content cannot be empty or whitespace only.")
+        return cleaned
+
+
+class AgentChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000, description="Patron query")
+    conversation_history: Optional[List[ChatMessageInput]] = Field(
+        default_factory=list,
+        description="Prior conversation history bounded to user and assistant turns (max 6 messages retained)",
+    )
+
+
 
 
