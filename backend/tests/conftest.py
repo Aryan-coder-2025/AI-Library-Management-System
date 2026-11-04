@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 # Ensure test environment variables are set
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-32-chars-long-for-testing"
+os.environ["SPACES_QR_SECRET_KEY"] = "test-spaces-qr-dedicated-key-32-chars-long"
 os.environ["ALLOWED_ORIGINS"] = '["http://localhost:5173", "http://testserver"]'
 
 from app.database import Base, get_db, get_write_db, setup_engine_events

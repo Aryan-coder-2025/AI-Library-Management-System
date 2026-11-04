@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db, get_write_db
-from app.dependencies import get_current_active_user, require_librarian
+from app.dependencies import get_current_active_user, get_optional_current_user, require_librarian
 from app.models import User
 from app.schemas import (
     BookCreate,
@@ -36,21 +36,24 @@ def list_books(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by title, author, or ISBN"),
+    q: Optional[str] = Query(None, description="Search query alias for frontend compatibility"),
     category: Optional[str] = Query(None, description="Filter by category"),
     include_archived: bool = Query(False, description="Include archived books (librarian only)"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Returns a paginated list of catalogue books.
-    Available to students and librarians. Students only see active (non-archived) books.
+    Publicly accessible to guests and authenticated users.
+    Archived books are strictly excluded unless an authenticated librarian explicitly requests them.
     """
-    is_librarian = current_user.role == "librarian"
+    is_librarian = current_user.role == "librarian" if current_user else False
+    effective_search = q if q is not None else search
     return catalogue_service.list_books_service(
         db=db,
         page=page,
         page_size=page_size,
-        search=search,
+        search=effective_search,
         category=category,
         include_archived=include_archived,
         is_librarian=is_librarian,
@@ -79,18 +82,20 @@ def create_book(
 )
 def get_book_detail(
     book_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Retrieves full details for a book, including its physical copies and availability.
-    Available to students and librarians.
+    Retrieves full details for a book. Publicly accessible.
+    For guests, omits internal physical copy items while returning aggregate availability counts.
     """
-    is_librarian = current_user.role == "librarian"
+    is_librarian = current_user.role == "librarian" if current_user else False
+    is_guest = current_user is None
     return catalogue_service.get_book_detail_service(
         db=db,
         book_id=book_id,
         is_librarian=is_librarian,
+        is_guest=is_guest,
     )
 
 

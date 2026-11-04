@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@rolldown/binding-wasm32-wasi": "^1.2.15",
+    "@types/qrcode": "^1.5.6",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

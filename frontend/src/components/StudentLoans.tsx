@@ -1,15 +1,24 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { Loan, LoanPaginationResponse } from '../types/library';
+import type { Loan, LoanPaginationResponse, UserProfile } from '../types/library';
 
-export const StudentLoans: React.FC = () => {
+interface StudentLoansProps {
+  currentUser?: UserProfile | null;
+}
+
+export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [renewingLoanId, setRenewingLoanId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'overdue' | 'returned'>('all');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
+  const isTeacher = currentUser?.role === 'teacher';
+  const renewalDays = isTeacher ? 30 : 14;
 
   const fetchMyLoans = useCallback(async () => {
     setLoading(true);
@@ -38,6 +47,27 @@ export const StudentLoans: React.FC = () => {
   useEffect(() => {
     fetchMyLoans();
   }, [fetchMyLoans]);
+
+  const handleRenewLoan = async (loanId: number) => {
+    setError(null);
+    setSuccessMsg(null);
+    setRenewingLoanId(loanId);
+
+    try {
+      const updated = await apiFetch<Loan>(`/api/loans/${loanId}/renew`, {
+        method: 'POST',
+      });
+      setSuccessMsg(
+        `Loan for "${updated.book_title}" successfully renewed! New due date is ${formatDate(updated.due_date)} (+${renewalDays} days).`
+      );
+      await fetchMyLoans();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to renew loan';
+      setError(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setRenewingLoanId(null);
+    }
+  };
 
   const formatDate = (isoString: string | null) => {
     if (!isoString) return '—';
@@ -72,16 +102,33 @@ export const StudentLoans: React.FC = () => {
         <div className="page-title-group">
           <h1>My Borrowing History & Active Loans</h1>
           <p className="page-subtitle">
-            Track borrowed items, return dates, and circulation status
+            {isTeacher
+              ? 'Faculty loan management, extended 30-day borrowing periods, and self-service renewals'
+              : 'Track borrowed items, return dates, and circulation status'}
           </p>
         </div>
       </div>
 
       <div className="alert alert-info" style={{ marginBottom: '1.25rem' }}>
         <div>
-          <strong>Circulation Policy:</strong> To return or renew borrowed items, please present your library ID and the physical copy at the Circulation Desk. Books may be renewed once if no other patron has reserved the title.
+          <strong>Circulation Policy ({isTeacher ? 'Faculty' : 'Student'}): </strong>
+          {isTeacher
+            ? 'Faculty members may borrow up to 10 books concurrently for 30 days. Active loans can be renewed once for an additional 30 days if not overdue.'
+            : 'Students may borrow up to 3 books concurrently for 14 days. Active loans can be renewed once for an additional 14 days if not overdue.'}
         </div>
       </div>
+
+      {successMsg && (
+        <div className="alert alert-success" style={{ marginBottom: '1.25rem' }}>
+          <span>{successMsg}</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="alert alert-error" style={{ marginBottom: '1.25rem' }}>
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Status Filter Tabs */}
       <div className="tab-group">
@@ -127,12 +174,6 @@ export const StudentLoans: React.FC = () => {
         </button>
       </div>
 
-      {error && (
-        <div className="alert alert-error">
-          <span>{error}</span>
-        </div>
-      )}
-
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
           Loading your borrowing record...
@@ -164,12 +205,15 @@ export const StudentLoans: React.FC = () => {
                   <th>Due Date</th>
                   <th>Status</th>
                   <th>Timeline</th>
+                  <th>Self-Service Action</th>
                 </tr>
               </thead>
               <tbody>
                 {loans.map((loan) => {
                   const isOverdue = loan.status === 'overdue' || loan.is_overdue;
                   const isReturned = loan.status === 'returned' || loan.returned_at !== null;
+                  const hasRenewed = (loan.renewal_count || 0) >= 1;
+                  const isRenewing = renewingLoanId === loan.id;
 
                   return (
                     <tr key={loan.id} style={isOverdue ? { backgroundColor: '#fff5f5' } : {}}>
@@ -189,6 +233,11 @@ export const StudentLoans: React.FC = () => {
                         <span style={{ fontWeight: isOverdue ? 600 : 400, color: isOverdue ? 'var(--danger-text)' : 'inherit' }}>
                           {formatDate(loan.due_date)}
                         </span>
+                        {hasRenewed && (
+                          <div style={{ fontSize: '0.75rem', color: '#0d9488', fontWeight: 500 }}>
+                            (Renewed {loan.renewal_count}x)
+                          </div>
+                        )}
                       </td>
                       <td>
                         <span
@@ -205,6 +254,30 @@ export const StudentLoans: React.FC = () => {
                       </td>
                       <td style={{ fontSize: '0.8rem', color: isOverdue ? 'var(--danger-text)' : 'var(--text-muted)' }}>
                         {getDaysRemainingText(loan.due_date, isOverdue, loan.returned_at)}
+                      </td>
+                      <td>
+                        {isReturned ? (
+                          <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Completed</span>
+                        ) : isOverdue ? (
+                          <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 500 }} title="Overdue loans must be returned to the circulation desk">
+                            Overdue (Visit Desk)
+                          </span>
+                        ) : hasRenewed ? (
+                          <span style={{ fontSize: '0.8rem', color: '#64748b' }} title="Maximum 1 renewal limit reached">
+                            Renewed (Limit 1)
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            disabled={isRenewing}
+                            onClick={() => handleRenewLoan(loan.id)}
+                            style={{ whiteSpace: 'nowrap' }}
+                            title={`Extend due date by ${renewalDays} days`}
+                          >
+                            {isRenewing ? 'Renewing...' : `Renew (+${renewalDays}d)`}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

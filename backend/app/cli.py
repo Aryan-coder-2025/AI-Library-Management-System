@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import hash_password
+from app.auth import hash_password, validate_password_policy
 from app.database import SessionLocal, atomic_write, init_db
 from app.models import User
 
@@ -22,9 +22,7 @@ def validate_email(email: str) -> str:
 
 
 def validate_password(password: str) -> str:
-    if len(password) < 8:
-        raise ValueError("Password must be at least 8 characters long.")
-    return password
+    return validate_password_policy(password)
 
 
 def create_librarian_account(

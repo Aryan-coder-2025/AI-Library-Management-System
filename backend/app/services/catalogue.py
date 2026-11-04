@@ -102,6 +102,7 @@ def get_book_detail_service(
     db: Session,
     book_id: int,
     is_librarian: bool = False,
+    is_guest: bool = False,
 ) -> BookDetailResponse:
     """
     Retrieves detailed metadata and copy inventory for a specific book.
@@ -132,18 +133,19 @@ def get_book_detail_service(
         if c.operational_status == "available" and not is_borrowed:
             avail_count += 1
 
-        copy_responses.append(
-            BookCopyResponse(
-                id=c.id,
-                book_id=c.book_id,
-                copy_code=c.copy_code,
-                operational_status=c.operational_status,
-                is_borrowed=is_borrowed,
-                effective_status=effective_status,
-                notes=c.notes,
-                added_at=c.added_at,
+        if not is_guest:
+            copy_responses.append(
+                BookCopyResponse(
+                    id=c.id,
+                    book_id=c.book_id,
+                    copy_code=c.copy_code,
+                    operational_status=c.operational_status,
+                    is_borrowed=is_borrowed,
+                    effective_status=effective_status,
+                    notes=c.notes,
+                    added_at=c.added_at,
+                )
             )
-        )
 
     return BookDetailResponse(
         id=book.id,

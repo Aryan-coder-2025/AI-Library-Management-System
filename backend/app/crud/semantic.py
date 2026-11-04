@@ -2,9 +2,10 @@
 Semantic search and embedding CRUD operations.
 Handles database queries for vector retrieval, candidate filtering, and embedding storage.
 """
+import re
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, distinct, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Book, BookCopy, Loan
@@ -170,3 +171,96 @@ def get_copy_availability_maps(
     avail_map: Dict[int, int] = dict(db.execute(avail_stmt).all())
 
     return total_map, avail_map
+
+
+def get_lexical_candidates(
+    db: Session,
+    query: str,
+    category: Optional[str] = None,
+    include_archived: bool = False,
+    limit: Optional[int] = 100,
+    exact_isbn_clean: Optional[str] = None,
+) -> Tuple[List[Tuple[Book, float]], int]:
+    """
+    Executes parameterized multi-token scoring across title, author, description, and ISBN.
+    If exact_isbn_clean is provided, matches directly via normalized ISBN with maximum precedence.
+    Returns:
+        (scored_books, total_lexical_count)
+        where scored_books is a list of (Book, score) sorted by score descending, id ascending.
+    """
+    base_conditions = []
+    if not include_archived:
+        base_conditions.append(Book.is_archived.is_(False))
+    if category and category.strip():
+        base_conditions.append(Book.category.ilike(category.strip()))
+
+    tokens = [w for w in re.findall(r"\w+", query.lower()) if len(w) >= 2][:8]
+    clean_query_lower = query.strip().lower()
+
+    if not tokens and not exact_isbn_clean:
+        return [], 0
+
+    score_components = []
+    match_or_conditions = []
+
+    # Exact ISBN match bonus & condition
+    if exact_isbn_clean:
+        isbn_cond = func.replace(Book.isbn, "-", "") == exact_isbn_clean
+        score_components.append(case((isbn_cond, 500.0), else_=0.0))
+        match_or_conditions.append(isbn_cond)
+
+    # Exact full title & author bonuses
+    if clean_query_lower:
+        title_exact = func.lower(Book.title) == clean_query_lower
+        author_exact = func.lower(Book.author) == clean_query_lower
+        score_components.append(case((title_exact, 100.0), else_=0.0))
+        score_components.append(case((author_exact, 50.0), else_=0.0))
+        match_or_conditions.append(title_exact)
+        match_or_conditions.append(author_exact)
+
+    # Multi-token partial matches
+    for token in tokens:
+        term = f"%{token}%"
+        title_match = Book.title.ilike(term)
+        author_match = Book.author.ilike(term)
+        desc_match = Book.description.ilike(term)
+
+        score_components.append(case((title_match, 10.0), else_=0.0))
+        score_components.append(case((author_match, 8.0), else_=0.0))
+        score_components.append(case((desc_match, 1.5), else_=0.0))
+
+        match_or_conditions.append(title_match)
+        match_or_conditions.append(author_match)
+        match_or_conditions.append(desc_match)
+
+    total_score = sum(score_components)
+
+    # Exhaustive count of all matching distinct monographs in the catalogue
+    count_stmt = select(func.count(distinct(Book.id))).where(
+        *base_conditions,
+        or_(*match_or_conditions),
+    )
+    total_count = db.execute(count_stmt).scalar() or 0
+
+    if total_count == 0:
+        return [], 0
+
+    # Retrieve top scored candidates
+    query_stmt = (
+        select(Book, total_score.label("match_score"))
+        .where(
+            *base_conditions,
+            or_(*match_or_conditions),
+        )
+        .order_by(total_score.desc(), Book.id.asc())
+    )
+    if limit is not None and limit > 0:
+        query_stmt = query_stmt.limit(limit)
+
+    results = db.execute(query_stmt).all()
+    scored_books: List[Tuple[Book, float]] = [
+        (row[0], float(row[1])) for row in results
+    ]
+
+    return scored_books, total_count
+

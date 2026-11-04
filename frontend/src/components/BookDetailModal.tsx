@@ -187,6 +187,10 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                       </tbody>
                     </table>
                   </div>
+                ) : detail.total_copies > 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', backgroundColor: '#f8fafc', padding: '0.75rem', borderRadius: '6px' }}>
+                    Inventory Status: <strong>{detail.available_copies} of {detail.total_copies} copies</strong> available on shelf. Sign in with a patron or staff account to inspect physical accession barcodes and copy details.
+                  </p>
                 ) : (
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                     No physical copies have been catalogued for this title yet.

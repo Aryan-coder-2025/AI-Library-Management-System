@@ -1,20 +1,32 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { Book, BookPaginationResponse } from '../types/library';
+import type {
+  Book,
+  BookPaginationResponse,
+  HybridSearchResponse,
+  SemanticSearchResponse,
+} from '../types/library';
 import { BookCover } from './BookCover';
+
+interface DisplayBook extends Book {
+  rrf_score?: number;
+  match_channels?: string[];
+  similarity_score?: number | null;
+}
 
 interface StudentCatalogueProps {
   onSelectBook: (id: number) => void;
 }
 
 export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook }) => {
-  const [books, setBooks] = useState<Book[]>([]);
+  const [books, setBooks] = useState<DisplayBook[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filter and pagination state
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [submittedQuery, setSubmittedQuery] = useState<string>('');
+  const [searchMode, setSearchMode] = useState<'hybrid' | 'keyword' | 'semantic'>('hybrid');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [page, setPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
@@ -28,27 +40,76 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
     const params = new URLSearchParams();
     params.set('page', page.toString());
     params.set('page_size', pageSize.toString());
-    params.set('include_archived', 'false');
 
-    if (submittedQuery.trim()) {
-      params.set('q', submittedQuery.trim());
-    }
     if (categoryFilter) {
       params.set('category', categoryFilter);
     }
 
     try {
-      const response = await apiFetch<BookPaginationResponse>(`/api/books?${params.toString()}`);
-      setBooks(response.items);
-      setTotalPages(response.total_pages);
-      setTotalItems(response.total);
+      if (submittedQuery.trim()) {
+        params.set('q', submittedQuery.trim());
+        if (searchMode === 'hybrid') {
+          const res = await apiFetch<HybridSearchResponse>(`/api/search/hybrid?${params.toString()}`);
+          const mapped: DisplayBook[] = res.items.map((item) => ({
+            id: item.id,
+            title: item.title,
+            author: item.author,
+            isbn: item.isbn,
+            category: item.category,
+            description: item.description,
+            is_archived: false,
+            total_copies: item.total_copies,
+            available_copies: item.available_copies,
+            created_at: '',
+            updated_at: '',
+            rrf_score: item.rrf_score,
+            match_channels: item.match_channels,
+            similarity_score: item.similarity_score,
+          }));
+          setBooks(mapped);
+          setTotalPages(res.total_pages);
+          setTotalItems(res.total);
+        } else if (searchMode === 'semantic') {
+          const res = await apiFetch<SemanticSearchResponse>(`/api/search/semantic?${params.toString()}`);
+          const mapped: DisplayBook[] = res.items.map((item) => ({
+            id: item.id,
+            title: item.title,
+            author: item.author,
+            isbn: item.isbn,
+            category: item.category,
+            description: item.description,
+            is_archived: false,
+            total_copies: item.total_copies,
+            available_copies: item.available_copies,
+            created_at: '',
+            updated_at: '',
+            similarity_score: item.similarity_score,
+            match_channels: ['semantic'],
+          }));
+          setBooks(mapped);
+          setTotalPages(res.total_pages);
+          setTotalItems(res.total);
+        } else {
+          params.set('include_archived', 'false');
+          const res = await apiFetch<BookPaginationResponse>(`/api/books?${params.toString()}`);
+          setBooks(res.items);
+          setTotalPages(res.total_pages);
+          setTotalItems(res.total);
+        }
+      } else {
+        params.set('include_archived', 'false');
+        const res = await apiFetch<BookPaginationResponse>(`/api/books?${params.toString()}`);
+        setBooks(res.items);
+        setTotalPages(res.total_pages);
+        setTotalItems(res.total);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to load catalogue';
       setError(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setLoading(false);
     }
-  }, [page, submittedQuery, categoryFilter]);
+  }, [page, submittedQuery, categoryFilter, searchMode]);
 
   useEffect(() => {
     fetchBooks();
@@ -79,12 +140,12 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
       </div>
 
       {/* Search Toolbar */}
-      <div className="search-toolbar">
+      <div className="search-toolbar" data-tour="catalogue-search-bar">
         <form onSubmit={handleSearchSubmit} className="search-input-group" style={{ display: 'flex', gap: '0.5rem' }}>
           <input
             type="search"
             className="form-input"
-            placeholder="Search by title, author, or ISBN..."
+            placeholder="Search by title, author, concept, or ISBN..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -92,6 +153,20 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
             Search
           </button>
         </form>
+
+        <select
+          className="form-select search-mode-select"
+          value={searchMode}
+          onChange={(e) => {
+            setSearchMode(e.target.value as 'hybrid' | 'keyword' | 'semantic');
+            setPage(1);
+          }}
+          aria-label="Select search retrieval mode"
+        >
+          <option value="hybrid">⚡ Hybrid Search (AI + Keywords)</option>
+          <option value="keyword">🔍 Keyword Search</option>
+          <option value="semantic">🧠 Semantic AI Search</option>
+        </select>
 
         <select
           className="form-select search-category-select"
@@ -105,10 +180,14 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
           <option value="">All Categories</option>
           <option value="Computer Science">Computer Science</option>
           <option value="Artificial Intelligence">Artificial Intelligence</option>
+          <option value="Algorithms & Complexity">Algorithms & Complexity</option>
+          <option value="Distributed Systems">Distributed Systems</option>
+          <option value="Cybersecurity & Cryptography">Cybersecurity & Cryptography</option>
+          <option value="Software Engineering">Software Engineering</option>
           <option value="Mathematics">Mathematics</option>
           <option value="Physics">Physics</option>
-          <option value="Literature">Literature</option>
-          <option value="Philosophy">Philosophy</option>
+          <option value="Data Science">Data Science</option>
+          <option value="Information Systems">Information Systems</option>
         </select>
 
         {(submittedQuery || categoryFilter) && (
@@ -118,15 +197,19 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
         )}
       </div>
 
+      {/* Main Content Area */}
       {error && (
-        <div className="alert alert-error">
-          <span>{error}</span>
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: '1.5rem' }}>
+          {error}
         </div>
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
-          Loading library catalogue...
+        <div className="empty-state">
+          <div className="loading-spinner" />
+          <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>
+            Retrieving catalogue holdings...
+          </p>
         </div>
       ) : books.length === 0 ? (
         <div className="empty-state">
@@ -144,7 +227,7 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Showing {books.length} of {totalItems} titles
+              Showing {books.length} of {totalItems} titles {submittedQuery && `for "${submittedQuery}" (${searchMode})`}
             </span>
           </div>
 
@@ -177,6 +260,26 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
                       <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
                         {book.category}
                       </span>
+                      {book.match_channels && book.match_channels.length > 0 && (
+                        <span
+                          className={`badge ${
+                            book.match_channels.includes('exact_identifier')
+                              ? 'badge-success'
+                              : book.match_channels.length > 1
+                              ? 'badge-primary'
+                              : 'badge-neutral'
+                          }`}
+                          style={{ fontSize: '0.65rem' }}
+                        >
+                          {book.match_channels.includes('exact_identifier')
+                            ? 'Exact ISBN'
+                            : book.match_channels.length > 1
+                            ? 'Hybrid Match'
+                            : book.match_channels[0] === 'semantic'
+                            ? 'AI Semantic'
+                            : 'Keyword Match'}
+                        </span>
+                      )}
                       <span
                         className={`availability-indicator ${
                           inStock ? 'in-stock' : 'out-of-stock'

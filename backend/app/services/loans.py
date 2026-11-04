@@ -1,10 +1,11 @@
+from app.utils.date import get_utc_today
 """
 Loan circulation service layer.
 Coordinates loan issuance, returns, business policy enforcement, and atomic transactions.
 """
 from datetime import date, datetime, timedelta
 import math
-from typing import List, Optional
+from typing import Dict, List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -15,9 +16,28 @@ from app.models import Loan, User
 from app.schemas import LoanIssueRequest, LoanPaginationResponse, LoanResponse
 
 
+BORROWING_POLICIES: Dict[str, Dict[str, object]] = {
+    "student": {
+        "max_loans": 3,
+        "duration_days": 14,
+        "display_role": "Student",
+    },
+    "teacher": {
+        "max_loans": 10,
+        "duration_days": 30,
+        "display_role": "Teacher",
+    },
+}
+
+
+def get_borrowing_policy(role: str) -> Optional[Dict[str, object]]:
+    """Returns the borrowing quota and loan duration policy for a given user role."""
+    return BORROWING_POLICIES.get(role)
+
+
 def serialize_loan(loan: Loan, as_of_date: Optional[date] = None) -> LoanResponse:
     """Computes dynamic overdue/active status and serializes a loan record."""
-    today = as_of_date or date.today()
+    today = as_of_date or get_utc_today()
     if loan.returned_at is not None:
         computed_status = "returned"
         is_overdue = False
@@ -57,6 +77,7 @@ def serialize_loan(loan: Loan, as_of_date: Optional[date] = None) -> LoanRespons
         returned_at=loan.returned_at,
         status=computed_status,
         is_overdue=is_overdue,
+        renewal_count=getattr(loan, "renewal_count", 0) or 0,
     )
 
 
@@ -66,15 +87,15 @@ def issue_loan_service(
     librarian_id: int,
 ) -> LoanResponse:
     """
-    Issues a physical book copy to an eligible student in an atomic write transaction.
-    Enforces all Stage 4 eligibility and concurrency safeguards:
-    - Student exists, is active, and possesses the 'student' role.
+    Issues a physical book copy to an eligible student or teacher in an atomic write transaction.
+    Enforces all eligibility and concurrency safeguards:
+    - User exists, is active, and possesses an authorized borrower role (student or teacher).
     - Book copy exists, is not archived, and is not retired.
     - Copy operational status is 'available'.
     - Copy has no active loan.
-    - Student has fewer than 3 active loans.
-    - Student has no overdue active loans.
-    - 14 calendar days due date computed from server date.
+    - Borrower has not exceeded active loan limit (3 for student, 10 for teacher).
+    - Borrower has no overdue active loans.
+    - Calendar days due date computed based on policy (14 for student, 30 for teacher).
     - Issued_by_id set from authenticated librarian.
     """
     with atomic_write(db):
@@ -89,10 +110,12 @@ def issue_loan_service(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Student account is inactive and cannot borrow books.",
             )
-        if student.role != "student":
+
+        policy = get_borrowing_policy(student.role)
+        if not policy:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only accounts with the student role can borrow books.",
+                detail="Only accounts with the student role or teacher role can borrow books.",
             )
 
         copy = crud_loans.get_copy_by_id(db, issue_in.copy_id)
@@ -124,21 +147,24 @@ def issue_loan_service(
             )
 
         active_count = crud_loans.get_student_active_loan_count(db, student.id)
-        if active_count >= 3:
+        max_loans = int(policy["max_loans"])
+        display_role = str(policy["display_role"])
+        if active_count >= max_loans:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Student has reached the maximum borrowing limit of 3 active loans.",
+                detail=f"{display_role} has reached the maximum borrowing limit of {max_loans} active loans.",
             )
 
-        today = date.today()
+        today = get_utc_today()
         if crud_loans.student_has_overdue_loans(db, student.id, as_of_date=today):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Student has overdue loans and cannot borrow new books until overdue items are returned.",
+                detail=f"{display_role} has overdue loans and cannot borrow new books until overdue items are returned.",
             )
 
+        duration_days = int(policy["duration_days"])
         issued_at = datetime.utcnow()
-        due_date = today + timedelta(days=14)
+        due_date = today + timedelta(days=duration_days)
 
         try:
             loan = crud_loans.create_loan(
@@ -194,7 +220,7 @@ def get_student_loans_service(
     """
     Retrieves loans for a specific student with pagination and status filtering.
     """
-    today = date.today()
+    today = get_utc_today()
     loans, total_count = crud_loans.get_loans(
         db=db,
         page=page,
@@ -252,7 +278,7 @@ def list_all_loans_service(
     """
     Librarian listing of loans across all students with pagination and multi-field filters.
     """
-    today = date.today()
+    today = get_utc_today()
     loans, total_count = crud_loans.get_loans(
         db=db,
         page=page,
@@ -273,3 +299,80 @@ def list_all_loans_service(
         page_size=page_size,
         total_pages=total_pages,
     )
+
+
+def renew_loan_service(
+    db: Session,
+    loan_id: int,
+    current_user: User,
+) -> LoanResponse:
+    """
+    Renews an active loan:
+    - Verifies loan exists.
+    - Verifies ownership (owning patron or staff librarian).
+    - Verifies loan is active (not returned).
+    - Verifies loan renewal limit (maximum 1 renewal).
+    - Verifies loan is not already overdue.
+    - Verifies patron has no other active overdue loans.
+    - Recalculates new due date from existing due date (+14 days student, +30 days teacher).
+    - Atomically increments renewal_count and updates due_date.
+    - Note: Book holds check is deferred to CIRC-02 (waitlist schema).
+    """
+    with atomic_write(db):
+        loan = crud_loans.get_loan(db, loan_id)
+        if not loan:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Loan not found.",
+            )
+
+        # Ownership check
+        is_owner = loan.student_id == current_user.id
+        is_librarian = current_user.role == "librarian"
+        if not is_owner and not is_librarian:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only renew loans issued to your account.",
+            )
+
+        if loan.returned_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot renew a returned loan.",
+            )
+
+        current_renewals = getattr(loan, "renewal_count", 0) or 0
+        if current_renewals >= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Loan has reached the maximum renewal limit of 1.",
+            )
+
+        today = get_utc_today()
+        if loan.due_date < today:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot renew an overdue book. Please return copy to circulation desk.",
+            )
+
+        # Check if patron has any other overdue active loans
+        if crud_loans.student_has_overdue_loans(db, loan.student_id, as_of_date=today):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Account has overdue items. All renewals are suspended until overdue items are returned.",
+            )
+
+        # Determine extension duration based on borrower role
+        borrower = loan.student
+        borrower_role = borrower.role if borrower else "student"
+        policy = get_borrowing_policy(borrower_role)
+        duration_days = int(policy["duration_days"]) if policy else 14
+
+        # Recalculate new due date from existing due date
+        loan.due_date = loan.due_date + timedelta(days=duration_days)
+        loan.renewal_count = current_renewals + 1
+        db.add(loan)
+        db.flush()
+        db.refresh(loan)
+
+        return serialize_loan(loan)

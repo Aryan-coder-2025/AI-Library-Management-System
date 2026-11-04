@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import clear_auth_cookies, set_auth_cookies, verify_password
-from app.database import get_db
+from app.auth import clear_auth_cookies, hash_password, set_auth_cookies, verify_password
+from app.database import get_db, get_write_db
 from app.dependencies import get_current_active_user
 from app.models import User
-from app.schemas import LoginRequest, MessageResponse, UserResponse
+from app.schemas import ChangePasswordRequest, LoginRequest, MessageResponse, PatronProfileUpdate, UserResponse
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -64,3 +64,54 @@ def get_current_user_profile(
     Requires an active authenticated session.
     """
     return current_user
+
+
+@router.patch("/me", response_model=UserResponse, summary="Update patron profile (full_name)")
+def update_profile(
+    profile_in: PatronProfileUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_write_db),
+):
+    """
+    Updates the authenticated user's mutable profile details (full_name).
+    Email, role, account status, and ID are strictly immutable through self-service.
+    """
+    current_user.full_name = profile_in.full_name
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.post("/change-password", response_model=MessageResponse, summary="Change patron password")
+def change_password(
+    pwd_in: ChangePasswordRequest,
+    response: Response,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_write_db),
+):
+    """
+    Changes the authenticated user's password after verifying the current password.
+    Rejects password reuse. Hashes the new password with bcrypt rounds=12.
+    Clears authentication cookies upon success to require re-authentication.
+    """
+    if not verify_password(pwd_in.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password.",
+        )
+
+    if pwd_in.new_password == pwd_in.current_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password cannot match the existing password.",
+        )
+
+    current_user.hashed_password = hash_password(pwd_in.new_password)
+    db.add(current_user)
+    db.commit()
+
+    # Clear authentication cookies so the user is required to re-authenticate with the new credentials
+    clear_auth_cookies(response)
+
+    return MessageResponse(message="Password changed successfully. Please log in again with your new password.")

@@ -1,3 +1,4 @@
+from app.utils.date import get_utc_today
 """
 Loan circulation CRUD operations.
 Handles database queries and persistence for book loans and circulation tracking.
@@ -118,7 +119,7 @@ def get_loans(
     Returns a paginated list of loans with eagerly loaded relations and total count.
     Supports filtering by student_id, copy_id, book_id, and status ('active', 'returned', 'overdue').
     """
-    today = as_of_date or date.today()
+    today = as_of_date or get_utc_today()
     query = (
         select(Loan)
         .options(

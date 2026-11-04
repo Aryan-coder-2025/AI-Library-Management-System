@@ -586,12 +586,14 @@ def test_student_forbidden_from_librarian_endpoints(client, auth_student, seed_c
 
 
 def test_unauthenticated_requests_rejected(client, seed_catalogue):
-    """Unauthenticated requests receive 401 Unauthorized."""
+    """Unauthenticated requests receive 401 Unauthorized on protected operations; OPAC browsing is public."""
     client.cookies.clear()
     book_id = seed_catalogue["b1_id"]
 
-    assert client.get("/api/books").status_code == 401
-    assert client.get(f"/api/books/{book_id}").status_code == 401
+    # Public OPAC endpoints (PORT-05) allow unauthenticated browsing
+    assert client.get("/api/books").status_code == 200
+    assert client.get(f"/api/books/{book_id}").status_code == 200
+    # Copy accession lists and copy details require authentication
     assert client.get(f"/api/books/{book_id}/copies").status_code == 401
     assert client.get(f"/api/copies/{seed_catalogue['c1_id']}").status_code == 401
 

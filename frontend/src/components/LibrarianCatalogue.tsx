@@ -1,15 +1,27 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { Book, BookDetail, BookPaginationResponse } from '../types/library';
+import type {
+  Book,
+  BookDetail,
+  BookPaginationResponse,
+  HybridSearchResponse,
+  SemanticSearchResponse,
+} from '../types/library';
+
+interface DisplayBook extends Book {
+  match_channels?: string[];
+  rrf_score?: number;
+}
 
 export const LibrarianCatalogue: React.FC = () => {
-  const [books, setBooks] = useState<Book[]>([]);
+  const [books, setBooks] = useState<DisplayBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchMode, setSearchMode] = useState<'hybrid' | 'keyword' | 'semantic'>('hybrid');
   const [includeArchived, setIncludeArchived] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -44,23 +56,70 @@ export const LibrarianCatalogue: React.FC = () => {
     const params = new URLSearchParams();
     params.set('page', page.toString());
     params.set('page_size', '10');
-    params.set('include_archived', includeArchived.toString());
-    if (searchQuery.trim()) {
-      params.set('q', searchQuery.trim());
-    }
 
     try {
-      const data = await apiFetch<BookPaginationResponse>(`/api/books?${params.toString()}`);
-      setBooks(data.items);
-      setTotalPages(data.total_pages);
-      setTotalCount(data.total);
+      if (searchQuery.trim()) {
+        params.set('q', searchQuery.trim());
+        if (searchMode === 'hybrid') {
+          const data = await apiFetch<HybridSearchResponse>(`/api/search/hybrid?${params.toString()}`);
+          const mapped: DisplayBook[] = data.items.map((item) => ({
+            id: item.id,
+            title: item.title,
+            author: item.author,
+            isbn: item.isbn,
+            category: item.category,
+            description: item.description,
+            is_archived: false,
+            total_copies: item.total_copies,
+            available_copies: item.available_copies,
+            created_at: '',
+            updated_at: '',
+            rrf_score: item.rrf_score,
+            match_channels: item.match_channels,
+          }));
+          setBooks(mapped);
+          setTotalPages(data.total_pages);
+          setTotalCount(data.total);
+        } else if (searchMode === 'semantic') {
+          const data = await apiFetch<SemanticSearchResponse>(`/api/search/semantic?${params.toString()}`);
+          const mapped: DisplayBook[] = data.items.map((item) => ({
+            id: item.id,
+            title: item.title,
+            author: item.author,
+            isbn: item.isbn,
+            category: item.category,
+            description: item.description,
+            is_archived: false,
+            total_copies: item.total_copies,
+            available_copies: item.available_copies,
+            created_at: '',
+            updated_at: '',
+            match_channels: ['semantic'],
+          }));
+          setBooks(mapped);
+          setTotalPages(data.total_pages);
+          setTotalCount(data.total);
+        } else {
+          params.set('include_archived', includeArchived.toString());
+          const data = await apiFetch<BookPaginationResponse>(`/api/books?${params.toString()}`);
+          setBooks(data.items);
+          setTotalPages(data.total_pages);
+          setTotalCount(data.total);
+        }
+      } else {
+        params.set('include_archived', includeArchived.toString());
+        const data = await apiFetch<BookPaginationResponse>(`/api/books?${params.toString()}`);
+        setBooks(data.items);
+        setTotalPages(data.total_pages);
+        setTotalCount(data.total);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to fetch catalogue';
       setError(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setLoading(false);
     }
-  }, [page, includeArchived, searchQuery]);
+  }, [page, includeArchived, searchQuery, searchMode]);
 
   useEffect(() => {
     fetchBooks();
@@ -233,7 +292,7 @@ export const LibrarianCatalogue: React.FC = () => {
             Librarian administrative records, bibliographic metadata, and physical holdings
           </p>
         </div>
-        <button type="button" className="btn btn-primary" onClick={openAddModal}>
+        <button type="button" data-tour="librarian-add-book" className="btn btn-primary" onClick={openAddModal}>
           + Add New Book
         </button>
       </div>
@@ -265,6 +324,21 @@ export const LibrarianCatalogue: React.FC = () => {
             }}
           />
         </div>
+
+        <select
+          className="form-select search-mode-select"
+          value={searchMode}
+          onChange={(e) => {
+            setSearchMode(e.target.value as 'hybrid' | 'keyword' | 'semantic');
+            setPage(1);
+          }}
+          aria-label="Select search retrieval mode"
+          style={{ width: 'auto' }}
+        >
+          <option value="hybrid">⚡ Hybrid Search (AI + Keywords)</option>
+          <option value="keyword">🔍 Keyword Search</option>
+          <option value="semantic">🧠 Semantic AI Search</option>
+        </select>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
           <input
@@ -318,8 +392,28 @@ export const LibrarianCatalogue: React.FC = () => {
                 {books.map((b) => (
                   <tr key={b.id}>
                     <td>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {b.title}
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span>{b.title}</span>
+                        {b.match_channels && b.match_channels.length > 0 && (
+                          <span
+                            className={`badge ${
+                              b.match_channels.includes('exact_identifier')
+                                ? 'badge-primary'
+                                : b.match_channels.length > 1
+                                ? 'badge-success'
+                                : 'badge-neutral'
+                            }`}
+                            style={{ fontSize: '0.65rem' }}
+                          >
+                            {b.match_channels.includes('exact_identifier')
+                              ? 'Exact ISBN'
+                              : b.match_channels.length > 1
+                              ? 'Hybrid'
+                              : b.match_channels[0] === 'semantic'
+                              ? 'Semantic'
+                              : 'Keyword'}
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                         {b.author}

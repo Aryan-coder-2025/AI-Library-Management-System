@@ -147,7 +147,7 @@ export const LibrarianCirculation: React.FC = () => {
       )}
 
       {/* Quick Issue Panel */}
-      <div className="card" style={{ padding: '1.25rem', marginBottom: '1.75rem' }}>
+      <div className="card" data-tour="circulation-issue-panel" style={{ padding: '1.25rem', marginBottom: '1.75rem' }}>
         <h3 style={{ fontSize: '1.05rem', marginBottom: '0.35rem' }}>Issue Copy to Student</h3>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
           Assign an available physical copy to an active registered student account.

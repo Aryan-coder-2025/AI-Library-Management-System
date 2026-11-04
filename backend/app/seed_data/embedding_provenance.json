@@ -1,0 +1,15 @@
+{
+  "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+  "model_snapshot_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+  "embedding_dimension": 384,
+  "vector_bytes_per_book": 1536,
+  "normalization": "L2 unit norm (||v||_2 = 1.0)",
+  "total_books_embedded": 1500,
+  "min_vector_norm": 0.9999998807907104,
+  "max_vector_norm": 1.0000001192092896,
+  "avg_vector_norm": 1.0000000043710073,
+  "preprocessing_contract": "Title: {title} | Author: {author} | Category: {category} | Description: {description}",
+  "serialization_contract": "float32 raw buffer bytes (1536 bytes, little-endian)",
+  "generation_timestamp": "2026-11-01T09:53:25.415662",
+  "source_database_pre_hash": "df59eba1c765457e5129b5be08917bc4049d7ff250ea4aa080010ad9655c3bd3"
+}

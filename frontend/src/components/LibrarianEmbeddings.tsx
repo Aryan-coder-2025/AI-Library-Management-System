@@ -79,7 +79,7 @@ export const LibrarianEmbeddings: React.FC = () => {
       {/* Model & Runtime Status */}
       {status && (
         <>
-          <div className="stats-grid">
+          <div className="stats-grid" data-tour="embeddings-stats">
             <div className="stat-card">
               <div className="stat-value">{status.total_books}</div>
               <div className="stat-label">Total Catalogue Books</div>

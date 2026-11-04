@@ -44,6 +44,10 @@ ENV/
 *.sqlite
 *.sqlite3
 library.db
+*.pre_stage7_backup
+*.backup
+*.lock
+.library_demo.lock
 
 # Testing and coverage
 .pytest_cache/

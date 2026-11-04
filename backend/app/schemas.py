@@ -1,7 +1,7 @@
 from datetime import datetime, date
 import re
-from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Any, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 VALID_OPERATIONAL_STATUSES = {"available", "maintenance", "lost", "retired"}
 
@@ -50,6 +50,7 @@ class HealthResponse(BaseModel):
     project_name: str
     environment: str
     database: str
+    demo_mode: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -232,6 +233,7 @@ class LoanResponse(BaseModel):
     returned_at: Optional[datetime] = None
     status: str = Field(..., description="'active', 'returned', or 'overdue'")
     is_overdue: bool = False
+    renewal_count: int = 0
 
 
 class LoanPaginationResponse(BaseModel):
@@ -274,6 +276,39 @@ class SemanticSearchResponse(BaseModel):
         "Similarity scores represent vector cosine similarity (-1.0 to 1.0) based on title, author, "
         "category, and description embeddings. They do not indicate probability or retrieval accuracy."
     )
+
+
+class HybridBookResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    author: str
+    isbn: Optional[str] = None
+    category: str
+    description: Optional[str] = None
+    total_copies: int = 0
+    available_copies: int = 0
+    rrf_score: float = Field(..., description="Reciprocal Rank Fusion score combining lexical and semantic rankings.")
+    lexical_rank: Optional[int] = Field(None, description="1-based position in lexical candidate ranking if matched.")
+    semantic_rank: Optional[int] = Field(None, description="1-based position in semantic vector candidate ranking if matched.")
+    similarity_score: Optional[float] = Field(None, description="Cosine similarity score (-1.0 to 1.0) if vector matched.")
+    match_channels: List[str] = Field(default_factory=list, description="Channels that matched: 'lexical', 'semantic', 'exact_identifier'.")
+
+
+class HybridSearchResponse(BaseModel):
+    items: List[HybridBookResult]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    total_lexical_matches: int
+    total_semantic_matches: int
+    total_fused_candidates: int
+    query: str
+    applied_category: Optional[str] = None
+    model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    fusion_method: str = "Reciprocal Rank Fusion (k=60)"
 
 
 class BookRecommendationResult(BaseModel):
@@ -322,3 +357,401 @@ class EmbeddingRefreshResponse(BaseModel):
     missing: int
     message: str
     errors: List[str] = []
+
+
+# ── AI Copilot Schemas ────────────────────────────────────────────────────────
+class ChatMessage(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant|system)$")
+    content: str = Field(..., max_length=2000)
+
+
+class CopilotSource(BaseModel):
+    type: str = Field(..., description="'book', 'policy', or 'loan'")
+    id: Optional[int] = None
+    title: str
+    snippet: Optional[str] = None
+    author: Optional[str] = None
+    category: Optional[str] = None
+    available_copies: Optional[int] = None
+    total_copies: Optional[int] = None
+
+
+class CopilotChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=500)
+    conversation_history: List[ChatMessage] = Field(default_factory=list, max_length=20)
+
+
+class CopilotChatResponse(BaseModel):
+    reply: str
+    provider: str  # 'gemini', 'openai_compatible', 'fallback'
+    is_fallback: bool
+    sources: List[CopilotSource] = []
+    suggested_followups: List[str] = []
+
+
+# ── Stage 9: Patron Profile & Notification Schemas ───────────────────────────
+
+class PatronProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(..., min_length=2, max_length=100, description="Patron full name")
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        cleaned = v.strip()
+        if len(cleaned) < 2:
+            raise ValueError("Full name must be at least 2 characters long.")
+        return cleaned
+
+
+class ChangePasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(..., min_length=1, description="Current account password")
+    new_password: str = Field(..., min_length=8, max_length=100, description="New secure password")
+
+    @field_validator("new_password")
+    @classmethod
+    def check_password_policy(cls, v: str) -> str:
+        from app.auth import validate_password_policy
+        return validate_password_policy(v)
+
+
+class NotificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    loan_id: Optional[int] = None
+    notification_type: str
+    title: str
+    message: str
+    target_due_date: Optional[date] = None
+    is_read: bool
+    created_at: datetime
+    read_at: Optional[datetime] = None
+
+
+class NotificationPaginationResponse(BaseModel):
+    items: List[NotificationResponse]
+    total: int
+    unread_count: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class NotificationUnreadCountResponse(BaseModel):
+    unread_count: int
+
+
+class SweepNotificationResponse(BaseModel):
+    new_notifications: int
+
+
+# ── Study Space Schemas ───────────────────────────────────────────────────────
+
+class StudyZoneResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    zone_code: str
+    name: str
+    floor: int
+    total_capacity: int
+    noise_policy: str
+    is_active: bool
+    created_at: datetime
+
+
+class StudySeatResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    zone_id: int
+    seat_code: str
+    has_power_outlet: bool
+    has_monitor: bool
+    is_accessible: bool
+    is_active: bool
+    created_at: datetime
+
+
+class StudyRoomResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    room_code: str
+    name: str
+    capacity: int
+    display_type: Optional[str] = None
+    has_whiteboard: bool
+    is_active: bool
+    created_at: datetime
+
+
+class ReservationBase(BaseModel):
+    resource_type: str = Field(..., pattern="^(seat|room)$")
+    seat_id: Optional[int] = None
+    room_id: Optional[int] = None
+    start_time: datetime
+    end_time: datetime
+
+    @model_validator(mode="after")
+    def validate_resource_target_and_times(self) -> "ReservationBase":
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be strictly after start_time.")
+        if self.resource_type == "seat":
+            if self.seat_id is None or self.room_id is not None:
+                raise ValueError("Seat reservations must specify seat_id and omit room_id.")
+        elif self.resource_type == "room":
+            if self.room_id is None or self.seat_id is not None:
+                raise ValueError("Room reservations must specify room_id and omit seat_id.")
+        return self
+
+
+class ReservationCreate(ReservationBase):
+    expected_attendees: Optional[int] = 1
+
+    @field_validator("expected_attendees", mode="before")
+    @classmethod
+    def validate_expected_attendees(cls, v: Any) -> Any:
+        if v is None:
+            return 1
+        if isinstance(v, bool):
+            raise ValueError("Attendee count must be an integer, not a boolean.")
+        if not isinstance(v, int):
+            raise ValueError("Attendee count must be an integer.")
+        if v < 1:
+            raise ValueError("Attendee count must be at least 1.")
+        return v
+
+    @model_validator(mode="after")
+    def validate_seat_expected_attendees(self) -> "ReservationCreate":
+        if self.resource_type == "seat" and self.expected_attendees != 1:
+            raise ValueError("Seat reservations must have exactly 1 expected attendee.")
+        return self
+
+
+class ReservationCheckInRequest(BaseModel):
+    actual_attendees: Optional[int] = None
+
+    @field_validator("actual_attendees", mode="before")
+    @classmethod
+    def validate_actual_attendees(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        if isinstance(v, bool):
+            raise ValueError("Actual attendee count must be an integer, not a boolean.")
+        if not isinstance(v, int):
+            raise ValueError("Actual attendee count must be an integer.")
+        if v < 1:
+            raise ValueError("Actual attendee count must be at least 1.")
+        return v
+
+
+class ReservationCheckInWithTokenRequest(BaseModel):
+    token: str
+    actual_attendees: Optional[int] = None
+
+    @field_validator("actual_attendees", mode="before")
+    @classmethod
+    def validate_actual_attendees(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        if isinstance(v, bool):
+            raise ValueError("Actual attendee count must be an integer, not a boolean.")
+        if not isinstance(v, int):
+            raise ValueError("Actual attendee count must be an integer.")
+        if v < 1:
+            raise ValueError("Actual attendee count must be at least 1.")
+        return v
+
+
+class ReservationQRResponse(BaseModel):
+    reservation_id: int
+    qr_token: str
+    expires_at: datetime
+    start_time: datetime
+    end_time: datetime
+    resource_type: str
+    resource_name: str
+    checkin_window_start: datetime
+    checkin_window_end: datetime
+
+
+class ReservationSweepReport(BaseModel):
+    processed_count: int
+    no_show_count: int
+    completed_count: int
+    no_show_reservation_ids: List[int]
+    completed_reservation_ids: List[int]
+
+
+class ReservationResponse(ReservationBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    status: str
+    checked_in_at: Optional[datetime] = None
+    expected_attendees: int
+    actual_attendees: Optional[int] = None
+    created_at: datetime
+
+
+class ReservationPaginationResponse(BaseModel):
+    items: List[ReservationResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class SpaceAvailabilityResponse(BaseModel):
+    start_time: datetime
+    end_time: datetime
+    seats: List[StudySeatResponse] = []
+    rooms: List[StudyRoomResponse] = []
+    total_available_seats: int = 0
+    total_available_rooms: int = 0
+
+
+# ── Stage 10.4: Occupancy Tracking, Telemetry & Analytics Schemas ─────────────
+
+class ZoneOccupancySummary(BaseModel):
+    zone_id: int
+    zone_code: str
+    name: str
+    floor: int
+    noise_policy: str
+    total_capacity: int
+    occupied_seats: int
+    available_seats: int
+    utilization_percentage: float
+
+
+class RoomOccupancySummary(BaseModel):
+    room_id: int
+    room_code: str
+    name: str
+    capacity: int
+    display_type: Optional[str] = None
+    has_whiteboard: bool
+    is_active: bool
+    is_occupied: bool
+    current_attendees: int
+    active_reservation_id: Optional[int] = None
+
+
+class CurrentOccupancyResponse(BaseModel):
+    total_library_occupancy: int
+    total_library_capacity: int
+    total_library_available: int
+    overall_utilization_percentage: float
+    occupied_seats: int
+    total_seats: int
+    seat_utilization_percentage: float
+    occupied_room_attendees: int
+    total_room_capacity: int
+    room_attendees_utilization_percentage: float
+    active_rooms_count: int
+    total_rooms_count: int
+    zones: List[ZoneOccupancySummary]
+    rooms: List[RoomOccupancySummary]
+    provenance: str = "reservation_estimate"
+    as_of: datetime
+
+
+class ResourceSeatBreakdown(BaseModel):
+    total_seats: int
+    occupied_seats: int
+    available_seats: int
+    utilization_percentage: float
+    power_outlet_seats_count: int
+    monitor_seats_count: int
+    accessible_seats_count: int
+
+
+class ResourceRoomBreakdown(BaseModel):
+    total_rooms: int
+    active_occupied_rooms: int
+    total_room_capacity: int
+    occupied_room_attendees: int
+    available_room_capacity: int
+    utilization_percentage: float
+    rooms: List[RoomOccupancySummary]
+
+
+class ResourceOccupancyResponse(BaseModel):
+    seats: ResourceSeatBreakdown
+    rooms: ResourceRoomBreakdown
+    provenance: str = "reservation_estimate"
+    as_of: datetime
+
+
+class HistoricalOccupancyDataPoint(BaseModel):
+    time_bucket: str
+    zone_id: Optional[int] = None
+    avg_observed_count: float
+    max_observed_count: int
+    min_observed_count: int
+    avg_capacity_utilization: float
+    observation_count: int
+
+
+class HistoricalOccupancyResponse(BaseModel):
+    interval: str  # 'hour' or 'day'
+    zone_id: Optional[int] = None
+    start_date: datetime
+    end_date: datetime
+    total_observations: int
+    overall_avg_occupancy: float
+    overall_peak_occupancy: int
+    overall_avg_utilization: float
+    data_points: List[HistoricalOccupancyDataPoint]
+    provenance: str = "recorded_telemetry"
+
+
+class PeakUsageHourSummary(BaseModel):
+    hour_of_day: int  # 0 to 23
+    avg_observed_count: float
+    peak_observed_count: int
+    avg_utilization_percentage: float
+    observation_count: int
+    is_peak: bool = False
+
+
+class PeakUsageAnalysisResponse(BaseModel):
+    zone_id: Optional[int] = None
+    days_analyzed: int
+    total_observations: int
+    peak_hour: int
+    peak_hour_avg_occupancy: float
+    lowest_hour: int
+    hourly_distribution: List[PeakUsageHourSummary]
+    provenance: str = "recorded_telemetry"
+
+
+class TelemetryObservationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    zone_id: int
+    recorded_at: Optional[datetime] = None
+    observed_count: int = Field(..., ge=0, description="Observed headcount in study zone")
+    source_sensor_id: Optional[str] = Field(None, max_length=50)
+
+
+class TelemetryObservationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    zone_id: int
+    recorded_at: datetime
+    observed_count: int
+    capacity_utilization: float
+    source_sensor_id: Optional[str] = None
+    status: str = "recorded"
+
+

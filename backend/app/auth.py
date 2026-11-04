@@ -13,6 +13,13 @@ COOKIE_NAME = "access_token"
 CSRF_COOKIE_NAME = "csrf_token"
 
 
+def validate_password_policy(password: str) -> str:
+    """Centralized password policy: minimum 8 characters."""
+    if not password or len(password) < 8:
+        raise ValueError("Password must be at least 8 characters long.")
+    return password
+
+
 def hash_password(password: str) -> str:
     """Hashes a password using bcrypt (max 72 bytes)."""
     pwd_bytes = password.encode("utf-8")[:72]
@@ -45,6 +52,7 @@ def create_access_token(
     payload: Dict[str, Any] = {
         "sub": str(user_id),
         "role": role,
+        "type": "access",
         "exp": int(expire.timestamp()),
         "iat": int(now.timestamp()),
     }
@@ -52,12 +60,16 @@ def create_access_token(
 
 
 def decode_access_token(token: str) -> Dict[str, Any]:
-    """Decodes and validates a JWT access token."""
-    return jwt.decode(
+    """Decodes and validates a JWT access token, enforcing the type: 'access' claim."""
+    payload = jwt.decode(
         token,
         settings.JWT_SECRET_KEY,
         algorithms=[settings.JWT_ALGORITHM],
     )
+    token_type = payload.get("type")
+    if not isinstance(token_type, str) or token_type != "access":
+        raise JWTError("Invalid token type; expected 'access'.")
+    return payload
 
 
 def set_auth_cookies(response: Response, user_id: int, role: str) -> str:

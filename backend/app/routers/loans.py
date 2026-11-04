@@ -66,6 +66,33 @@ def return_loan(
     return loans_service.return_loan_service(db=db, loan_id=loan_id)
 
 
+# ── Loan Renewals ─────────────────────────────────────────────────────────────
+
+@router.post(
+    "/{loan_id}/renew",
+    response_model=LoanResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Renew an active loan (patron self-service or librarian)",
+)
+def renew_loan(
+    loan_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_write_db),
+):
+    """
+    Extends an active loan's due date:
+    - Allowed for owning patron (student/teacher) or staff librarian.
+    - Limits to a maximum of 1 renewal per loan.
+    - Rejects if loan is already overdue or patron has other overdue loans.
+    - Due date extended from current due date (+14 days for students, +30 days for teachers).
+    """
+    return loans_service.renew_loan_service(
+        db=db,
+        loan_id=loan_id,
+        current_user=current_user,
+    )
+
+
 # ── Student Loans Query ───────────────────────────────────────────────────────
 
 @router.get(

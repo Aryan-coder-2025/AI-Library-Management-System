@@ -47,6 +47,9 @@ def get_current_user(
 
     try:
         payload = decode_access_token(token)
+        token_type = payload.get("type")
+        if not isinstance(token_type, str) or token_type != "access":
+            raise credentials_exception
         user_id_str: Optional[str] = payload.get("sub")
         if user_id_str is None:
             raise credentials_exception
@@ -93,3 +96,36 @@ def require_role(*allowed_roles: str):
 
 require_librarian = require_role("librarian")
 require_student = require_role("student")
+require_teacher = require_role("teacher")
+require_borrower = require_role("student", "teacher")
+
+
+def get_optional_current_user(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """
+    Extracts the authenticated user if valid session token exists.
+    Expected credential issues (missing token, malformed JWT, or expired signature)
+    resolve to None (anonymous guest access) without throwing an HTTP 401.
+    Unexpected database errors propagate normally.
+    """
+    token = get_token_from_request(request)
+    if not token:
+        return None
+
+    try:
+        payload = decode_access_token(token)
+        user_id_str: Optional[str] = payload.get("sub")
+        if user_id_str is None:
+            return None
+        user_id = int(user_id_str)
+    except (ExpiredSignatureError, JWTError, ValueError):
+        return None
+
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if user is None or not user.is_active:
+        return None
+
+    return user
+

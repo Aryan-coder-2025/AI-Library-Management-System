@@ -7,12 +7,13 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db, get_write_db
-from app.dependencies import get_current_active_user, require_librarian
+from app.dependencies import get_current_active_user, get_optional_current_user, require_librarian
 from app.models import User
 from app.schemas import (
     BookRecommendationResponse,
     EmbeddingRefreshResponse,
     EmbeddingStatusResponse,
+    HybridSearchResponse,
     SemanticSearchResponse,
 )
 from app.services import semantic as semantic_service
@@ -48,6 +49,38 @@ def semantic_search(
     )
 
 
+# ── Hybrid Search ─────────────────────────────────────────────────────────────
+
+@router.get(
+    "/api/search/hybrid",
+    response_model=HybridSearchResponse,
+    summary="Hybrid book search combining lexical matching and vector similarity using RRF",
+)
+def hybrid_search(
+    q: str = Query(..., description="Search query string across title, author, description, and ISBN"),
+    category: Optional[str] = Query(None, description="Optional category filter"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(10, ge=1, le=50, description="Items per page (max 50)"),
+    min_score: float = Query(-1.0, ge=-1.0, le=1.0, description="Minimum cosine similarity threshold"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Ranks non-archived catalogue books using dual-channel reciprocal rank fusion (RRF).
+    Available to students and librarians.
+    """
+    is_librarian = current_user.role == "librarian"
+    return semantic_service.hybrid_search_service(
+        db=db,
+        query=q,
+        page=page,
+        page_size=page_size,
+        category=category,
+        min_score=min_score,
+        include_archived=is_librarian,
+    )
+
+
 # ── Content-Based Recommendations ─────────────────────────────────────────────
 
 @router.get(
@@ -55,10 +88,16 @@ def semantic_search(
     response_model=BookRecommendationResponse,
     summary="Retrieve content-based book recommendations for a selected book",
 )
+@router.get(
+    "/api/recommendations/books/{book_id}",
+    response_model=BookRecommendationResponse,
+    summary="Retrieve content-based book recommendations for a selected book (alias)",
+    include_in_schema=False,
+)
 def get_book_recommendations(
     book_id: int,
     limit: int = Query(5, ge=1, le=20, description="Maximum number of recommendations (1 to 20)"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
     """

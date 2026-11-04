@@ -16,10 +16,13 @@ from app.schemas import (
     BookRecommendationResult,
     EmbeddingRefreshResponse,
     EmbeddingStatusResponse,
+    HybridBookResult,
+    HybridSearchResponse,
     SemanticBookResult,
     SemanticSearchResponse,
 )
 from app.services import embedding as embedding_service
+from app.services.isbn import parse_and_normalize_isbn
 
 
 # Concurrency state flag for background embedding operations
@@ -127,6 +130,215 @@ def semantic_search_service(
         page_size=page_size,
         total_pages=total_pages,
         query=cleaned_query,
+    )
+
+
+def hybrid_search_service(
+    db: Session,
+    query: str,
+    page: int = 1,
+    page_size: int = 10,
+    category: Optional[str] = None,
+    min_score: float = -1.0,
+    include_archived: bool = False,
+    candidate_limit: int = 100,
+) -> HybridSearchResponse:
+    """
+    Executes dual-channel hybrid search combining:
+    1. Parameterized multi-token lexical candidate retrieval.
+    2. Dense semantic vector similarity ranking (sentence-transformers/all-MiniLM-L6-v2).
+    3. Exact identifier (ISBN-10, ISBN-13, exact title) prioritization.
+    4. Reciprocal Rank Fusion (RRF, k=60) with deterministic tie-breaking.
+    """
+    cleaned_query = query.strip()
+    if not cleaned_query:
+        return HybridSearchResponse(
+            items=[],
+            total=0,
+            page=page,
+            page_size=page_size,
+            total_pages=0,
+            total_lexical_matches=0,
+            total_semantic_matches=0,
+            total_fused_candidates=0,
+            query="",
+            applied_category=category,
+        )
+
+    if len(cleaned_query) > 500:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Search query exceeds maximum allowed length of 500 characters.",
+        )
+
+    # 1. Exact Identifier Extraction (ISBN-10 / ISBN-13)
+    clean_isbn13 = parse_and_normalize_isbn(cleaned_query)
+
+    # 2. Channel 1: Lexical Candidate Retrieval
+    lexical_candidates, total_lexical_matches = crud_semantic.get_lexical_candidates(
+        db=db,
+        query=cleaned_query,
+        category=category,
+        include_archived=include_archived,
+        limit=candidate_limit,
+        exact_isbn_clean=clean_isbn13,
+    )
+
+    lexical_rank_map = {
+        book.id: rank_idx + 1
+        for rank_idx, (book, _score) in enumerate(lexical_candidates)
+    }
+
+    # 3. Channel 2: Dense Semantic Vector Candidate Retrieval
+    candidate_books = crud_semantic.get_books_with_embeddings(
+        db=db,
+        include_archived=include_archived,
+        include_stale=False,
+    )
+    if category and category.strip():
+        cat_lower = category.strip().lower()
+        candidate_books = [b for b in candidate_books if b.category.lower() == cat_lower]
+
+    semantic_candidates: List[Tuple[Book, float]] = []
+    semantic_rank_map = {}
+    semantic_score_map = {}
+    total_semantic_matches = 0
+
+    if candidate_books and embedding_service.is_model_available():
+        try:
+            query_vector = embedding_service.encode_text(cleaned_query)
+            scored_semantic = []
+            for book in candidate_books:
+                try:
+                    book_vec = embedding_service.deserialize_vector(book.embedding)
+                    sim = embedding_service.compute_cosine_similarity(query_vector, book_vec)
+                    if sim >= min_score:
+                        scored_semantic.append((book, sim))
+                except Exception:
+                    continue
+
+            scored_semantic.sort(key=lambda x: x[1], reverse=True)
+            total_semantic_matches = len(scored_semantic)
+            semantic_candidates = scored_semantic[:candidate_limit]
+
+            for rank_idx, (book, sim) in enumerate(semantic_candidates):
+                semantic_rank_map[book.id] = rank_idx + 1
+                semantic_score_map[book.id] = sim
+
+            # Record scores for un-truncated matches as well
+            for book, sim in scored_semantic:
+                if book.id not in semantic_score_map:
+                    semantic_score_map[book.id] = sim
+
+        except Exception:
+            # Graceful degradation if model inference fails
+            pass
+
+    # 4. Candidate Pool Union & Deduplication
+    all_books_dict = {}
+    for book, _ in lexical_candidates:
+        all_books_dict[book.id] = book
+    for book, _ in semantic_candidates:
+        all_books_dict[book.id] = book
+
+    # 5. Reciprocal Rank Fusion (RRF) & Tie-Breaking
+    RRF_K = 60.0
+    clean_query_lower = cleaned_query.lower()
+
+    fused_candidates = []
+    for b_id, book in all_books_dict.items():
+        lex_rank = lexical_rank_map.get(b_id)
+        sem_rank = semantic_rank_map.get(b_id)
+        sim_score = semantic_score_map.get(b_id)
+
+        rrf_score = 0.0
+        channels = []
+        if lex_rank is not None:
+            rrf_score += 1.0 / (RRF_K + lex_rank)
+            channels.append("lexical")
+        if sem_rank is not None:
+            rrf_score += 1.0 / (RRF_K + sem_rank)
+            channels.append("semantic")
+
+        # Exact identifier detection
+        book_isbn_clean = book.isbn.replace("-", "").replace(" ", "").upper() if book.isbn else ""
+        is_exact_isbn = bool(clean_isbn13 and book_isbn_clean == clean_isbn13)
+        if is_exact_isbn:
+            channels = ["exact_identifier"]
+            rrf_score = 10.0  # Dominant priority for exact ISBN point match
+
+        is_exact_title = bool(clean_query_lower and book.title.strip().lower() == clean_query_lower)
+
+        fused_candidates.append({
+            "book": book,
+            "rrf_score": rrf_score,
+            "lexical_rank": lex_rank,
+            "semantic_rank": sem_rank,
+            "similarity_score": round(sim_score, 4) if sim_score is not None else None,
+            "match_channels": channels,
+            "is_exact_isbn": is_exact_isbn,
+            "is_exact_title": is_exact_title,
+        })
+
+    # Sort using deterministic 5-tuple tie-breaker:
+    # 1. Exact ISBN point match (1 or 0)
+    # 2. Exact Title match (1 or 0)
+    # 3. RRF Score descending
+    # 4. Semantic similarity score descending
+    # 5. Book ID ascending
+    fused_candidates.sort(
+        key=lambda x: (
+            1 if x["is_exact_isbn"] else 0,
+            1 if x["is_exact_title"] else 0,
+            x["rrf_score"],
+            x["similarity_score"] if x["similarity_score"] is not None else -2.0,
+            -x["book"].id,
+        ),
+        reverse=True,
+    )
+
+    total_fused = len(fused_candidates)
+    total_pages = math.ceil(total_fused / page_size) if total_fused > 0 else 0
+
+    # 6. Pagination & Availability Enrichment
+    offset = (page - 1) * page_size
+    paged_slice = fused_candidates[offset : offset + page_size]
+
+    paged_book_ids = [item["book"].id for item in paged_slice]
+    total_map, avail_map = crud_semantic.get_copy_availability_maps(db, paged_book_ids)
+
+    items: List[HybridBookResult] = []
+    for item in paged_slice:
+        b = item["book"]
+        items.append(
+            HybridBookResult(
+                id=b.id,
+                title=b.title,
+                author=b.author,
+                isbn=b.isbn,
+                category=b.category,
+                description=b.description,
+                total_copies=total_map.get(b.id, 0),
+                available_copies=avail_map.get(b.id, 0),
+                rrf_score=round(item["rrf_score"], 6),
+                lexical_rank=item["lexical_rank"],
+                semantic_rank=item["semantic_rank"],
+                similarity_score=item["similarity_score"],
+                match_channels=item["match_channels"],
+            )
+        )
+
+    return HybridSearchResponse(
+        items=items,
+        total=total_fused,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        total_lexical_matches=total_lexical_matches,
+        total_semantic_matches=total_semantic_matches,
+        total_fused_candidates=total_fused,
+        query=cleaned_query,
+        applied_category=category,
     )
 
 

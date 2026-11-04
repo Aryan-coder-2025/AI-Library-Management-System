@@ -23,6 +23,8 @@ import threading
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
+
+from app.utils.date import get_utc_today
 from sqlalchemy.pool import NullPool
 
 from app.auth import create_access_token, hash_password
@@ -197,7 +199,7 @@ def test_issue_loan_success_with_14_day_due_date(client, auth_librarian, auth_st
     assert data["book_title"] == "Domain-Driven Design"
     assert data["copy_code"] == "DDD-001"
 
-    expected_due = (date.today() + timedelta(days=14)).isoformat()
+    expected_due = (get_utc_today() + timedelta(days=14)).isoformat()
     assert data["due_date"] == expected_due
 
     # Alias /api/loans/issue also functions
@@ -339,7 +341,7 @@ def test_overdue_active_loan_blocks_new_issuance(client, auth_librarian, auth_st
         copy_id=seed_circulation_data["c_avail1_id"],
         issued_by_id=auth_librarian["user_id"],
         issued_at=datetime.utcnow() - timedelta(days=20),
-        due_date=date.today() - timedelta(days=6),  # 6 days overdue
+        due_date=get_utc_today() - timedelta(days=6),  # 6 days overdue
         returned_at=None,
     )
     db.add(overdue_loan)
@@ -364,7 +366,7 @@ def test_returned_past_overdue_does_not_block_new_issuance(client, auth_libraria
         copy_id=seed_circulation_data["c_avail1_id"],
         issued_by_id=auth_librarian["user_id"],
         issued_at=datetime.utcnow() - timedelta(days=20),
-        due_date=date.today() - timedelta(days=6),
+        due_date=get_utc_today() - timedelta(days=6),
         returned_at=datetime.utcnow() - timedelta(days=2),  # Returned!
     )
     db.add(returned_overdue_loan)
@@ -463,7 +465,7 @@ def test_overdue_boundary_logic(client, auth_librarian, auth_student, seed_circu
     - due_date == today - 1 day: overdue.
     - due_date == today + 1 day: active, not overdue.
     """
-    today = date.today()
+    today = get_utc_today()
     stud_id = auth_student["user_id"]
     lib_id = auth_librarian["user_id"]
 
@@ -773,8 +775,8 @@ def test_concurrent_race_for_third_loan_slot(tmp_path: Path):
             s.flush()
 
             # Seed 2 existing active loans for student (they have 1 slot left!)
-            l1 = Loan(student_id=student.id, copy_id=copies[0].id, issued_by_id=lib.id, due_date=date.today() + timedelta(days=14))
-            l2 = Loan(student_id=student.id, copy_id=copies[1].id, issued_by_id=lib.id, due_date=date.today() + timedelta(days=14))
+            l1 = Loan(student_id=student.id, copy_id=copies[0].id, issued_by_id=lib.id, due_date=get_utc_today() + timedelta(days=14))
+            l2 = Loan(student_id=student.id, copy_id=copies[1].id, issued_by_id=lib.id, due_date=get_utc_today() + timedelta(days=14))
             s.add_all([l1, l2])
             s.flush()
 
@@ -832,7 +834,7 @@ def test_loan_status_filter_exact_agreement(client, auth_librarian, auth_student
     3. Returned loan (returned_at is not None)
        -> Appears in status=returned, NOT in status=active, NOT in status=overdue
     """
-    today = date.today()
+    today = get_utc_today()
     stud_id = auth_student["user_id"]
     lib_id = auth_librarian["user_id"]
 
