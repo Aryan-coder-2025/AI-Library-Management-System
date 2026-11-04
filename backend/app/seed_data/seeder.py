@@ -64,6 +64,7 @@ from app.seed_data.validator import validate_dataset, ValidationError
 logger = logging.getLogger(__name__)
 
 EXPECTED_ALEMBIC_HEAD = "e5f6a7b8c9d0"
+EXPECTED_BRANCHES = {"feature/aryan-ai-library-system", "main"}
 EXPECTED_BRANCH = "feature/aryan-ai-library-system"
 
 
@@ -167,9 +168,9 @@ def _verify_preflight_environment(staging_path: Path, expected_backend_dir: Path
             check=True,
         )
         current_branch = res.stdout.strip()
-        if current_branch != EXPECTED_BRANCH:
+        if current_branch not in EXPECTED_BRANCHES:
             raise SecurityViolationError(
-                f"Branch safety violation: current branch is '{current_branch}', expected '{EXPECTED_BRANCH}'."
+                f"Branch safety violation: current branch is '{current_branch}', expected one of {sorted(EXPECTED_BRANCHES)}."
             )
     except Exception as exc:
         raise SecurityViolationError(f"Failed to verify Git branch: {exc}") from exc
