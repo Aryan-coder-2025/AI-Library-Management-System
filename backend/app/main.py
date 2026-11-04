@@ -5,18 +5,30 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import init_db, get_db
+from app.database import init_db, get_db, validate_demo_database
 from app.middleware.security import SecurityMiddleware
 from app.schemas import HealthResponse
 from app import models  # noqa: F401
+from app.routers.auth import router as auth_router
+from app.routers.catalogue import router as catalogue_router
+from app.routers.loans import router as loans_router
+from app.routers.notifications import router as notifications_router
+from app.routers.semantic import router as semantic_router
+from app.routers.copilot import router as copilot_router
+from app.routers.spaces import router as spaces_router
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize DB (WAL configuration + table creation) before serving requests
-    init_db()
+    # In demo mode, validate published demo database without modifying it or running migrations.
+    # In standard mode, initialize DB (WAL configuration + migrations) before serving requests.
+    curr_settings = get_settings()
+    if curr_settings.DEMO_MODE:
+        validate_demo_database(curr_settings.DATABASE_URL)
+    else:
+        init_db(curr_settings.DATABASE_URL)
     yield
 
 
@@ -39,6 +51,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register application routers
+app.include_router(auth_router)
+app.include_router(catalogue_router)
+app.include_router(loans_router)
+app.include_router(notifications_router)
+app.include_router(semantic_router)
+app.include_router(copilot_router)
+app.include_router(spaces_router)
+
 
 @app.get("/api/health", response_model=HealthResponse, tags=["System"])
 def health_check(db: Session = Depends(get_db)):
@@ -46,9 +67,11 @@ def health_check(db: Session = Depends(get_db)):
     Health check endpoint verifying application status and database connectivity.
     """
     db.execute(text("SELECT 1;"))
+    curr_settings = get_settings()
     return HealthResponse(
         status="healthy",
-        project_name=settings.PROJECT_NAME,
-        environment=settings.ENVIRONMENT,
+        project_name=curr_settings.PROJECT_NAME,
+        environment="demo" if curr_settings.DEMO_MODE else curr_settings.ENVIRONMENT,
         database="connected",
+        demo_mode=curr_settings.DEMO_MODE,
     )

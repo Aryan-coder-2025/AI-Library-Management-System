@@ -9,9 +9,10 @@ from sqlalchemy.pool import StaticPool
 # Ensure test environment variables are set
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-32-chars-long-for-testing"
+os.environ["SPACES_QR_SECRET_KEY"] = "test-spaces-qr-dedicated-key-32-chars-long"
 os.environ["ALLOWED_ORIGINS"] = '["http://localhost:5173", "http://testserver"]'
 
-from app.database import Base, get_db, setup_engine_events
+from app.database import Base, get_db, get_write_db, setup_engine_events
 from app.main import app
 
 # In-memory test engine for fast, isolated test runs
@@ -58,7 +59,15 @@ def client(db):
         finally:
             pass
 
+    def override_get_write_db():
+        db.info["_in_atomic_write"] = True
+        try:
+            yield db
+        finally:
+            db.info.pop("_in_atomic_write", None)
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_write_db] = override_get_write_db
     with TestClient(app, base_url="http://testserver") as test_client:
         yield test_client
     app.dependency_overrides.clear()

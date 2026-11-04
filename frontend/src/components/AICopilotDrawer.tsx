@@ -1,0 +1,401 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { apiFetch } from '../services/apiClient';
+import type { CopilotChatResponse, CopilotMessage, CopilotSource, UserProfile } from '../types/library';
+
+interface AICopilotDrawerProps {
+  currentUser: UserProfile;
+  isOpen: boolean;
+  onClose: () => void;
+  onOpen: () => void;
+  onSelectBook: (bookId: number) => void;
+}
+
+export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
+  currentUser,
+  isOpen,
+  onClose,
+  onOpen,
+  onSelectBook,
+}) => {
+  const [messages, setMessages] = useState<CopilotMessage[]>(() => [
+    {
+      id: 'welcome-1',
+      role: 'assistant',
+      content:
+        `Hello ${currentUser.full_name}! I am your **AI Library Copilot**.\n\n` +
+        `I am grounded directly in our verified database to help you check active loans, find monographs, verify physical copy availability, and explain borrowing rules.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      is_fallback: true,
+      suggested_followups:
+        currentUser.role === 'student'
+          ? [
+              'What books do I currently have checked out?',
+              'What is the borrowing duration and limit?',
+              'Find books on Distributed Systems',
+            ]
+          : [
+              'How many active loans are in circulation?',
+              'What are the circulation desk return procedures?',
+              'Search catalogue for monographs',
+            ],
+    },
+  ]);
+
+  const [inputMessage, setInputMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastProvider, setLastProvider] = useState<string>('auto');
+  const [lastIsFallback, setLastIsFallback] = useState<boolean>(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      scrollToBottom();
+      setTimeout(() => inputRef.current?.focus(), 150);
+    }
+  }, [isOpen, messages]);
+
+  // Handle ESC key to close drawer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  const handleSend = async (textToSend?: string) => {
+    const text = (textToSend || inputMessage).trim();
+    if (!text || isLoading) return;
+
+    const userMsg: CopilotMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: text,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setInputMessage('');
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const historyPayload = messages
+        .filter((m) => m.id !== 'welcome-1')
+        .slice(-6)
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      const resp = await apiFetch<CopilotChatResponse>('/api/copilot/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: text,
+          conversation_history: historyPayload,
+        }),
+      });
+
+      setLastProvider(resp.provider);
+      setLastIsFallback(resp.is_fallback);
+
+      const assistantMsg: CopilotMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: resp.reply,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        provider: resp.provider,
+        is_fallback: resp.is_fallback,
+        sources: resp.sources,
+        suggested_followups: resp.suggested_followups,
+      };
+
+      setMessages((prev) => [...prev, assistantMsg]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to reach AI Copilot.';
+      setErrorMessage(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClearHistory = () => {
+    setMessages([
+      {
+        id: `welcome-${Date.now()}`,
+        role: 'assistant',
+        content: 'Conversation cleared. How can I assist you with library holdings or procedures?',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        suggested_followups:
+          currentUser.role === 'student'
+            ? [
+                'What books do I currently have checked out?',
+                'What is the borrowing limit?',
+                'Find books on Artificial Intelligence',
+              ]
+            : [
+                'How many active loans are in circulation?',
+                'Circulation Desk return procedure',
+              ],
+      },
+    ]);
+  };
+
+  const renderBookCards = (sources: CopilotSource[]) => {
+    const bookSources = sources.filter((s) => s.type === 'book' && s.id);
+    if (bookSources.length === 0) return null;
+
+    return (
+      <div className="copilot-book-cards-grid">
+        {bookSources.map((b) => {
+          const isAvail = (b.available_copies ?? 0) > 0;
+          return (
+            <div key={b.id} className="copilot-book-card">
+              <div className="copilot-book-card-main">
+                <div className="copilot-book-card-title">{b.title}</div>
+                <div className="copilot-book-card-author">
+                  {b.author ? `by ${b.author}` : ''} {b.category ? `• ${b.category}` : ''}
+                </div>
+              </div>
+              <div className="copilot-book-card-footer">
+                <span className={`copilot-avail-badge ${isAvail ? 'badge-avail' : 'badge-borrowed'}`}>
+                  {b.available_copies ?? 0} / {b.total_copies ?? 0} available
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm copilot-view-book-btn"
+                  onClick={() => onSelectBook(b.id!)}
+                  title="View full monograph metadata and shelf locations"
+                >
+                  View Details
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderPolicyAndLoanSources = (sources: CopilotSource[]) => {
+    const nonBookSources = sources.filter((s) => s.type !== 'book');
+    if (nonBookSources.length === 0) return null;
+
+    return (
+      <div className="copilot-sources-block">
+        <div className="copilot-sources-label">Verified Policy & Loan Records:</div>
+        <div className="copilot-sources-chips">
+          {nonBookSources.map((s, idx) => (
+            <span
+              key={idx}
+              className={`copilot-source-chip copilot-source-${s.type}`}
+              title={s.snippet || ''}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '3px' }}>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              {s.title}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {/* Floating launcher badge when closed */}
+      {!isOpen && (
+        <button
+          type="button"
+          data-tour="copilot-launcher"
+          className="copilot-floating-launcher"
+          onClick={onOpen}
+          aria-label="Open AI Library Copilot"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+          </svg>
+          <span className="copilot-launcher-text">AI Copilot</span>
+        </button>
+      )}
+
+      {/* Slide-out Copilot Drawer */}
+      {isOpen && (
+        <aside
+          className="copilot-drawer"
+          aria-label="AI Library Copilot"
+          role="region"
+        >
+          {/* Header */}
+          <div className="copilot-header">
+            <div className="copilot-header-info">
+              <div className="copilot-title-row">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#93c5fd' }}>
+                  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                </svg>
+                <h3>AI Library Copilot</h3>
+              </div>
+              <div className="copilot-status-row">
+                {lastIsFallback ? (
+                  <span className="copilot-mode-pill copilot-mode-offline" title="Grounded locally using live SQLite database records and library policies">
+                    Local Grounded Mode
+                  </span>
+                ) : (
+                  <span className="copilot-mode-pill copilot-mode-online" title={`Powered by ${lastProvider.toUpperCase()}`}>
+                    AI Active ({lastProvider})
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="copilot-header-actions">
+              <button
+                type="button"
+                className="copilot-btn-icon"
+                onClick={handleClearHistory}
+                title="Clear conversation history"
+                aria-label="Clear chat"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="copilot-btn-icon"
+                onClick={onClose}
+                title="Close Copilot (Esc)"
+                aria-label="Close Copilot"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Messages Body */}
+          <div className="copilot-messages-container">
+            {messages.map((m) => (
+              <div key={m.id} className={`copilot-bubble-row ${m.role === 'user' ? 'bubble-user' : 'bubble-assistant'}`}>
+                {m.role === 'assistant' && (
+                  <div className="copilot-avatar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2a8 8 0 0 0-8 8c0 5 8 12 8 12s8-7 8-12a8 8 0 0 0-8-8z" />
+                    </svg>
+                  </div>
+                )}
+                <div className="copilot-bubble-content">
+                  <div className="copilot-bubble-text" style={{ whiteSpace: 'pre-line' }}>
+                    {m.content}
+                  </div>
+
+                  {/* Render Structured Book Result Cards */}
+                  {m.sources && renderBookCards(m.sources)}
+
+                  {/* Render Policy and Loan Sources */}
+                  {m.sources && renderPolicyAndLoanSources(m.sources)}
+
+                  {/* Suggested Follow-up chips */}
+                  {m.suggested_followups && m.suggested_followups.length > 0 && !isLoading && (
+                    <div className="copilot-followups-block">
+                      {m.suggested_followups.map((q, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="copilot-followup-pill"
+                          onClick={() => handleSend(q)}
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="copilot-bubble-timestamp">{m.timestamp}</div>
+                </div>
+              </div>
+            ))}
+
+            {isLoading && (
+              <div className="copilot-bubble-row bubble-assistant">
+                <div className="copilot-avatar">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                  </svg>
+                </div>
+                <div className="copilot-bubble-content">
+                  <div className="copilot-thinking-indicator">
+                    <div className="copilot-dot" />
+                    <div className="copilot-dot" />
+                    <div className="copilot-dot" />
+                    <span className="copilot-thinking-label">
+                      Retrieving library records...
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {errorMessage && (
+              <div className="alert alert-error" style={{ margin: '0.5rem 0', fontSize: '0.85rem' }}>
+                {errorMessage}
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Footer */}
+          <form
+            className="copilot-footer"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+          >
+            <div className="copilot-input-wrapper">
+              <input
+                ref={inputRef}
+                type="text"
+                className="copilot-input"
+                placeholder="Ask about books, loans, availability, or policies..."
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                maxLength={500}
+                disabled={isLoading}
+              />
+              <span className="copilot-char-counter">{inputMessage.length}/500</span>
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary copilot-send-btn"
+              disabled={isLoading || !inputMessage.trim()}
+              aria-label="Send query"
+            >
+              {isLoading ? (
+                '...'
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              )}
+            </button>
+          </form>
+        </aside>
+      )}
+    </>
+  );
+};

@@ -41,10 +41,15 @@ export async function apiFetch<T>(
   if (!response.ok) {
     let errorDetail = 'API request failed';
     try {
-      const errorJson = await response.json();
-      errorDetail = errorJson.detail || errorJson.message || errorDetail;
+      const text = await response.text();
+      try {
+        const errorJson = JSON.parse(text);
+        errorDetail = errorJson.detail || errorJson.message || text;
+      } catch {
+        errorDetail = text || errorDetail;
+      }
     } catch {
-      errorDetail = await response.text();
+      // Failed reading response text
     }
     throw new Error(`${response.status}: ${errorDetail}`);
   }

@@ -1,91 +1,242 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiFetch } from './services/apiClient';
+import type { UserProfile } from './types/library';
+import { Navbar } from './components/Navbar';
+import { SignIn } from './components/SignIn';
+import { StudentCatalogue } from './components/StudentCatalogue';
+import { SemanticSearch } from './components/SemanticSearch';
+import { StudentLoans } from './components/StudentLoans';
+import { StudentSpaces } from './components/StudentSpaces';
+import { LibrarianCatalogue } from './components/LibrarianCatalogue';
+import { LibrarianCirculation } from './components/LibrarianCirculation';
+import { LibrarianEmbeddings } from './components/LibrarianEmbeddings';
+import { LibrarianSpaces } from './components/LibrarianSpaces';
+import { BookDetailModal } from './components/BookDetailModal';
+import { AICopilotDrawer } from './components/AICopilotDrawer';
+import { GuidedTourModal } from './components/GuidedTourModal';
+import { PatronProfileModal } from './components/PatronProfileModal';
 
-interface HealthData {
-  status: string;
-  project_name: string;
-  environment: string;
-  database: string;
-}
+export const App: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-export function App() {
-  const [health, setHealth] = useState<HealthData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  // Active navigation tab
+  const [activeTab, setActiveTab] = useState<string>('catalogue');
 
+  // Book Detail Modal state
+  const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
+
+  // AI Copilot & Guided Tour state
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [isTourOpen, setIsTourOpen] = useState(false);
+
+  // Patron Profile state
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  // Check existing session on load
   useEffect(() => {
-    apiFetch<HealthData>('/api/health')
-      .then((data) => {
-        setHealth(data);
-        setLoading(false);
+    apiFetch<UserProfile>('/api/auth/me')
+      .then((user) => {
+        setCurrentUser(user);
+        setAuthLoading(false);
       })
-      .catch((err) => {
-        setError(err.message || 'Failed to connect to backend service');
-        setLoading(false);
+      .catch(() => {
+        setCurrentUser(null);
+        setAuthLoading(false);
       });
   }, []);
 
-  return (
-    <div className="app-container">
-      <header className="header-banner">
-        <h1>AI Library Management System</h1>
-        <p>Stage 1 Foundation & System Readiness</p>
-      </header>
+  // Show guided onboarding tour on first login
+  useEffect(() => {
+    if (currentUser) {
+      try {
+        const hasSeenTour = localStorage.getItem('ai_library_tour_completed');
+        if (!hasSeenTour) {
+          setIsTourOpen(true);
+        }
+      } catch {
+        // Ignore localStorage restrictions
+      }
+    }
+  }, [currentUser]);
 
-      <div className="card-grid">
-        <div className="status-card">
-          <h3>Backend & Database Health</h3>
-          {loading && <span className="status-badge loading">Connecting...</span>}
-          {error && <span className="status-badge loading" style={{ color: '#ef4444' }}>Offline ({error})</span>}
-          {health && (
-            <>
-              <span className="status-badge healthy">{health.status}</span>
-              <table className="meta-table">
-                <tbody>
-                  <tr>
-                    <td>Database Status:</td>
-                    <td>{health.database}</td>
-                  </tr>
-                  <tr>
-                    <td>Environment:</td>
-                    <td>{health.environment}</td>
-                  </tr>
-                  <tr>
-                    <td>Project:</td>
-                    <td>{health.project_name}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
+  const handleLogin = async (email: string, pass: string) => {
+    setIsLoggingIn(true);
+    setLoginError(null);
 
-        <div className="status-card">
-          <h3>Architectural Guards Active</h3>
-          <table className="meta-table">
-            <tbody>
-              <tr>
-                <td>SQLite WAL Mode:</td>
-                <td>Verified outside transactions</td>
-              </tr>
-              <tr>
-                <td>Write Lock Strategy:</td>
-                <td>BEGIN IMMEDIATE on writes</td>
-              </tr>
-              <tr>
-                <td>Referential Integrity:</td>
-                <td>PRAGMA foreign_keys = ON</td>
-              </tr>
-              <tr>
-                <td>CSRF Protection:</td>
-                <td>Double Submit Cookie active</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+    try {
+      const user = await apiFetch<UserProfile>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password: pass }),
+      });
+      setCurrentUser(user);
+      setActiveTab('catalogue');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Invalid credentials';
+      setLoginError(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore logout errors
+    } finally {
+      setCurrentUser(null);
+      setActiveTab('catalogue');
+      setSelectedBookId(null);
+      setIsCopilotOpen(false);
+      setIsTourOpen(false);
+      setIsProfileOpen(false);
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+        Verifying session...
       </div>
+    );
+  }
+
+  const isPatron = currentUser?.role === 'student' || currentUser?.role === 'teacher';
+
+  return (
+    <div className="app-shell">
+      <Navbar
+        currentUser={currentUser}
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        onLogout={handleLogout}
+        onOpenTour={() => setIsTourOpen(true)}
+        onOpenCopilot={() => setIsCopilotOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
+      />
+
+      <main className="main-content">
+        {!currentUser ? (
+          activeTab === 'login' ? (
+            <div>
+              <div style={{ maxWidth: '420px', margin: '0 auto 1rem', display: 'flex', justifyContent: 'flex-start' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setActiveTab('catalogue')}
+                >
+                  ← Back to Public Catalogue
+                </button>
+              </div>
+              <SignIn
+                onLogin={handleLogin}
+                loading={isLoggingIn}
+                error={loginError}
+              />
+            </div>
+          ) : (
+            <div>
+              <div className="alert alert-info" style={{ marginBottom: '1.25rem' }}>
+                <div>
+                  <strong>Public OPAC Mode:</strong> You are browsing the catalogue as a guest. Physical copy barcodes and borrower status are hidden. Sign in with your patron credentials to borrow books or access semantic search and account history.
+                </div>
+              </div>
+              <StudentCatalogue onSelectBook={(id) => setSelectedBookId(id)} />
+            </div>
+          )
+        ) : (
+          <>
+            {/* Patron & Shared Views */}
+            {activeTab === 'catalogue' && (
+              <StudentCatalogue onSelectBook={(id) => setSelectedBookId(id)} />
+            )}
+
+            {activeTab === 'semantic' && (
+              <SemanticSearch
+                onSelectBook={(id) => setSelectedBookId(id)}
+                onGoToCatalogue={() => setActiveTab('catalogue')}
+              />
+            )}
+
+            {activeTab === 'loans' && isPatron && (
+              <StudentLoans currentUser={currentUser} />
+            )}
+
+            {activeTab === 'spaces' && isPatron && (
+              <StudentSpaces currentUser={currentUser} />
+            )}
+
+            {/* Librarian-Only Views */}
+            {activeTab === 'manage_catalogue' && currentUser.role === 'librarian' && (
+              <LibrarianCatalogue />
+            )}
+
+            {activeTab === 'circulation' && currentUser.role === 'librarian' && (
+              <LibrarianCirculation />
+            )}
+
+            {activeTab === 'space_management' && currentUser.role === 'librarian' && (
+              <LibrarianSpaces />
+            )}
+
+            {activeTab === 'embeddings' && currentUser.role === 'librarian' && (
+              <LibrarianEmbeddings />
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Global Book Detail Modal (Available to both authenticated users and public guests) */}
+      {selectedBookId !== null && (
+        <BookDetailModal
+          bookId={selectedBookId}
+          onClose={() => setSelectedBookId(null)}
+          onSelectBook={(id) => setSelectedBookId(id)}
+        />
+      )}
+
+      {/* AI Library Copilot Drawer */}
+      {currentUser && (
+        <AICopilotDrawer
+          currentUser={currentUser}
+          isOpen={isCopilotOpen}
+          onClose={() => setIsCopilotOpen(false)}
+          onOpen={() => setIsCopilotOpen(true)}
+          onSelectBook={(id) => {
+            setSelectedBookId(id);
+          }}
+        />
+      )}
+
+      {/* First-Time Guided Assistant Tour Modal */}
+      {currentUser && (
+        <GuidedTourModal
+          currentUser={currentUser}
+          isOpen={isTourOpen}
+          onClose={() => setIsTourOpen(false)}
+          onNavigateTab={(tab) => setActiveTab(tab)}
+        />
+      )}
+
+      {/* Patron Profile & Password Management Modal (PORT-06) */}
+      {currentUser && (
+        <PatronProfileModal
+          currentUser={currentUser}
+          isOpen={isProfileOpen}
+          onClose={() => setIsProfileOpen(false)}
+          onProfileUpdated={(updated) => setCurrentUser(updated)}
+          onRequireRelogin={() => {
+            setCurrentUser(null);
+            setIsProfileOpen(false);
+            setActiveTab('login');
+          }}
+        />
+      )}
     </div>
   );
-}
+};
 
 export default App;

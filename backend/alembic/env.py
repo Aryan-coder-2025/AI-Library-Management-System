@@ -25,7 +25,19 @@ if str(backend_dir) not in sys.path:
 from app.config import get_settings
 from app.database import Base
 # Import all models to ensure they are registered with Base.metadata
-from app.models import User, Book, BookCopy, Loan  # noqa: F401
+from app.models import (  # noqa: F401
+    User,
+    Book,
+    BookCopy,
+    Loan,
+    StudyZone,
+    StudySeat,
+    StudyRoom,
+    Reservation,
+    OccupancyObservation,
+    SearchEvent,
+    InventoryEvent,
+)
 
 target_metadata = Base.metadata
 

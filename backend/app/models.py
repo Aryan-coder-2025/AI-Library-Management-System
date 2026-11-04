@@ -4,15 +4,19 @@ from sqlalchemy import (
     Integer,
     String,
     Boolean,
+    Float,
     DateTime,
     Date,
     ForeignKey,
     UniqueConstraint,
+    CheckConstraint,
     Index,
     Text,
-    LargeBinary
+    LargeBinary,
+    DDL,
+    event,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, attributes
 
 from app.database import Base
 
@@ -24,12 +28,15 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
-    role = Column(String(50), nullable=False)  # 'student' or 'librarian'
+    role = Column(String(50), nullable=False)  # 'student', 'teacher', or 'librarian'
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     loans = relationship("Loan", back_populates="student", foreign_keys="Loan.student_id")
     issued_loans = relationship("Loan", back_populates="issued_by", foreign_keys="Loan.issued_by_id")
+    reservations = relationship("Reservation", back_populates="user")
+    search_events = relationship("SearchEvent", back_populates="user")
+    inventory_events = relationship("InventoryEvent", back_populates="auditor")
 
 
 class Book(Base):
@@ -48,9 +55,24 @@ class Book(Base):
     embedding_updated_at = Column(DateTime, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     copies = relationship("BookCopy", back_populates="book", cascade="all, delete-orphan", passive_deletes=True)
+
+
+@event.listens_for(Book, "before_update")
+def _book_before_update(mapper, connection, target):
+    """
+    Advances updated_at when core book metadata fields are updated.
+    Does not advance updated_at when only embedding vector storage is saved.
+    """
+    metadata_fields = {"title", "author", "isbn", "category", "description", "is_archived"}
+    state = attributes.instance_state(target)
+    for field in metadata_fields:
+        hist = state.get_history(field, True)
+        if hist.has_changes():
+            target.updated_at = datetime.utcnow()
+            break
 
 
 class BookCopy(Base):
@@ -60,7 +82,7 @@ class BookCopy(Base):
     book_id = Column(Integer, ForeignKey("books.id", ondelete="RESTRICT"), nullable=False, index=True)
     copy_code = Column(String(50), unique=True, nullable=False, index=True)
     
-    # Physical status: 'available', 'maintenance', 'lost'
+    # Physical status: 'available', 'maintenance', 'lost', 'retired'
     # 'borrowed' is strictly derived from active loans and never stored here
     operational_status = Column(String(20), default="available", nullable=False)
     notes = Column(Text, nullable=True)
@@ -68,6 +90,7 @@ class BookCopy(Base):
 
     book = relationship("Book", back_populates="copies")
     loans = relationship("Loan", back_populates="copy")
+    inventory_events = relationship("InventoryEvent", back_populates="copy", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class Loan(Base):
@@ -83,6 +106,7 @@ class Loan(Base):
     
     # NULL = active loan; non-NULL = returned loan
     returned_at = Column(DateTime, nullable=True, index=True)
+    renewal_count = Column(Integer, default=0, nullable=False)
 
     student = relationship("User", foreign_keys=[student_id], back_populates="loans")
     issued_by = relationship("User", foreign_keys=[issued_by_id], back_populates="issued_loans")
@@ -96,4 +120,344 @@ class Loan(Base):
             unique=True,
             sqlite_where=(returned_at.is_(None)),
         ),
+    )
+
+
+# ── Phase 1 Resource Management Models ───────────────────────────────────────
+
+class StudyZone(Base):
+    __tablename__ = "study_zones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    zone_code = Column(String(50), unique=True, nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    floor = Column(Integer, nullable=False)
+    total_capacity = Column(Integer, nullable=False)
+    noise_policy = Column(String(50), nullable=False, default="quiet")  # 'silent', 'quiet', 'collaborative'
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    seats = relationship("StudySeat", back_populates="zone", cascade="all, delete-orphan", passive_deletes=True)
+    observations = relationship("OccupancyObservation", back_populates="zone", cascade="all, delete-orphan", passive_deletes=True)
+
+    __table_args__ = (
+        CheckConstraint("floor >= 0", name="ck_study_zones_floor_nonneg"),
+        CheckConstraint("total_capacity > 0", name="ck_study_zones_capacity_pos"),
+        CheckConstraint("noise_policy IN ('silent', 'quiet', 'collaborative')", name="ck_study_zones_noise_policy"),
+    )
+
+
+class StudySeat(Base):
+    __tablename__ = "study_seats"
+
+    id = Column(Integer, primary_key=True, index=True)
+    zone_id = Column(Integer, ForeignKey("study_zones.id", ondelete="CASCADE"), nullable=False, index=True)
+    seat_code = Column(String(50), unique=True, nullable=False, index=True)
+    has_power_outlet = Column(Boolean, default=True, nullable=False)
+    has_monitor = Column(Boolean, default=False, nullable=False)
+    is_accessible = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    zone = relationship("StudyZone", back_populates="seats")
+    reservations = relationship("Reservation", back_populates="seat", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class StudyRoom(Base):
+    __tablename__ = "study_rooms"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_code = Column(String(50), unique=True, nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    capacity = Column(Integer, nullable=False)
+    display_type = Column(String(50), nullable=True)  # 'tv', 'projector', 'none'
+    has_whiteboard = Column(Boolean, default=True, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    reservations = relationship("Reservation", back_populates="room", cascade="all, delete-orphan", passive_deletes=True)
+
+    __table_args__ = (
+        CheckConstraint("capacity > 0", name="ck_study_rooms_capacity_pos"),
+    )
+
+
+class Reservation(Base):
+    __tablename__ = "reservations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    resource_type = Column(String(20), nullable=False, index=True)  # 'seat' or 'room'
+    seat_id = Column(Integer, ForeignKey("study_seats.id", ondelete="CASCADE"), nullable=True, index=True)
+    room_id = Column(Integer, ForeignKey("study_rooms.id", ondelete="CASCADE"), nullable=True, index=True)
+    start_time = Column(DateTime, nullable=False, index=True)
+    end_time = Column(DateTime, nullable=False, index=True)
+    status = Column(String(20), default="active", nullable=False, index=True)  # 'active', 'completed', 'cancelled', 'no_show'
+    checked_in_at = Column(DateTime, nullable=True, index=True)
+    expected_attendees = Column(Integer, nullable=False, default=1, server_default="1")
+    actual_attendees = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="reservations")
+    seat = relationship("StudySeat", back_populates="reservations")
+    room = relationship("StudyRoom", back_populates="reservations")
+
+    __table_args__ = (
+        CheckConstraint("end_time > start_time", name="ck_reservations_time_order"),
+        CheckConstraint("status IN ('active', 'completed', 'cancelled', 'no_show')", name="ck_reservations_status_valid"),
+        CheckConstraint("resource_type IN ('seat', 'room')", name="ck_reservations_type_valid"),
+        CheckConstraint(
+            "(resource_type = 'seat' AND seat_id IS NOT NULL AND room_id IS NULL) OR "
+            "(resource_type = 'room' AND room_id IS NOT NULL AND seat_id IS NULL)",
+            name="ck_reservations_resource_target",
+        ),
+        CheckConstraint(
+            "(resource_type = 'seat' AND expected_attendees = 1) OR "
+            "(resource_type = 'room' AND expected_attendees >= 1)",
+            name="ck_reservations_expected_attendees",
+        ),
+        CheckConstraint(
+            "(resource_type = 'seat' AND (actual_attendees IS NULL OR actual_attendees = 1)) OR "
+            "(resource_type = 'room' AND (actual_attendees IS NULL OR actual_attendees >= 1))",
+            name="ck_reservations_actual_attendees",
+        ),
+        Index("ix_reservations_seat_active_window", "seat_id", "status", "start_time", "end_time"),
+        Index("ix_reservations_room_active_window", "room_id", "status", "start_time", "end_time"),
+        Index("ix_reservations_user_window", "user_id", "start_time", "end_time"),
+    )
+
+
+# Attach triggers for SQLite interval overlap prevention
+_trg_seat_insert_ddl = DDL("""
+CREATE TRIGGER IF NOT EXISTS trg_prevent_seat_reservation_insert
+BEFORE INSERT ON reservations
+FOR EACH ROW
+WHEN NEW.resource_type = 'seat' AND NEW.status = 'active'
+BEGIN
+    SELECT CASE
+        WHEN EXISTS (
+            SELECT 1 FROM reservations
+            WHERE seat_id = NEW.seat_id
+              AND status = 'active'
+              AND start_time < NEW.end_time
+              AND end_time > NEW.start_time
+        )
+        THEN RAISE(ABORT, 'Reservation conflict: seat is already reserved during this time interval.')
+    END;
+END;
+""")
+
+_trg_seat_update_ddl = DDL("""
+CREATE TRIGGER IF NOT EXISTS trg_prevent_seat_reservation_update
+BEFORE UPDATE ON reservations
+FOR EACH ROW
+WHEN NEW.resource_type = 'seat' AND NEW.status = 'active'
+BEGIN
+    SELECT CASE
+        WHEN EXISTS (
+            SELECT 1 FROM reservations
+            WHERE seat_id = NEW.seat_id
+              AND id != NEW.id
+              AND status = 'active'
+              AND start_time < NEW.end_time
+              AND end_time > NEW.start_time
+        )
+        THEN RAISE(ABORT, 'Reservation conflict: seat is already reserved during this time interval.')
+    END;
+END;
+""")
+
+_trg_room_insert_ddl = DDL("""
+CREATE TRIGGER IF NOT EXISTS trg_prevent_room_reservation_insert
+BEFORE INSERT ON reservations
+FOR EACH ROW
+WHEN NEW.resource_type = 'room' AND NEW.status = 'active'
+BEGIN
+    SELECT CASE
+        WHEN EXISTS (
+            SELECT 1 FROM reservations
+            WHERE room_id = NEW.room_id
+              AND status = 'active'
+              AND start_time < NEW.end_time
+              AND end_time > NEW.start_time
+        )
+        THEN RAISE(ABORT, 'Reservation conflict: room is already reserved during this time interval.')
+    END;
+END;
+""")
+
+_trg_room_update_ddl = DDL("""
+CREATE TRIGGER IF NOT EXISTS trg_prevent_room_reservation_update
+BEFORE UPDATE ON reservations
+FOR EACH ROW
+WHEN NEW.resource_type = 'room' AND NEW.status = 'active'
+BEGIN
+    SELECT CASE
+        WHEN EXISTS (
+            SELECT 1 FROM reservations
+            WHERE room_id = NEW.room_id
+              AND id != NEW.id
+              AND status = 'active'
+              AND start_time < NEW.end_time
+              AND end_time > NEW.start_time
+        )
+        THEN RAISE(ABORT, 'Reservation conflict: room is already reserved during this time interval.')
+    END;
+END;
+""")
+
+_trg_user_insert_ddl = DDL("""
+CREATE TRIGGER IF NOT EXISTS trg_prevent_user_reservation_overlap_insert
+BEFORE INSERT ON reservations
+FOR EACH ROW
+WHEN NEW.status = 'active'
+ AND COALESCE((SELECT role FROM users WHERE id = NEW.user_id), '') NOT IN ('librarian', 'admin')
+BEGIN
+    SELECT CASE
+        WHEN EXISTS (
+            SELECT 1 FROM reservations
+            WHERE user_id = NEW.user_id
+              AND status = 'active'
+              AND start_time < NEW.end_time
+              AND end_time > NEW.start_time
+        )
+        THEN RAISE(ABORT, 'Reservation conflict: user already has an active reservation during this time interval.')
+    END;
+END;
+""")
+
+_trg_user_update_ddl = DDL("""
+CREATE TRIGGER IF NOT EXISTS trg_prevent_user_reservation_overlap_update
+BEFORE UPDATE ON reservations
+FOR EACH ROW
+WHEN NEW.status = 'active'
+ AND COALESCE((SELECT role FROM users WHERE id = NEW.user_id), '') NOT IN ('librarian', 'admin')
+BEGIN
+    SELECT CASE
+        WHEN EXISTS (
+            SELECT 1 FROM reservations
+            WHERE user_id = NEW.user_id
+              AND id != NEW.id
+              AND status = 'active'
+              AND start_time < NEW.end_time
+              AND end_time > NEW.start_time
+        )
+        THEN RAISE(ABORT, 'Reservation conflict: user already has an active reservation during this time interval.')
+    END;
+END;
+""")
+
+_trg_role_demotion_ddl = DDL("""
+CREATE TRIGGER IF NOT EXISTS trg_prevent_role_demotion_with_overlapping_reservations
+BEFORE UPDATE OF role ON users
+FOR EACH ROW
+WHEN OLD.role IN ('librarian', 'admin')
+ AND COALESCE(NEW.role, '') NOT IN ('librarian', 'admin')
+BEGIN
+    SELECT CASE
+        WHEN EXISTS (
+            SELECT 1 FROM reservations r1
+            JOIN reservations r2 ON r1.user_id = r2.user_id AND r1.id < r2.id
+            WHERE r1.user_id = NEW.id
+              AND r1.status = 'active'
+              AND r2.status = 'active'
+              AND r1.start_time < r2.end_time
+              AND r1.end_time > r2.start_time
+        )
+        THEN RAISE(ABORT, 'Role update rejected: user holds overlapping active reservations that violate student/teacher policy.')
+    END;
+END;
+""")
+
+event.listen(Reservation.__table__, "after_create", _trg_seat_insert_ddl.execute_if(dialect="sqlite"))
+event.listen(Reservation.__table__, "after_create", _trg_seat_update_ddl.execute_if(dialect="sqlite"))
+event.listen(Reservation.__table__, "after_create", _trg_room_insert_ddl.execute_if(dialect="sqlite"))
+event.listen(Reservation.__table__, "after_create", _trg_room_update_ddl.execute_if(dialect="sqlite"))
+event.listen(Reservation.__table__, "after_create", _trg_user_insert_ddl.execute_if(dialect="sqlite"))
+event.listen(Reservation.__table__, "after_create", _trg_user_update_ddl.execute_if(dialect="sqlite"))
+event.listen(User.__table__, "after_create", _trg_role_demotion_ddl.execute_if(dialect="sqlite"))
+
+
+class OccupancyObservation(Base):
+    __tablename__ = "occupancy_observations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    zone_id = Column(Integer, ForeignKey("study_zones.id", ondelete="CASCADE"), nullable=False, index=True)
+    recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    observed_count = Column(Integer, nullable=False)
+    capacity_utilization = Column(Float, nullable=False)
+    source_sensor_id = Column(String(50), nullable=True)
+
+    zone = relationship("StudyZone", back_populates="observations")
+
+    __table_args__ = (
+        CheckConstraint("observed_count >= 0", name="ck_occupancy_count_nonneg"),
+        CheckConstraint("capacity_utilization >= 0.0", name="ck_occupancy_util_nonneg"),
+        Index("ix_occupancy_zone_time", "zone_id", "recorded_at"),
+    )
+
+
+class SearchEvent(Base):
+    __tablename__ = "search_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    query_text = Column(String(500), nullable=False, index=True)
+    search_type = Column(String(50), default="text", nullable=False, index=True)  # 'text', 'semantic', 'filter', 'copilot'
+    results_count = Column(Integer, default=0, nullable=False)
+    latency_ms = Column(Float, nullable=False)
+    executed_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    user = relationship("User", back_populates="search_events")
+
+    __table_args__ = (
+        CheckConstraint("results_count >= 0", name="ck_search_results_count_nonneg"),
+        CheckConstraint("latency_ms >= 0", name="ck_search_latency_nonneg"),
+        Index("ix_search_events_user_time", "user_id", "executed_at"),
+        Index("ix_search_events_type_time", "search_type", "executed_at"),
+    )
+
+
+class InventoryEvent(Base):
+    __tablename__ = "inventory_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    copy_id = Column(Integer, ForeignKey("book_copies.id", ondelete="CASCADE"), nullable=False, index=True)
+    auditor_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    event_type = Column(String(50), nullable=False, index=True)  # 'audit_scan', 'status_change', 'shelf_check', 'loss_reported', 'damage_flagged'
+    previous_status = Column(String(20), nullable=True)
+    new_status = Column(String(20), nullable=False)
+    notes = Column(Text, nullable=True)
+    recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    copy = relationship("BookCopy", back_populates="inventory_events")
+    auditor = relationship("User", back_populates="inventory_events")
+
+    __table_args__ = (
+        Index("ix_inventory_events_copy_time", "copy_id", "recorded_at"),
+        Index("ix_inventory_events_auditor_time", "auditor_id", "recorded_at"),
+    )
+
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    loan_id = Column(Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True, index=True)
+    notification_type = Column(String(50), nullable=False, index=True)  # 'overdue_alert', 'due_soon_reminder', 'loan_renewed', 'system_notice'
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    target_due_date = Column(Date, nullable=True)
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    read_at = Column(DateTime, nullable=True)
+    dedup_key = Column(String(255), unique=True, nullable=False, index=True)
+
+    user = relationship("User")
+    loan = relationship("Loan")
+
+    __table_args__ = (
+        Index("ix_notifications_user_read", "user_id", "is_read", "created_at"),
     )
