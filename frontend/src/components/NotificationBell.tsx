@@ -162,12 +162,12 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
             position: 'absolute',
             top: 'calc(100% + 8px)',
             right: 0,
-            width: '380px',
-            maxWidth: '90vw',
-            backgroundColor: '#ffffff',
-            borderRadius: '8px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.08)',
-            border: '1px solid #e2e8f0',
+            width: '400px',
+            maxWidth: '92vw',
+            backgroundColor: 'var(--bg-surface-elevated, #171D35)',
+            borderRadius: '10px',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.15)',
+            border: '1px solid var(--border-medium, #29334F)',
             zIndex: 1000,
             overflow: 'hidden',
           }}
@@ -175,15 +175,15 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
           <div
             style={{
               padding: '0.75rem 1rem',
-              borderBottom: '1px solid #e2e8f0',
+              borderBottom: '1px solid var(--border-subtle, #1E293B)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              backgroundColor: '#f8fafc',
+              backgroundColor: 'var(--bg-subtle, #1D2742)',
             }}
           >
-            <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#1e293b' }}>
-              Notifications {unreadCount > 0 && <span style={{ color: '#dc2626' }}>({unreadCount} unread)</span>}
+            <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary, #F5F6FF)' }}>
+              Notifications {unreadCount > 0 && <span style={{ color: '#FB7185' }}>({unreadCount} unread)</span>}
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               {unreadCount > 0 && (
@@ -193,7 +193,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                   style={{
                     border: 'none',
                     background: 'none',
-                    color: '#2563eb',
+                    color: 'var(--color-secondary-violet, #A78BFA)',
                     fontSize: '0.75rem',
                     cursor: 'pointer',
                     fontWeight: 500,
@@ -209,7 +209,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                   style={{
                     border: 'none',
                     background: 'none',
-                    color: '#0d9488',
+                    color: 'var(--color-accent, #22D3EE)',
                     fontSize: '0.75rem',
                     cursor: 'pointer',
                     fontWeight: 500,
@@ -226,10 +226,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
             <div
               style={{
                 padding: '0.5rem 1rem',
-                backgroundColor: '#eff6ff',
-                color: '#1e40af',
+                backgroundColor: 'rgba(34, 211, 238, 0.12)',
+                color: 'var(--color-accent, #22D3EE)',
                 fontSize: '0.8rem',
-                borderBottom: '1px solid #bfdbfe',
+                borderBottom: '1px solid var(--border-subtle, #1E293B)',
               }}
             >
               {actionMessage}
@@ -238,46 +238,77 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
 
           <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
             {loading ? (
-              <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+              <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted, #77829E)', fontSize: '0.85rem' }}>
                 Loading alerts...
               </div>
             ) : notifications.length === 0 ? (
-              <div style={{ padding: '2.5rem 1rem', textAlign: 'center', color: '#94a3b8' }}>
+              <div style={{ padding: '2.5rem 1rem', textAlign: 'center', color: 'var(--text-muted, #77829E)' }}>
                 <div style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>🔔</div>
-                <div style={{ fontWeight: 500, fontSize: '0.9rem', color: '#475569' }}>All caught up!</div>
+                <div style={{ fontWeight: 500, fontSize: '0.9rem', color: 'var(--text-primary, #F5F6FF)' }}>All caught up!</div>
                 <div style={{ fontSize: '0.8rem' }}>You have no pending library alerts.</div>
               </div>
             ) : (
               notifications.map((n) => {
-                const isOverdue = n.notification_type === 'overdue';
+                const isOverdue = n.notification_type === 'overdue' || n.notification_type === 'overdue_alert';
+                const isCourseReading = n.notification_type === 'course_reading_list';
+                const isDueSoon = n.notification_type === 'due_soon_reminder';
+
+                let badgeLabel = 'Notice';
+                let badgeBg = 'rgba(34, 211, 238, 0.15)';
+                let badgeColor = '#22D3EE';
+                let badgeBorder = '1px solid rgba(34, 211, 238, 0.3)';
+
+                if (isOverdue) {
+                  badgeLabel = '⚠️ Overdue';
+                  badgeBg = 'rgba(251, 113, 133, 0.18)';
+                  badgeColor = '#FB7185';
+                  badgeBorder = '1px solid rgba(251, 113, 133, 0.35)';
+                } else if (isCourseReading) {
+                  badgeLabel = '📚 Required Reading';
+                  badgeBg = 'rgba(128, 87, 245, 0.2)';
+                  badgeColor = '#C4B5FD';
+                  badgeBorder = '1px solid rgba(167, 139, 250, 0.4)';
+                } else if (isDueSoon) {
+                  badgeLabel = '⏰ Due Soon';
+                  badgeBg = 'rgba(251, 191, 36, 0.18)';
+                  badgeColor = '#FBBF24';
+                  badgeBorder = '1px solid rgba(251, 191, 36, 0.35)';
+                }
+
                 return (
                   <div
                     key={n.id}
                     style={{
                       padding: '0.75rem 1rem',
-                      borderBottom: '1px solid #f1f5f9',
-                      backgroundColor: n.is_read ? '#ffffff' : '#f0fdf4',
+                      borderBottom: '1px solid var(--border-subtle, #1E293B)',
+                      backgroundColor: n.is_read
+                        ? 'transparent'
+                        : 'var(--bg-subtle, rgba(29, 39, 66, 0.6))',
+                      borderLeft: n.is_read ? '3px solid transparent' : '3px solid var(--color-primary, #8057F5)',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '0.35rem',
+                      transition: 'background-color 0.15s ease',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                         <span
                           style={{
                             display: 'inline-block',
-                            padding: '1px 6px',
+                            padding: '1px 7px',
                             borderRadius: '4px',
                             fontSize: '0.7rem',
                             fontWeight: 600,
-                            backgroundColor: isOverdue ? '#fee2e2' : '#e0f2fe',
-                            color: isOverdue ? '#991b1b' : '#0369a1',
+                            backgroundColor: badgeBg,
+                            color: badgeColor,
+                            border: badgeBorder,
+                            lineHeight: 1.4,
                           }}
                         >
-                          {isOverdue ? '⚠️ Overdue' : 'Notice'}
+                          {badgeLabel}
                         </span>
-                        <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary, #F5F6FF)' }}>
                           {n.title}
                         </span>
                       </div>
@@ -288,21 +319,22 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                           style={{
                             border: 'none',
                             background: 'none',
-                            color: '#2563eb',
+                            color: 'var(--color-secondary-violet, #A78BFA)',
                             fontSize: '0.75rem',
                             cursor: 'pointer',
                             padding: '0 2px',
                             whiteSpace: 'nowrap',
+                            fontWeight: 500,
                           }}
                         >
                           Mark read
                         </button>
                       )}
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#475569', lineHeight: 1.4 }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #A9B2CC)', lineHeight: 1.45 }}>
                       {n.message}
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #77829E)' }}>
                       {new Date(n.created_at).toLocaleString(undefined, {
                         month: 'short',
                         day: 'numeric',

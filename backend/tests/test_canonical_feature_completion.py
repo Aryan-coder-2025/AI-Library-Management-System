@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, hash_password
 from app.database import atomic_write
+from app.utils.date import get_utc_today
 from app.models import (
     AcquisitionRequest,
     Book,
@@ -203,6 +204,16 @@ def test_course_creation_and_reading_list(
     assert list_data[0]["requirement_type"] == "required"
     assert list_data[0]["available_copies_count"] == 2
 
+    # 5. Verify active student receives course reading assignment notification
+    student_hdrs = make_headers(client, student_user.id, "student")
+    notif_resp = client.get("/api/notifications", headers=student_hdrs)
+    assert notif_resp.status_code == 200
+    notifs = notif_resp.json()
+    reading_notifs = [n for n in notifs["items"] if n["notification_type"] == "course_reading_list"]
+    assert len(reading_notifs) >= 1
+    assert "PHYS-101" in reading_notifs[0]["title"]
+    assert physics_monograph.title in reading_notifs[0]["message"]
+
 
 # ── 2. CIRC-06: Course Reserves & Loan Restrictions ──────────────────────────
 
@@ -257,7 +268,7 @@ def test_course_reserves_loan_duration_override(
     )
     assert loan_resp.status_code == 201
     loan_data = loan_resp.json()
-    issued_date = date.today()
+    issued_date = get_utc_today()
     expected_due = issued_date + timedelta(days=1)
     assert loan_data["due_date"] == expected_due.isoformat()
 

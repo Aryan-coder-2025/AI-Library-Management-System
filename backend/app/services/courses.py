@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import atomic_write
-from app.models import Book, BookCopy, Course, CourseReadingListItem, CourseReserve, Loan, User
+from app.models import Book, BookCopy, Course, CourseReadingListItem, CourseReserve, Loan, User, Notification
 from app.schemas import (
     CourseCreateRequest,
     CourseListResponse,
@@ -168,6 +168,27 @@ def add_reading_list_item_service(
         db.add(item)
         db.flush()
         db.refresh(item)
+
+        # Broadcast required/recommended reading notification to all active students
+        instructor_name = user.full_name or "Faculty Instructor"
+        students = db.execute(select(User).where(User.role == "student", User.is_active == True)).scalars().all()
+        req_label = req.requirement_type.capitalize() if req.requirement_type else "Required"
+        for student in students:
+            dedup_key = f"reading_list:{course_id}:{req.book_id}:{student.id}"
+            existing_notif = db.execute(
+                select(Notification).where(Notification.dedup_key == dedup_key)
+            ).scalar_one_or_none()
+            if not existing_notif:
+                notif = Notification(
+                    user_id=student.id,
+                    notification_type="course_reading_list",
+                    title=f"📚 {req_label} Reading: {course.code}",
+                    message=f"Prof. {instructor_name} assigned '{book.title}' by {book.author or 'Unknown'} as {req.requirement_type} reading for {course.code} ({course.title}).",
+                    is_read=False,
+                    created_at=datetime.utcnow(),
+                    dedup_key=dedup_key,
+                )
+                db.add(notif)
 
         # Availability calculation
         loaned_copy_ids = select(Loan.copy_id).where(Loan.returned_at.is_(None))
