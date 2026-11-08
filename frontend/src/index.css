@@ -1548,8 +1548,8 @@ p {
 /* Copilot Footer / Input Bar */
 .copilot-footer {
   padding: 0.75rem 0.85rem;
-  background: var(--bg-card);
-  border-top: 1px solid var(--border-color);
+  background: var(--bg-surface-elevated);
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   gap: 0.5rem;
   align-items: center;
@@ -1563,19 +1563,24 @@ p {
 .copilot-input {
   width: 100%;
   padding: 0.6rem 2.8rem 0.6rem 0.75rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-medium);
   border-radius: 20px;
   font-size: 0.85rem;
   outline: none;
-  background: #f8fafc;
-  color: var(--text-main);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.copilot-input::placeholder {
+  color: var(--text-muted);
 }
 
 .copilot-input:focus {
-  border-color: #3b82f6;
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: var(--color-primary);
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 3px var(--glow-primary);
 }
 
 .copilot-char-counter {
@@ -1585,6 +1590,7 @@ p {
   transform: translateY(-50%);
   font-size: 0.65rem;
   color: var(--text-muted);
+  pointer-events: none;
 }
 
 .copilot-send-btn {
@@ -2558,6 +2564,28 @@ p {
   background: var(--color-accent-subtle) !important;
   border-color: var(--color-accent) !important;
   color: var(--color-accent) !important;
+}
+
+.copilot-footer {
+  background: var(--bg-surface-elevated) !important;
+  border-top: 1px solid var(--border-subtle) !important;
+}
+
+.copilot-input {
+  background: var(--bg-subtle) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-medium) !important;
+}
+
+.copilot-input:focus {
+  background: var(--bg-surface) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 0 0 3px var(--glow-primary) !important;
+}
+
+.copilot-char-counter {
+  color: var(--text-muted) !important;
 }
 
 
