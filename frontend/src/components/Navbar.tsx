@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { UserProfile } from '../types/library';
 import { NotificationBell } from './NotificationBell';
 
@@ -21,26 +21,55 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   onLogout,
   onOpenTour,
-  onOpenCopilot,
+  onOpenCopilot: _onOpenCopilot,
   onOpenProfile,
   onOpenCommandPalette,
   currentTheme = 'dark',
   onToggleTheme,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [staffMenuOpen, setStaffMenuOpen] = useState(false);
+  const staffDropdownRef = useRef<HTMLDivElement>(null);
 
   const handleTabClick = (tab: string) => {
     onSelectTab(tab);
     setMobileMenuOpen(false);
+    setStaffMenuOpen(false);
   };
+
+  // Close staff dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (staffDropdownRef.current && !staffDropdownRef.current.contains(e.target as Node)) {
+        setStaffMenuOpen(false);
+      }
+    };
+    if (staffMenuOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [staffMenuOpen]);
 
   const isPatron = currentUser?.role === 'student' || currentUser?.role === 'teacher';
   const isLibrarian = currentUser?.role === 'librarian';
 
+  const librarianTabs = [
+    { id: 'intelligence', label: 'Intelligence Centre', icon: '📈' },
+    { id: 'manage_catalogue', label: 'Inventory', icon: '📦' },
+    { id: 'circulation', label: 'Circulation Desk', icon: '🔄' },
+    { id: 'space_management', label: 'Spaces Desk', icon: '🗺️' },
+    { id: 'embeddings', label: 'AI Embeddings', icon: '⚡' },
+    { id: 'ai_studio', label: 'AI Studio', icon: '⚖️' },
+  ];
+
+  const activeStaffTab = librarianTabs.find((t) => t.id === activeTab);
+
   return (
     <header className="navbar">
       <div className="navbar-container">
-        {/* Brand identity: Athenaeum */}
+        {/* Futuristic Brand Identity: Athenaeum */}
         <a
           href="#home"
           className="navbar-brand"
@@ -56,11 +85,11 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div className="navbar-brand-title">
             <span className="brand-name">ATHENAEUM</span>
-            <span className="navbar-brand-subtitle">Academic Intelligence</span>
+            <span className="navbar-brand-badge">AI 2.0</span>
           </div>
         </a>
 
-        {/* Global Command Palette search bar launcher */}
+        {/* Global Command Palette Search launcher */}
         {onOpenCommandPalette && (
           <button
             type="button"
@@ -69,12 +98,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="Open command palette (Ctrl+K or Cmd+K)"
           >
             <span className="search-icon">🔍</span>
-            <span className="search-placeholder">Quick search or command...</span>
+            <span className="search-placeholder">Quick search...</span>
             <span className="keyboard-shortcut-pill">Ctrl K</span>
           </button>
         )}
 
-        {/* Mobile Nav Toggle */}
+        {/* Mobile Navigation Hamburger */}
         <button
           type="button"
           className="mobile-nav-toggle"
@@ -84,14 +113,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           ☰
         </button>
 
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs - Modern Futuristic Segmented Pill Bar */}
         <nav className={`nav-links ${mobileMenuOpen ? 'open' : ''}`}>
-          {/* Workspace Group */}
           <button
             type="button"
             data-tour="nav-dashboard"
             className={`nav-button ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => handleTabClick('dashboard')}
+            title="Dashboard Overview"
           >
             <span className="nav-icon">📊</span>
             <span>Dashboard</span>
@@ -102,6 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             data-tour="nav-catalogue"
             className={`nav-button ${activeTab === 'catalogue' ? 'active' : ''}`}
             onClick={() => handleTabClick('catalogue')}
+            title="Catalogue Monographs"
           >
             <span className="nav-icon">📚</span>
             <span>Catalogue</span>
@@ -112,9 +142,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             data-tour="nav-semantic"
             className={`nav-button ${activeTab === 'semantic' ? 'active' : ''}`}
             onClick={() => handleTabClick('semantic')}
+            title="AI Vector Semantic Search"
           >
             <span className="nav-icon">🧠</span>
-            <span>Semantic Search</span>
+            <span>AI Search</span>
           </button>
 
           <button
@@ -122,9 +153,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             data-tour="nav-knowledge"
             className={`nav-button ${activeTab === 'knowledge' ? 'active' : ''}`}
             onClick={() => handleTabClick('knowledge')}
+            title="Knowledge Graph & Conceptual Navigator"
           >
             <span className="nav-icon">🔬</span>
-            <span>Knowledge Graph</span>
+            <span>Knowledge</span>
           </button>
 
           {/* Patron Views (Student & Teacher) */}
@@ -135,18 +167,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 data-tour="nav-loans"
                 className={`nav-button ${activeTab === 'loans' ? 'active' : ''}`}
                 onClick={() => handleTabClick('loans')}
+                title="Active Monograph Loans"
               >
                 <span className="nav-icon">📖</span>
-                <span>My Loans</span>
+                <span>Loans</span>
               </button>
               <button
                 type="button"
                 data-tour="nav-spaces"
                 className={`nav-button ${activeTab === 'spaces' ? 'active' : ''}`}
                 onClick={() => handleTabClick('spaces')}
+                title="Interactive Floor Plans & Study Spaces"
               >
                 <span className="nav-icon">🏛️</span>
-                <span>Study Spaces</span>
+                <span>Spaces</span>
               </button>
             </>
           )}
@@ -158,70 +192,42 @@ export const Navbar: React.FC<NavbarProps> = ({
               data-tour="nav-teacher-portal"
               className={`nav-button ${activeTab === 'teacher_portal' ? 'active' : ''}`}
               onClick={() => handleTabClick('teacher_portal')}
+              title="Academic Syllabus & Course Reserve Planner"
             >
               <span className="nav-icon">🎓</span>
-              <span>Teacher Portal</span>
+              <span>Teacher</span>
             </button>
           )}
 
-          {/* Librarian Views */}
+          {/* Librarian Staff Management Menu */}
           {currentUser && isLibrarian && (
-            <>
+            <div className="nav-dropdown-wrap" ref={staffDropdownRef}>
               <button
                 type="button"
-                data-tour="nav-intelligence"
-                className={`nav-button ${activeTab === 'intelligence' ? 'active' : ''}`}
-                onClick={() => handleTabClick('intelligence')}
+                className={`nav-button nav-dropdown-btn ${activeStaffTab ? 'active' : ''}`}
+                onClick={() => setStaffMenuOpen(!staffMenuOpen)}
+                title="Librarian Staff Desks & Intelligence"
               >
-                <span className="nav-icon">📈</span>
-                <span>Intelligence Centre</span>
+                <span className="nav-icon">{activeStaffTab ? activeStaffTab.icon : '⚙️'}</span>
+                <span>{activeStaffTab ? activeStaffTab.label : 'Staff Desks'}</span>
+                <span className="dropdown-caret">▾</span>
               </button>
-              <button
-                type="button"
-                data-tour="nav-manage-catalogue"
-                className={`nav-button ${activeTab === 'manage_catalogue' ? 'active' : ''}`}
-                onClick={() => handleTabClick('manage_catalogue')}
-              >
-                <span className="nav-icon">📦</span>
-                <span>Inventory</span>
-              </button>
-              <button
-                type="button"
-                data-tour="nav-circulation"
-                className={`nav-button ${activeTab === 'circulation' ? 'active' : ''}`}
-                onClick={() => handleTabClick('circulation')}
-              >
-                <span className="nav-icon">🔄</span>
-                <span>Circulation</span>
-              </button>
-              <button
-                type="button"
-                data-tour="nav-space-management"
-                className={`nav-button ${activeTab === 'space_management' ? 'active' : ''}`}
-                onClick={() => handleTabClick('space_management')}
-              >
-                <span className="nav-icon">🗺️</span>
-                <span>Spaces Desk</span>
-              </button>
-              <button
-                type="button"
-                data-tour="nav-embeddings"
-                className={`nav-button ${activeTab === 'embeddings' ? 'active' : ''}`}
-                onClick={() => handleTabClick('embeddings')}
-              >
-                <span className="nav-icon">⚡</span>
-                <span>Embeddings</span>
-              </button>
-              <button
-                type="button"
-                data-tour="nav-ai-studio"
-                className={`nav-button ${activeTab === 'ai_studio' ? 'active' : ''}`}
-                onClick={() => handleTabClick('ai_studio')}
-              >
-                <span className="nav-icon">⚖️</span>
-                <span>AI Studio</span>
-              </button>
-            </>
+              {staffMenuOpen && (
+                <div className="nav-dropdown-menu">
+                  {librarianTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={`nav-dropdown-item ${activeTab === tab.id ? 'active' : ''}`}
+                      onClick={() => handleTabClick(tab.id)}
+                    >
+                      <span className="nav-icon">{tab.icon}</span>
+                      <span>{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </nav>
 
@@ -233,7 +239,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="button"
               className="navbar-icon-btn"
               onClick={onToggleTheme}
-              title={`Switch to ${currentTheme === 'dark' ? 'Academic Aurora (Light)' : 'Midnight Intelligence (Dark)'}`}
+              title={`Switch to ${currentTheme === 'dark' ? 'Academic Aurora (Light)' : 'Obsidian Cyber (Dark)'}`}
               aria-label="Toggle theme"
             >
               {currentTheme === 'dark' ? '☀️' : '🌙'}
@@ -256,20 +262,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* AI Copilot Signature Launcher */}
-          {currentUser && onOpenCopilot && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm copilot-nav-trigger"
-              onClick={onOpenCopilot}
-              title="Open conversational AI Copilot (Ctrl+J)"
-            >
-              <span className="spark-icon">✨</span>
-              <span>Copilot</span>
-            </button>
-          )}
-
-          {/* User Account / Profile */}
+          {/* User Account / Profile & 1-Click Sign Out */}
           {currentUser ? (
             <div className="user-profile-menu-wrap">
               <div

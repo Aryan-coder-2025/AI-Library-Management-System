@@ -8,6 +8,15 @@ interface SemanticSearchProps {
   onGoToCatalogue: () => void;
 }
 
+const DISCOVERY_PROMPTS = [
+  { label: 'Distributed Consensus & Raft', icon: '⚡' },
+  { label: 'Neural Transformers & Attention', icon: '🧠' },
+  { label: 'Zero-Knowledge Cryptography', icon: '🔐' },
+  { label: 'Quantum Computing & Algorithms', icon: '⚛️' },
+  { label: 'Autonomous Multi-Agent Systems', icon: '🤖' },
+  { label: 'Database Storage Engines & LSM-Trees', icon: '💾' },
+];
+
 export const SemanticSearch: React.FC<SemanticSearchProps> = ({
   onSelectBook,
   onGoToCatalogue,
@@ -19,9 +28,8 @@ export const SemanticSearch: React.FC<SemanticSearchProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [modelUnavailable, setModelUnavailable] = useState(false);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanQuery = query.trim();
+  const executeSearch = async (searchQuery: string) => {
+    const cleanQuery = searchQuery.trim();
     if (!cleanQuery) return;
 
     setLoading(true);
@@ -47,58 +55,108 @@ export const SemanticSearch: React.FC<SemanticSearchProps> = ({
     }
   };
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    executeSearch(query);
+  };
+
+  const handleChipClick = (prompt: string) => {
+    setQuery(prompt);
+    executeSearch(prompt);
+  };
+
   return (
-    <div>
+    <div className="semantic-search-container">
+      {/* Futuristic Header */}
       <div className="page-header">
         <div className="page-title-group">
-          <h1>Semantic Book Search</h1>
+          <div className="hero-tag-pill" style={{ marginBottom: '0.5rem' }}>
+            <span className="pulsing-neon-dot" />
+            <span>NEURAL VECTOR ENGINE • 384-DIMENSIONAL EMBEDDINGS</span>
+          </div>
+          <h1>Semantic Vector Search</h1>
           <p className="page-subtitle">
-            Find books by conceptual meaning, themes, or conversational descriptions
+            Query Athenaeum's academic collection by conceptual meaning, mathematical intuition, or research inquiries.
           </p>
         </div>
       </div>
 
+      {/* Cyber AI Vector Space Explainer & Prompt Discovery */}
       <div className="ai-callout-box">
         <div className="ai-callout-title">
-          <span>AI Vector Space Exploration</span>
+          <span>🧠 Latent Vector Space Exploration</span>
         </div>
-        <p className="ai-disclaimer">
-          Unlike traditional keyword searches, semantic search compares the mathematical meaning of your inquiry against catalogued book embeddings using sentence transformers. You can enter natural language concepts like <em>"how to build autonomous systems"</em> or <em>"modern algebraic geometry with proofs"</em>.
+        <p className="ai-disclaimer" style={{ marginBottom: '0.85rem' }}>
+          Unlike keyword matching, semantic search translates your natural language thoughts into 384-dimensional dense vectors using <code>all-MiniLM-L6-v2</code> and calculates cosine proximity against monograph embeddings.
         </p>
+
+        {/* Discovery Chips */}
+        <div className="discovery-chips-label">
+          <span>⚡ QUICK EXPLORATION CONCEPTS:</span>
+        </div>
+        <div className="discovery-chips-container">
+          {DISCOVERY_PROMPTS.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className="discovery-chip-btn"
+              onClick={() => handleChipClick(item.label)}
+              title={`Explore: ${item.label}`}
+            >
+              <span className="chip-icon">{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <form onSubmit={handleSearch} style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <input
-          type="text"
-          className="form-input"
-          placeholder="Describe a topic, question, or conceptual subject..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          maxLength={500}
-          required
-        />
+      {/* Futuristic Search Form Bar */}
+      <form onSubmit={handleSearch} className="semantic-search-form">
+        <div className="semantic-input-wrap">
+          <span className="semantic-input-icon">🔍</span>
+          <input
+            type="text"
+            className="form-input semantic-search-input"
+            placeholder="Describe a topic, research question, or conceptual subject (e.g. how consensus works in distributed networks)..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            maxLength={500}
+            required
+          />
+          {query && (
+            <button
+              type="button"
+              className="semantic-clear-btn"
+              onClick={() => {
+                setQuery('');
+                setResults(null);
+                setError(null);
+              }}
+              title="Clear search query"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <button
           type="submit"
-          className="btn btn-primary"
+          className="btn btn-primary semantic-submit-btn"
           disabled={loading || !query.trim()}
         >
-          {loading ? 'Searching Vector Space...' : 'Semantic Search'}
+          {loading ? (
+            <>
+              <span className="pulsing-neon-dot" />
+              <span>Projecting Vectors...</span>
+            </>
+          ) : (
+            <>
+              <span>⚡ Vector Search</span>
+            </>
+          )}
         </button>
-        {results !== null && (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              setResults(null);
-              setQuery('');
-              setError(null);
-            }}
-          >
-            Clear
-          </button>
-        )}
       </form>
 
+      {/* 503 Model Unavailable Fallback */}
       {modelUnavailable && (
         <div className="alert alert-warning">
           <div>
@@ -118,29 +176,37 @@ export const SemanticSearch: React.FC<SemanticSearchProps> = ({
         </div>
       )}
 
+      {/* Error Message */}
       {error && (
         <div className="alert alert-error">
           <span>{error}</span>
         </div>
       )}
 
+      {/* Active Loading State */}
       {loading && (
-        <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
-          Computing query embeddings and ranking nearest neighbours...
+        <div className="semantic-loading-card">
+          <div className="semantic-radar-pulse" />
+          <div className="semantic-loading-text">
+            <span>Projecting query into 384-dimensional manifold...</span>
+            <span className="semantic-loading-subtext">Calculating angular cosine similarity across indexed monographs</span>
+          </div>
         </div>
       )}
 
-      {disclaimer && (
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem', fontStyle: 'italic' }}>
-          Note: {disclaimer} (Scores represent directional cosine similarity in high-dimensional embedding space, not probabilities).
+      {/* Cosine Sim Disclaimer */}
+      {disclaimer && !loading && (
+        <div className="semantic-disclaimer-pill">
+          <span>ℹ️ {disclaimer} (Scores represent directional cosine similarity in high-dimensional embedding space, not probabilities).</span>
         </div>
       )}
 
+      {/* Zero Results State */}
       {results !== null && results.length === 0 && !loading && (
         <div className="empty-state">
-          <div className="empty-state-title">No matching conceptual results</div>
+          <div className="empty-state-title">No matching conceptual monographs</div>
           <p className="empty-state-text">
-            No active library books met the similarity threshold for your query. Try rephrasing your conceptual description or use the standard catalogue.
+            No active library books met the similarity threshold for your query. Try exploring one of the suggested concept chips above or check the catalogue.
           </p>
           <button type="button" className="btn btn-secondary" onClick={onGoToCatalogue}>
             Browse Standard Catalogue
@@ -148,52 +214,96 @@ export const SemanticSearch: React.FC<SemanticSearchProps> = ({
         </div>
       )}
 
-      {results && results.length > 0 && (
+      {/* Initial Guide (Before search) */}
+      {results === null && !loading && (
+        <div className="semantic-guide-grid">
+          <div className="semantic-guide-card">
+            <div className="guide-card-icon">⚡</div>
+            <div className="guide-card-title">Dense Neural Embeddings</div>
+            <p className="guide-card-desc">
+              Text sentences are encoded into 384 real-valued floating vectors capturing deep academic semantics beyond literal strings.
+            </p>
+          </div>
+          <div className="semantic-guide-card">
+            <div className="guide-card-icon">📐</div>
+            <div className="guide-card-title">Cosine Similarity Ranking</div>
+            <p className="guide-card-desc">
+              Measures normalized dot products in latent space. A score near 1.0 indicates intense conceptual alignment.
+            </p>
+          </div>
+          <div className="semantic-guide-card">
+            <div className="guide-card-icon">🏛️</div>
+            <div className="guide-card-title">Verified University Corpus</div>
+            <p className="guide-card-desc">
+              Instantly surfaces relevant monographs across Computing, Information Science, Cryptography, and Advanced Mathematics.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Vector Results Grid */}
+      {results && results.length > 0 && !loading && (
         <div className="book-grid">
-          {results.map((book) => (
-            <div
-              key={book.id}
-              className="book-card"
-              onClick={() => onSelectBook(book.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onSelectBook(book.id);
-                }
-              }}
-              aria-label={`View details for ${book.title}`}
-            >
-              <BookCover title={book.title} author={book.author} category={book.category} />
-              <div className="book-card-body">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
+          {results.map((book) => {
+            const similarityPercent = Math.min(100, Math.max(0, Math.round(book.similarity_score * 100)));
+            return (
+              <div
+                key={book.id}
+                className="book-card semantic-result-card"
+                onClick={() => onSelectBook(book.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectBook(book.id);
+                  }
+                }}
+                aria-label={`View details for ${book.title}`}
+              >
+                <BookCover title={book.title} author={book.author} category={book.category} />
+                <div className="book-card-body">
+                  {/* Top Vector Match Indicator */}
+                  <div className="vector-match-header">
+                    <span className="vector-similarity-badge">
+                      ⚡ {similarityPercent}% Vector Match
+                    </span>
+                    <span className="vector-raw-score">
+                      cos: {book.similarity_score.toFixed(3)}
+                    </span>
+                  </div>
+
+                  {/* Similarity Progress Bar */}
+                  <div className="vector-meter-track">
+                    <div
+                      className="vector-meter-bar"
+                      style={{ width: `${similarityPercent}%` }}
+                    />
+                  </div>
+
                   <h3 className="book-card-title">{book.title}</h3>
-                  <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>
-                    Cosine Sim: {book.similarity_score.toFixed(3)}
-                  </span>
-                </div>
-                <div className="book-card-author">{book.author}</div>
-                {book.description && (
-                  <p className="book-card-desc">{book.description}</p>
-                )}
-                <div className="book-card-footer">
-                  <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
-                    {book.category}
-                  </span>
-                  <span
-                    className={`availability-indicator ${
-                      book.available_copies > 0 ? 'in-stock' : 'out-of-stock'
-                    }`}
-                  >
-                    {book.available_copies > 0
-                      ? `${book.available_copies} available`
-                      : 'Checked out'}
-                  </span>
+                  <div className="book-card-author">{book.author}</div>
+                  {book.description && (
+                    <p className="book-card-desc">{book.description}</p>
+                  )}
+                  <div className="book-card-footer">
+                    <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
+                      {book.category}
+                    </span>
+                    <span
+                      className={`availability-indicator ${
+                        book.available_copies > 0 ? 'in-stock' : 'out-of-stock'
+                      }`}
+                    >
+                      {book.available_copies > 0
+                        ? `${book.available_copies} available`
+                        : 'Checked out'}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
