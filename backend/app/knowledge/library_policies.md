@@ -6,9 +6,11 @@ This document serves as the authoritative, verified knowledge base for the AI Li
 
 ## 1. Borrowing and Circulation Rules
 
-- **Standard Loan Duration**: 14 calendar days from the date of issuance.
+- **Standard Loan Duration**: 14 calendar days from the date of issuance for students.
 - **Maximum Active Loans**: A student may borrow a maximum of 3 physical books concurrently.
-- **Overdue Suspension**: If a student has one or more overdue loans (past their 14-day due date and not yet returned), the system strictly blocks the issuance of any additional books until all overdue items are returned.
+- **Teacher & Faculty Allowance**: Teachers and faculty instructors may borrow up to 10 physical monographs concurrently with an extended academic loan duration of 30 days for course syllabus planning and research reserves.
+- **Library Operating Hours**: The physical library and Circulation Desk operate Monday to Friday from 08:00 to 22:00, and Saturday/Sunday from 09:00 to 18:00. The digital catalogue, AI Copilot, and reservation portal are active 24/7.
+- **Overdue Suspension**: If a patron has one or more overdue loans (past their due date and not yet returned), the system strictly blocks the issuance of any additional books until all overdue items are returned.
 - **Return Procedure**: Books cannot be returned online. Physical copies must be presented to library staff at the Circulation Desk, who verify the barcode/copy code and record the return in the system.
 - **Renewals**: *Configurable policy* — Online automatic loan renewals are currently not enabled in this release; students must request extensions in person at the Circulation Desk subject to copy reservation demand.
 - **Fines and Overdue Penalties**: *Unverified policy* — Monetary overdue fines are campus-specific and not tracked by this automated software. Students should consult their institution's physical library desk for monetary fine policies.

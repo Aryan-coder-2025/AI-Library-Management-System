@@ -44,7 +44,15 @@ export async function apiFetch<T>(
       const text = await response.text();
       try {
         const errorJson = JSON.parse(text);
-        errorDetail = errorJson.detail || errorJson.message || text;
+        if (Array.isArray(errorJson.detail)) {
+          errorDetail = errorJson.detail
+            .map((d: any) => (d && typeof d === 'object' && d.msg ? d.msg : String(d)))
+            .join('; ');
+        } else if (typeof errorJson.detail === 'object' && errorJson.detail !== null) {
+          errorDetail = JSON.stringify(errorJson.detail);
+        } else {
+          errorDetail = errorJson.detail || errorJson.message || text;
+        }
       } catch {
         errorDetail = text || errorDetail;
       }

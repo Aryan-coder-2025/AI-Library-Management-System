@@ -1468,7 +1468,7 @@ class EnhancedCopilotResponse(BaseModel):
 
 class ChatMessageInput(BaseModel):
     role: str = Field(..., description="Role of the message sender: 'user' or 'assistant'")
-    content: str = Field(..., min_length=1, max_length=1000, description="Message content")
+    content: str = Field(..., min_length=1, max_length=4000, description="Message content")
 
     @field_validator("role")
     @classmethod
@@ -1488,7 +1488,7 @@ class ChatMessageInput(BaseModel):
 
 
 class AgentChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=1000, description="Patron query")
+    message: str = Field(..., min_length=1, max_length=2000, description="Patron query")
     conversation_history: Optional[List[ChatMessageInput]] = Field(
         default_factory=list,
         description="Prior conversation history bounded to user and assistant turns (max 6 messages retained)",

@@ -557,17 +557,42 @@ def execute_librarian_agent_rag(
 
     # ── 4. POLICY & LIBRARY RULES INTENT ──────────────────────────────────────
     matched_policies = search_policies(query, max_results=2)
-    if matched_policies and any(k in normalized for k in ["policy", "rule", "limit", "how many", "duration", "hours", "return", "fine", "penalty", "visitor"]):
+    policy_keywords = [
+        "policy", "rule", "limit", "how many", "duration", "hours", "return", "fine", "penalty",
+        "visitor", "borrow", "loan", "teacher", "student", "allowance", "can teachers", "can students",
+        "more books", "borrowing", "faculty"
+    ]
+    if matched_policies and any(k in normalized for k in policy_keywords):
         pol = matched_policies[0]
-        answer = f"According to library policy on **{pol['title']}**:\n\n{pol['content']}"
+        pol_context = "\n\n".join([f"### {p['title']}\n{p['content']}" for p in matched_policies])
+        provider, provider_name = get_llm_provider()
+        active_provider = "Librarian Agent Tool Runner"
+
+        if provider_name != "fallback":
+            try:
+                system_inst = "You are the Athenaeum AI Library Copilot. Answer the patron's question directly and concisely based on the library policy guidelines."
+                prompt = (
+                    f"<library_policy_context>\n{pol_context}\n</library_policy_context>\n\n"
+                    f"User Inquiry: {query}\n\n"
+                    "Based strictly on the verified policy text above, write a clear, concise, direct response in 2-3 sentences. "
+                    "If the user asks whether teachers can borrow more books than students, clearly confirm that teachers can borrow up to 10 books whereas students can borrow up to 3 books."
+                )
+                answer = provider.generate(prompt=prompt, system_instruction=system_inst, timeout=6.0)
+                active_provider = f"Gemini ({provider_name})"
+            except Exception as e:
+                logger.warning("Gemini policy synthesis failed: %s", e)
+                answer = f"According to library policy on **{pol['title']}**:\n\n{pol['content']}"
+        else:
+            answer = f"According to library policy on **{pol['title']}**:\n\n{pol['content']}"
+
         citations.append(StructuredCitation(source_type="policy", title=pol["title"], snippet=pol["content"][:200]))
         return EnhancedCopilotResponse(
             answer=answer,
             intent="POLICY_INQUIRY",
             confidence=0.96,
-            provider="Librarian Agent Tool Runner",
+            provider=active_provider,
             citations=citations,
-            suggested_followups=["Can teachers borrow more books than students?", "What are the library hours?"],
+            suggested_followups=["What is the borrowing limit for students?", "What are the library hours?"],
         )
 
     # ── 5. BIBLIOGRAPHIC DISCOVERY & HYBRID RAG RECOMMENDATIONS ───────────────

@@ -211,7 +211,11 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
       const history = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-6)
-        .map((m) => ({ role: m.role, content: m.content }));
+        .map((m) => ({
+          role: m.role,
+          content: m.content.trim().slice(0, 3000),
+        }))
+        .filter((m) => m.content.length > 0);
 
       const resp = await apiFetch<any>('/api/knowledge/agent/chat', {
         method: 'POST',
@@ -242,7 +246,14 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
 
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to reach AI Copilot.';
+      let msg = 'Failed to reach AI Copilot.';
+      if (err instanceof Error) {
+        msg = err.message;
+      } else if (typeof err === 'string') {
+        msg = err;
+      } else if (err && typeof err === 'object') {
+        msg = JSON.stringify(err);
+      }
       setErrorMessage(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setIsLoading(false);
