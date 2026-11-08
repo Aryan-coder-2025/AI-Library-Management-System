@@ -24,10 +24,37 @@ from app.schemas import (
 
 
 def serialize_notification(notification: Notification) -> NotificationResponse:
+    book_id = None
+    book_title = None
+
+    # 1. Check dedup_key for course_reading_list
+    if notification.dedup_key:
+        if notification.dedup_key.startswith("reading_list:"):
+            parts = notification.dedup_key.split(":")
+            if len(parts) >= 3 and parts[2].isdigit():
+                book_id = int(parts[2])
+
+    # 2. Check loan relationship if available
+    if not book_id and getattr(notification, "loan", None):
+        loan = notification.loan
+        if getattr(loan, "copy", None):
+            book_id = loan.copy.book_id
+            if getattr(loan.copy, "book", None):
+                book_title = loan.copy.book.title
+
+    # 3. Extract quoted title from message if book_title not yet found
+    if not book_title and notification.message:
+        import re
+        match = re.search(r"'([^']+)'", notification.message)
+        if match:
+            book_title = match.group(1)
+
     return NotificationResponse(
         id=notification.id,
         user_id=notification.user_id,
         loan_id=notification.loan_id,
+        book_id=book_id,
+        book_title=book_title,
         notification_type=notification.notification_type,
         title=notification.title,
         message=notification.message,

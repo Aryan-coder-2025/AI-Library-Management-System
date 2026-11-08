@@ -13,6 +13,7 @@ interface NavbarProps {
   onOpenCommandPalette?: () => void;
   currentTheme?: 'dark' | 'light';
   onToggleTheme?: () => void;
+  onSelectBook?: (bookId: number) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -26,6 +27,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCommandPalette,
   currentTheme = 'dark',
   onToggleTheme,
+  onSelectBook,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [staffMenuOpen, setStaffMenuOpen] = useState(false);
@@ -247,7 +249,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
 
           {/* Notifications */}
-          {currentUser && <NotificationBell currentUser={currentUser} />}
+          {currentUser && (
+            <NotificationBell
+              currentUser={currentUser}
+              onSelectBook={onSelectBook}
+              onSelectTab={onSelectTab}
+            />
+          )}
 
           {/* Tour Trigger */}
           {currentUser && onOpenTour && (

@@ -9,15 +9,52 @@ import type {
 
 interface NotificationBellProps {
   currentUser: UserProfile;
+  onSelectBook?: (bookId: number) => void;
+  onSelectTab?: (tab: string) => void;
 }
 
-export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser }) => {
+export const NotificationBell: React.FC<NotificationBellProps> = ({
+  currentUser,
+  onSelectBook,
+  onSelectTab,
+}) => {
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleViewBook = async (n: Notification) => {
+    if (!n.is_read) {
+      handleMarkRead(n.id);
+    }
+    setIsOpen(false);
+
+    if (n.book_id && onSelectBook) {
+      onSelectBook(n.book_id);
+      return;
+    }
+
+    const titleMatch = n.book_title || n.message.match(/'([^']+)'/)?.[1];
+    if (titleMatch) {
+      try {
+        const res = await apiFetch<{ items: Array<{ id: number }> }>(
+          `/api/books?search=${encodeURIComponent(titleMatch)}&page=1&page_size=1`
+        );
+        if (res.items && res.items.length > 0 && onSelectBook) {
+          onSelectBook(res.items[0].id);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to resolve book from notification title:', err);
+      }
+    }
+
+    if (onSelectTab) {
+      onSelectTab('catalogue');
+    }
+  };
 
   const fetchUnreadCount = useCallback(async () => {
     try {
@@ -334,7 +371,73 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #A9B2CC)', lineHeight: 1.45 }}>
                       {n.message}
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #77829E)' }}>
+
+                    {/* Interactive Book / Loan Action Links */}
+                    {(isCourseReading || n.book_id || n.book_title || n.message.includes("'")) && (
+                      <button
+                        type="button"
+                        onClick={() => handleViewBook(n)}
+                        style={{
+                          alignSelf: 'flex-start',
+                          marginTop: '0.25rem',
+                          padding: '0.35rem 0.75rem',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(37, 99, 235, 0.45)',
+                          background: 'rgba(37, 99, 235, 0.12)',
+                          color: '#93C5FD',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(37, 99, 235, 0.25)';
+                          e.currentTarget.style.borderColor = '#3B82F6';
+                          e.currentTarget.style.color = '#FFFFFF';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(37, 99, 235, 0.12)';
+                          e.currentTarget.style.borderColor = 'rgba(37, 99, 235, 0.45)';
+                          e.currentTarget.style.color = '#93C5FD';
+                        }}
+                      >
+                        <span>📖</span> View Book in Catalogue & Check Availability →
+                      </button>
+                    )}
+
+                    {(isDueSoon || n.notification_type === 'overdue' || n.notification_type === 'due_soon_reminder') && onSelectTab && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!n.is_read) handleMarkRead(n.id);
+                          setIsOpen(false);
+                          onSelectTab('loans');
+                        }}
+                        style={{
+                          alignSelf: 'flex-start',
+                          marginTop: '0.25rem',
+                          padding: '0.35rem 0.75rem',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(245, 158, 11, 0.45)',
+                          background: 'rgba(245, 158, 11, 0.12)',
+                          color: '#FCD34D',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <span>🔄</span> View My Loans & Self-Service Renewal →
+                      </button>
+                    )}
+
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #77829E)', marginTop: '0.15rem' }}>
                       {new Date(n.created_at).toLocaleString(undefined, {
                         month: 'short',
                         day: 'numeric',

@@ -228,6 +228,7 @@ export const App: React.FC = () => {
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         currentTheme={theme}
         onToggleTheme={toggleTheme}
+        onSelectBook={(bookId) => setSelectedBookId(bookId)}
       />
 
       <main className="main-content">

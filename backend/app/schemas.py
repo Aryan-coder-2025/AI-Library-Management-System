@@ -762,6 +762,8 @@ class NotificationResponse(BaseModel):
     id: int
     user_id: int
     loan_id: Optional[int] = None
+    book_id: Optional[int] = None
+    book_title: Optional[str] = None
     notification_type: str
     title: str
     message: str

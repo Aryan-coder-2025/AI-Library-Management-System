@@ -200,6 +200,8 @@ export interface Notification {
   id: number;
   user_id: number;
   loan_id: number | null;
+  book_id?: number | null;
+  book_title?: string | null;
   notification_type: string;
   title: string;
   message: string;
