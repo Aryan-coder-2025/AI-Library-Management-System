@@ -9,6 +9,7 @@ interface DashboardViewProps {
   onSelectTab: (tab: string) => void;
   onOpenCopilot: () => void;
   onSelectBook: (id: number) => void;
+  onLogout?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -16,6 +17,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onSelectTab,
   onOpenCopilot,
   onSelectBook,
+  onLogout,
 }) => {
   const [activeLoans, setActiveLoans] = useState<Loan[]>([]);
   const [recommendedBooks, setRecommendedBooks] = useState<Book[]>([]);
@@ -180,6 +182,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="hero-micro-sub">
               {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
+            {currentUser && onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                style={{
+                  marginTop: '0.65rem',
+                  padding: '0.3rem 0.75rem',
+                  fontSize: '0.75rem',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(251, 113, 133, 0.4)',
+                  backgroundColor: 'rgba(251, 113, 133, 0.12)',
+                  color: '#FB7185',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Sign out of current research session"
+              >
+                <span>🚪 Sign Out</span>
+              </button>
+            )}
           </div>
         </div>
       </section>

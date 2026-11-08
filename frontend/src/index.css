@@ -228,19 +228,21 @@ p {
 .navbar-container {
   max-width: var(--container-max);
   margin: 0 auto;
-  padding: 0 1.25rem;
+  padding: 0 1rem;
   height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
 }
 
 .navbar-brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   text-decoration: none;
   color: var(--text-primary);
+  flex-shrink: 0;
 }
 
 .navbar-brand-icon {
@@ -280,8 +282,16 @@ p {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
   list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.nav-links::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-button {
@@ -289,9 +299,9 @@ p {
   border: none;
   color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: 0.875rem;
+  font-size: 0.82rem;
   font-weight: 500;
-  padding: 0.5rem 0.85rem;
+  padding: 0.45rem 0.65rem;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -299,6 +309,7 @@ p {
   align-items: center;
   gap: 0.35rem;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-button:hover {
@@ -315,7 +326,40 @@ p {
 .navbar-user-section {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.6rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.user-profile-menu-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.btn-signout {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(251, 113, 133, 0.45);
+  background: rgba(251, 113, 133, 0.14);
+  color: #FB7185;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-signout:hover {
+  background: rgba(251, 113, 133, 0.28);
+  border-color: #FB7185;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(251, 113, 133, 0.35);
 }
 
 .user-badge {
@@ -326,9 +370,10 @@ p {
 }
 
 .user-name {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .user-role-tag {
@@ -1934,6 +1979,30 @@ p {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1366px) {
+  .navbar-brand-subtitle {
+    display: none;
+  }
+  .navbar-search-launcher {
+    min-width: 140px;
+    max-width: 160px;
+  }
+  .copilot-nav-trigger {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1100px) {
+  .navbar-search-launcher .search-placeholder {
+    display: none;
+  }
+  .navbar-search-launcher {
+    min-width: unset;
+    padding: 0.35rem 0.55rem;
+  }
 }
 
 /* ── Global Command Palette Modal ─────────────────────────────────────── */

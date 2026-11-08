@@ -367,6 +367,7 @@ export const App: React.FC = () => {
                 onSelectTab={setActiveTab}
                 onOpenCopilot={() => setIsCopilotOpen(true)}
                 onSelectBook={(id) => setSelectedBookId(id)}
+                onLogout={handleLogout}
               />
             )}
 
@@ -460,6 +461,7 @@ export const App: React.FC = () => {
         onToggleTheme={toggleTheme}
         currentTheme={theme}
         currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* First-Time Guided Assistant Tour Modal */}

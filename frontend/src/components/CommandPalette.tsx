@@ -22,6 +22,7 @@ interface CommandPaletteProps {
   onToggleTheme: () => void;
   currentTheme: 'dark' | 'light';
   currentUser: UserProfile | null;
+  onLogout?: () => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -34,6 +35,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onToggleTheme,
   currentTheme,
   currentUser,
+  onLogout,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -269,6 +271,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             },
             keywords: ['profile', 'account', 'password', 'security', 'email', 'settings'],
           },
+          ...(onLogout
+            ? [
+                {
+                  id: 'pref-logout',
+                  category: 'Preferences' as const,
+                  title: 'Sign Out (Logout)',
+                  subtitle: `Sign out of ${currentUser.full_name} (${currentUser.role}) session`,
+                  icon: '🚪',
+                  action: () => {
+                    onLogout();
+                    onClose();
+                  },
+                  keywords: ['logout', 'signout', 'exit', 'leave', 'disconnect', 'switch user', 'log out'],
+                },
+              ]
+            : []),
           {
             id: 'pref-tour',
             category: 'Preferences' as const,

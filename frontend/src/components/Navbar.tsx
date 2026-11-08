@@ -286,11 +286,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-signout btn-sm"
                 onClick={onLogout}
                 title="Sign out of Athenaeum"
               >
-                Sign Out
+                <span>🚪 Sign Out</span>
               </button>
             </div>
           ) : (
