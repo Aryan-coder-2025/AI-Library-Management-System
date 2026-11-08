@@ -70,7 +70,19 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
   const [reserveNotes, setReserveNotes] = useState<string>('');
   const [savingReserve, setSavingReserve] = useState<boolean>(false);
 
+  // Live Toast & Export Syllabus Modal
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showExportModal, setShowExportModal] = useState<boolean>(false);
+  const [copyFeedback, setCopyFeedback] = useState<boolean>(false);
+
   const canManage = currentUser?.role === 'teacher' || currentUser?.role === 'librarian';
+
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
 
   useEffect(() => {
     fetchCourses();
@@ -199,6 +211,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
 
   const handleAddReadingListItem = async (bookId: number) => {
     if (!selectedCourse) return;
+    const addedBook = searchResults.find((b) => b.id === bookId);
     try {
       setAddingBookId(bookId);
       await apiFetch(`/api/courses/${selectedCourse.id}/reading-list`, {
@@ -216,6 +229,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
       setItemNotes('');
       fetchCourseDetails(selectedCourse.id);
       fetchCourses();
+      setToastMessage(`✓ "${addedBook?.title || 'Book'}" saved live to ${selectedCourse.code} syllabus.`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error adding monograph to reading list.';
       alert(msg.replace(/^\d+:\s*/, ''));
@@ -226,12 +240,14 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
 
   const handleRemoveReadingListItem = async (itemId: number) => {
     if (!selectedCourse || !confirm('Remove this monograph from course reading list?')) return;
+    const itemToRemove = readingList.find((i) => i.id === itemId);
     try {
       await apiFetch(`/api/courses/${selectedCourse.id}/reading-list/${itemId}`, {
         method: 'DELETE',
       });
       setReadingList((prev) => prev.filter((i) => i.id !== itemId));
       fetchCourses();
+      setToastMessage(`Removed "${itemToRemove?.book_title || 'item'}" from ${selectedCourse.code} syllabus.`);
     } catch (err) {
       console.error('Failed to remove item:', err);
     }
@@ -252,11 +268,13 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
         }),
       });
 
+      const copyCode = reserveCopyId.trim();
       setShowReserveModal(false);
       setReserveCopyId('');
       setReserveNotes('');
       fetchCourseDetails(selectedCourse.id);
       fetchCourses();
+      setToastMessage(`✓ Copy #${copyCode} designated as ${reserveType.replace('_', '-')} course reserve.`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error designating course reserve.';
       alert(msg.replace(/^\d+:\s*/, ''));
@@ -274,9 +292,72 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
       setReserves((prev) => prev.filter((r) => r.id !== reserveId));
       fetchCourseDetails(selectedCourse.id);
       fetchCourses();
+      setToastMessage(`Released reserve copy from circulation hold.`);
     } catch (err) {
       console.error('Failed to remove reserve:', err);
     }
+  };
+
+  const generateSyllabusMarkdown = () => {
+    if (!selectedCourse) return '';
+    let md = `# ${selectedCourse.code}: ${selectedCourse.title}\n`;
+    md += `**Academic Discipline:** ${selectedCourse.department} | **Term:** ${selectedCourse.term}\n`;
+    md += `**Instructor:** ${selectedCourse.instructor_name || 'Faculty'}\n\n`;
+    if (selectedCourse.description) {
+      md += `${selectedCourse.description}\n\n`;
+    }
+    md += `## Required & Recommended Library Course Readings\n\n`;
+    if (readingList.length === 0) {
+      md += `*No assigned monographs at this time.*\n`;
+    } else {
+      readingList.forEach((item, idx) => {
+        const tag = item.requirement_type ? item.requirement_type.toUpperCase() : 'REQUIRED';
+        md += `${idx + 1}. **${item.book_title}**\n`;
+        md += `   - Author: ${item.book_author || 'N/A'}\n`;
+        if (item.book_isbn) md += `   - ISBN: ${item.book_isbn}\n`;
+        md += `   - Syllabus Requirement: ${tag}\n`;
+        md += `   - Library Shelf Status: ${item.available_copies_count ?? 0} of ${item.total_copies_count ?? 0} copies currently on shelf\n`;
+        if (item.notes) md += `   - Syllabus Assignment: ${item.notes}\n`;
+        md += `\n`;
+      });
+    }
+
+    if (reserves.length > 0) {
+      md += `## Active Short-Term Course Reserves (CIRC-06 Policy)\n\n`;
+      reserves.forEach((res, idx) => {
+        md += `${idx + 1}. **${res.book_title || `Copy #${res.copy_id}`}** (Copy #${res.copy_id})\n`;
+        md += `   - Policy: ${res.reserve_type.replace('_', '-')} Front Desk Checkout Only\n`;
+        if (res.notes) md += `   - Notes: ${res.notes}\n`;
+        md += `\n`;
+      });
+    }
+
+    return md;
+  };
+
+  const handleCopyToClipboard = async () => {
+    const text = generateSyllabusMarkdown();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2500);
+    } catch (e) {
+      console.error('Failed to copy to clipboard', e);
+    }
+  };
+
+  const handleDownloadMarkdown = () => {
+    if (!selectedCourse) return;
+    const text = generateSyllabusMarkdown();
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${selectedCourse.code}_Syllabus_Reading_List.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -437,12 +518,30 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                 }}
               >
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
                     <span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.35)', color: '#38BDF8', fontFamily: 'var(--font-mono, monospace)', fontWeight: 800, fontSize: '0.78rem' }}>
                       {selectedCourse.code}
                     </span>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted, #77829E)' }}>
                       • {selectedCourse.department} • {selectedCourse.term}
+                    </span>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        padding: '0.15rem 0.55rem',
+                        borderRadius: '12px',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                        color: '#6EE7B7',
+                      }}
+                      title="All course reading list and reserve changes are automatically persisted in real-time"
+                    >
+                      <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#10B981', boxShadow: '0 0 6px #10B981' }} />
+                      Live Synced
                     </span>
                   </div>
                   <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', margin: 0 }}>
@@ -459,7 +558,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                 </div>
 
                 {canManage && (
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={openAddBookModal}
@@ -497,6 +596,28 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                       }}
                     >
                       <span>🔒</span> Designate Reserve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={readingList.length === 0}
+                      onClick={() => setShowExportModal(true)}
+                      style={{
+                        padding: '0.55rem 0.95rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(139, 92, 246, 0.45)',
+                        background: 'rgba(139, 92, 246, 0.12)',
+                        color: '#C4B5FD',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        cursor: readingList.length === 0 ? 'not-allowed' : 'pointer',
+                        opacity: readingList.length === 0 ? 0.5 : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                      }}
+                      title="Export syllabus citations and bibliography for Canvas, LMS, or printing"
+                    >
+                      <span>📄</span> Export Reading List
                     </button>
                   </div>
                 )}
@@ -612,7 +733,23 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                             )}
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                            {item.requirement_type === 'required' && (item.available_copies_count ?? 0) <= 1 && (item.total_copies_count ?? 0) > 0 && (
+                              <span
+                                style={{
+                                  padding: '0.3rem 0.6rem',
+                                  borderRadius: '8px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  background: 'rgba(245, 158, 11, 0.12)',
+                                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                                  color: '#FCD34D',
+                                }}
+                                title="High-demand required monograph with 1 or fewer copies on shelf. Recommended to designate a short-term desk reserve."
+                              >
+                                ⚠️ Low Shelf Stock
+                              </span>
+                            )}
                             <span
                               style={{
                                 padding: '0.35rem 0.75rem',
@@ -1257,6 +1394,166 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Floating Modal: Export Course Reading List */}
+      {showExportModal && selectedCourse && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(5, 7, 15, 0.82)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={() => setShowExportModal(false)}
+        >
+          <div
+            style={{
+              background: '#0B0F19',
+              border: '1px solid var(--border-medium, #29334F)',
+              borderRadius: '16px',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7)',
+              width: '100%',
+              maxWidth: '680px',
+              maxHeight: '88vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-medium, #29334F)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <span>📄</span> Export Course Reading List
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted, #77829E)', marginTop: '0.2rem' }}>
+                  {selectedCourse.code}: {selectedCourse.title} • Formatted for Canvas, Blackboard, or syllabus printouts.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted, #77829E)',
+                  fontSize: '1.2rem',
+                  cursor: 'pointer',
+                  padding: '0.2rem 0.5rem',
+                  borderRadius: '4px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Preview Body */}
+            <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto' }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #A0AEC0)' }}>
+                You can copy the generated syllabus bibliography to your clipboard or download it as a markdown file for your course pack.
+              </div>
+
+              <pre
+                style={{
+                  padding: '1rem',
+                  borderRadius: '10px',
+                  background: 'rgba(15, 23, 42, 0.65)',
+                  border: '1px solid var(--border-medium, #29334F)',
+                  fontFamily: 'var(--font-mono, monospace)',
+                  fontSize: '0.78rem',
+                  lineHeight: 1.5,
+                  color: '#E2E8F0',
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: '360px',
+                  overflowY: 'auto',
+                }}
+              >
+                {generateSyllabusMarkdown()}
+              </pre>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-medium, #29334F)' }}>
+                <span style={{ fontSize: '0.75rem', color: copyFeedback ? '#10B981' : 'var(--text-muted, #77829E)', fontWeight: 600 }}>
+                  {copyFeedback ? '✓ Copied to clipboard!' : `${readingList.length} monograph(s) included`}
+                </span>
+
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={handleDownloadMarkdown}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                  >
+                    <span>📥</span> Download .md
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyToClipboard}
+                    className="btn btn-primary btn-sm"
+                    style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                  >
+                    <span>📋</span> {copyFeedback ? 'Copied!' : 'Copy to Clipboard'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Live-Save Toast Notification */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: 'rgba(15, 23, 42, 0.95)',
+            border: '1px solid #10B981',
+            borderRadius: '10px',
+            padding: '0.75rem 1.25rem',
+            color: '#F5F6FF',
+            fontSize: '0.84rem',
+            fontWeight: 600,
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.65rem',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <span style={{ color: '#10B981', fontSize: '1.1rem' }}>✓</span>
+          <span>{toastMessage}</span>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#94A3B8',
+              cursor: 'pointer',
+              marginLeft: '0.5rem',
+              fontSize: '0.85rem',
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>
