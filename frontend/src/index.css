@@ -1299,7 +1299,7 @@ p {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #1e3a8a;
+  background: var(--color-primary);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -1308,6 +1308,7 @@ p {
   font-weight: 700;
   flex-shrink: 0;
   margin-top: 2px;
+  box-shadow: 0 0 8px var(--glow-primary);
 }
 
 .copilot-bubble-content {
@@ -1318,24 +1319,24 @@ p {
 }
 
 .bubble-user .copilot-bubble-text {
-  background: #1e3a8a;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
   color: #ffffff;
   padding: 0.65rem 0.9rem;
   border-radius: 14px 14px 2px 14px;
   font-size: 0.86rem;
   line-height: 1.45;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 8px var(--glow-primary);
 }
 
 .bubble-assistant .copilot-bubble-text {
-  background: #ffffff;
-  color: var(--text-main);
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
   padding: 0.75rem 0.95rem;
   border-radius: 14px 14px 14px 2px;
   font-size: 0.86rem;
   line-height: 1.5;
-  border: 1px solid var(--border-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
 }
 
 .copilot-bubble-timestamp {
@@ -1358,11 +1359,11 @@ p {
 }
 
 .copilot-book-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
   border-radius: 8px;
   padding: 0.65rem 0.8rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -1370,8 +1371,8 @@ p {
 }
 
 .copilot-book-card:hover {
-  border-color: #93c5fd;
-  box-shadow: 0 3px 8px -1px rgba(37, 99, 235, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 12px var(--glow-primary);
 }
 
 .copilot-book-card-main {
@@ -1383,13 +1384,13 @@ p {
 .copilot-book-card-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-primary);
   line-height: 1.35;
 }
 
 .copilot-book-card-author {
   font-size: 0.74rem;
-  color: #64748b;
+  color: var(--text-secondary);
   line-height: 1.3;
 }
 
@@ -1400,7 +1401,7 @@ p {
   gap: 0.5rem;
   margin-top: 0.15rem;
   padding-top: 0.35rem;
-  border-top: 1px dashed #f1f5f9;
+  border-top: 1px dashed var(--border-subtle);
 }
 
 .copilot-avail-badge {
@@ -1413,42 +1414,42 @@ p {
 }
 
 .copilot-avail-badge.badge-avail {
-  background: #dcfce7;
-  color: #15803d;
-  border: 1px solid #bbf7d0;
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
 }
 
 .copilot-avail-badge.badge-borrowed {
-  background: #fee2e2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
 }
 
 .copilot-view-book-btn {
   font-size: 0.74rem !important;
   padding: 0.22rem 0.6rem !important;
   font-weight: 600;
-  color: #1e40af !important;
-  background: #eff6ff !important;
-  border: 1px solid #bfdbfe !important;
+  color: var(--color-primary) !important;
+  background: var(--bg-surface-elevated) !important;
+  border: 1px solid var(--border-medium) !important;
   border-radius: 4px !important;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .copilot-view-book-btn:hover {
-  background: #dbeafe !important;
-  border-color: #93c5fd !important;
-  color: #1d4ed8 !important;
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: #ffffff !important;
 }
 
 /* Grounded Policy & Loan Records */
 .copilot-sources-block {
-  margin-top: 0.35rem;
-  padding: 0.45rem 0.6rem;
-  background: #f1f5f9;
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg-surface-elevated);
   border-radius: var(--radius-sm);
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--border-medium);
 }
 
 .copilot-sources-label {
@@ -1456,45 +1457,50 @@ p {
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-bottom: 0.35rem;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.4rem;
 }
 
 .copilot-sources-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .copilot-source-chip {
   font-size: 0.74rem;
-  padding: 0.22rem 0.5rem;
-  border-radius: 4px;
+  padding: 0.28rem 0.6rem;
+  border-radius: 6px;
   text-align: left;
-  border: none;
   cursor: default;
   display: inline-flex;
   align-items: center;
-  background: #ffffff;
-  color: var(--text-main);
-  border: 1px solid var(--border-color);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  border: 1px solid var(--border-medium);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.copilot-source-chip:hover {
+  background: var(--bg-hover);
+  border-color: var(--color-primary);
 }
 
 /* Follow-up Chips */
 .copilot-followups-block {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.35rem;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
 }
 
 .copilot-followup-pill {
   font-size: 0.74rem;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #1e3a8a;
-  padding: 0.3rem 0.65rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  color: var(--color-secondary-violet);
+  padding: 0.35rem 0.75rem;
   border-radius: 9999px;
   cursor: pointer;
   text-align: left;
@@ -1502,9 +1508,9 @@ p {
 }
 
 .copilot-followup-pill:hover {
-  background: #eff6ff;
-  border-color: #3b82f6;
-  color: #1d4ed8;
+  background: var(--color-accent-subtle);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 /* Thinking Indicator */
@@ -1512,16 +1518,16 @@ p {
   display: flex;
   align-items: center;
   padding: 0.5rem 0.8rem;
-  background: #ffffff;
+  background: var(--bg-surface-elevated);
   border-radius: 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-subtle);
 }
 
 .copilot-thinking-indicator span:nth-child(1),
 .copilot-thinking-indicator span:nth-child(2),
 .copilot-thinking-indicator span:nth-child(3) {
   animation: copilotDotBlink 1.2s infinite ease-in-out;
-  color: #2563eb;
+  color: var(--color-primary);
   font-size: 1.2rem;
   line-height: 1;
 }
@@ -2553,10 +2559,33 @@ p {
   border: 1px dashed var(--border-medium) !important;
 }
 
-.copilot-followup-pill {
-  background: var(--bg-surface) !important;
+.copilot-source-chip {
+  background: var(--bg-subtle) !important;
+  color: var(--text-primary) !important;
   border: 1px solid var(--border-medium) !important;
-  color: var(--color-primary) !important;
+}
+
+.copilot-source-chip:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--color-primary) !important;
+}
+
+.copilot-view-book-btn {
+  color: var(--color-secondary-violet) !important;
+  background: var(--bg-subtle) !important;
+  border: 1px solid var(--border-medium) !important;
+}
+
+.copilot-view-book-btn:hover {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: #ffffff !important;
+}
+
+.copilot-followup-pill {
+  background: var(--bg-subtle) !important;
+  border: 1px solid var(--border-medium) !important;
+  color: var(--color-secondary-violet) !important;
   transition: all 0.15s ease;
 }
 
