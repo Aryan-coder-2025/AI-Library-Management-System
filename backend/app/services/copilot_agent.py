@@ -236,6 +236,60 @@ def execute_librarian_agent_rag(
             suggested_followups=["What are my active loans?", "Where is Seat S-01 located?", "What is the borrowing limit?"],
         )
 
+    # Conversational / General Chat Intent
+    conversational_patterns = [
+        "talk normally", "speak normally", "tell me something", "talk to me", "chat with me",
+        "can you talk", "can we talk", "can we chat", "how are you", "how are you doing",
+        "how's it going", "hows it going", "what's up", "whats up", "who created you",
+        "who made you", "are you human", "are you an ai", "are you a bot", "are you real",
+        "tell me a joke", "tell me a fact", "what is your name", "what's your name",
+        "can you help me with something else", "just chatting", "say something",
+    ]
+    if any(p in normalized for p in conversational_patterns):
+        provider, provider_name = get_llm_provider()
+        suggested_followups = [
+            "Find books on Machine Learning",
+            "What are my active loans?",
+            "Where can I find a quiet study space?",
+        ]
+        if provider_name != "fallback":
+            try:
+                system_inst = (
+                    "You are the Athenaeum AI Library Copilot, a friendly, intelligent, and articulate academic AI companion. "
+                    "The student is speaking with you casually. Respond in a warm, natural, engaging, and human-like tone in 2-3 sentences. "
+                    "Reassure them that you can converse naturally about academic concepts, research, library holdings, study spaces, or general questions."
+                )
+                prompt = f"The student '{current_user.full_name}' says: '{query}'. Reply directly and naturally to their remark."
+                answer = provider.generate(prompt=prompt, system_instruction=system_inst, timeout=6.0)
+                active_provider = f"Gemini ({provider_name})"
+            except Exception as e:
+                logger.warning("Gemini conversational reply failed: %s", e)
+                answer = (
+                    f"Yes, absolutely, {current_user.full_name}! I can talk normally with you. "
+                    "While I have direct access to our verified catalog holdings, study spaces, and borrowing regulations, "
+                    "I'm here to have natural conversations, brainstorm research topics, or answer any questions you have. "
+                    "What's on your mind today?"
+                )
+                active_provider = "Librarian Agent Tool Runner"
+        else:
+            answer = (
+                f"Yes, absolutely, {current_user.full_name}! I can talk normally with you. "
+                "While I have direct access to our verified catalog holdings, study spaces, and borrowing regulations, "
+                "I'm here to have natural conversations, brainstorm research topics, or answer any questions you have. "
+                "What's on your mind today?"
+            )
+            active_provider = "Librarian Agent Tool Runner"
+
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="CONVERSATIONAL",
+            confidence=0.98,
+            provider=active_provider,
+            tool_calls=[],
+            citations=[],
+            suggested_followups=suggested_followups,
+        )
+
     # ── 1. PATRON LOANS INTENT ────────────────────────────────────────────────
     # Strict patron isolation: always derived from authenticated current_user
     if any(k in normalized for k in [

@@ -10,6 +10,102 @@ interface AICopilotDrawerProps {
   onSelectBook: (bookId: number) => void;
 }
 
+const getContextualLoadingStages = (query: string): string[] => {
+  const q = query.toLowerCase();
+
+  // 1. Conversational, greetings, meta & casual chat
+  if (
+    /^(hi|hello|hey|yo|greetings|good\s*(morning|afternoon|evening|day)|sup)\b/.test(q) ||
+    q.includes('talk normally') ||
+    q.includes('speak normally') ||
+    q.includes('tell me something') ||
+    q.includes('talk to me') ||
+    q.includes('who are you') ||
+    q.includes('how are you') ||
+    q.includes('can you talk') ||
+    q.includes('can we chat') ||
+    q.includes('chat with me') ||
+    q.includes('are you human') ||
+    q.includes('are you real') ||
+    q.includes('are you an ai') ||
+    q.includes('joke') ||
+    q.includes('story') ||
+    q.includes('what is your name')
+  ) {
+    return [
+      'Thinking...',
+      'Formulating response...',
+      'Connecting with Gemini AI...',
+    ];
+  }
+
+  // 2. Study Spaces & Wayfinding
+  if (
+    q.includes('seat') ||
+    q.includes('room') ||
+    q.includes('floor') ||
+    q.includes('space') ||
+    q.includes('desk') ||
+    q.includes('wayfinding') ||
+    q.includes('where is') ||
+    q.includes('locate') ||
+    q.includes('pod')
+  ) {
+    return [
+      'Consulting floor plan directory...',
+      'Checking live seat occupancy...',
+      'Synthesizing directional guidance...',
+    ];
+  }
+
+  // 3. Loans, Borrowing & Policies
+  if (
+    q.includes('loan') ||
+    q.includes('due') ||
+    q.includes('borrow') ||
+    q.includes('return') ||
+    q.includes('renew') ||
+    q.includes('fine') ||
+    q.includes('penalty') ||
+    q.includes('policy') ||
+    q.includes('rule') ||
+    q.includes('hours') ||
+    q.includes('limit')
+  ) {
+    return [
+      'Checking circulation records...',
+      'Reviewing borrowing policies...',
+      'Synthesizing loan regulations...',
+    ];
+  }
+
+  // 4. Books, Monographs, Authors & Reading Lists
+  if (
+    q.includes('book') ||
+    q.includes('author') ||
+    q.includes('monograph') ||
+    q.includes('read') ||
+    q.includes('syllabus') ||
+    q.includes('title') ||
+    q.includes('edition') ||
+    q.includes('isbn') ||
+    q.includes('recommend')
+  ) {
+    return [
+      'Searching library holdings...',
+      'Checking copy shelf availability...',
+      'Synthesizing recommendations...',
+    ];
+  }
+
+  // 5. Default General Inquiry
+  return [
+    'Analyzing inquiry with Gemini AI...',
+    'Consulting academic intelligence...',
+    'Synthesizing verified response...',
+  ];
+};
+
 export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   currentUser,
   isOpen,
@@ -43,12 +139,20 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
 
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<string>('Thinking...');
   const [lastProvider, setLastProvider] = useState<string>('auto');
   const [lastIsFallback, setLastIsFallback] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const stageTimersRef = useRef<NodeJS.Timeout[]>([]);
+
+  useEffect(() => {
+    return () => {
+      stageTimersRef.current.forEach(clearTimeout);
+    };
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -87,6 +191,21 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
     setInputMessage('');
     setIsLoading(true);
     setErrorMessage(null);
+
+    // Dynamic contextual loading stages
+    stageTimersRef.current.forEach(clearTimeout);
+    stageTimersRef.current = [];
+    const stages = getContextualLoadingStages(text);
+    setLoadingStatus(stages[0]);
+
+    if (stages[1]) {
+      const t1 = setTimeout(() => setLoadingStatus(stages[1]), 750);
+      stageTimersRef.current.push(t1);
+    }
+    if (stages[2]) {
+      const t2 = setTimeout(() => setLoadingStatus(stages[2]), 1700);
+      stageTimersRef.current.push(t2);
+    }
 
     try {
       const history = messages
@@ -127,6 +246,8 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
       setErrorMessage(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setIsLoading(false);
+      stageTimersRef.current.forEach(clearTimeout);
+      stageTimersRef.current = [];
     }
   };
 
@@ -345,7 +466,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                     <div className="copilot-dot" />
                     <div className="copilot-dot" />
                     <span className="copilot-thinking-label">
-                      Retrieving library records...
+                      {loadingStatus}
                     </span>
                   </div>
                 </div>

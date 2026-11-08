@@ -420,4 +420,29 @@ def test_agent_conversational_thanks_and_help(ai_env: dict):
     assert r_help.json()["intent"] == "HELP"
 
 
+def test_agent_conversational_chat_and_natural_dialogue(ai_env: dict):
+    """Verifies natural conversational inquiries return conversational responses instead of catalog search."""
+    client = TestClient(app)
+    auth = auth_headers(ai_env["student"])
+
+    queries = [
+        "ok tell me something can you talk normally with me",
+        "can you talk to me?",
+        "how are you doing today?",
+        "who created you?",
+    ]
+    for q in queries:
+        r = client.post(
+            "/api/knowledge/agent/chat",
+            json={"message": q},
+            headers=auth["headers"],
+            cookies=auth["cookies"],
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["intent"] == "CONVERSATIONAL"
+        assert len(data.get("book_cards") or []) == 0
+        assert len(data["answer"]) > 15
+
+
 
