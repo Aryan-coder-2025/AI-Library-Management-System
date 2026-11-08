@@ -41,6 +41,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
   const [totalSearchCount, setTotalSearchCount] = useState<number>(0);
   const [totalSearchPages, setTotalSearchPages] = useState<number>(1);
   const [searching, setSearching] = useState<boolean>(false);
+  const [isPaginating, setIsPaginating] = useState<boolean>(false);
   const [hasSearched, setHasSearched] = useState<boolean>(false);
   const [reqType, setReqType] = useState<'required' | 'recommended' | 'supplementary'>('required');
   const [itemNotes, setItemNotes] = useState<string>('');
@@ -147,9 +148,18 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
     }
   };
 
-  const handleSearchCatalogue = async (page: number = 1, overrideCat?: string, overrideQ?: string) => {
+  const handleSearchCatalogue = async (
+    page: number = 1,
+    overrideCat?: string,
+    overrideQ?: string,
+    isPaginationClick: boolean = false
+  ) => {
     try {
-      setSearching(true);
+      if (isPaginationClick) {
+        setIsPaginating(true);
+      } else {
+        setSearching(true);
+      }
       setHasSearched(true);
       const cat = overrideCat !== undefined ? overrideCat : selectedCategory;
       const q = overrideQ !== undefined ? overrideQ : searchQuery;
@@ -171,6 +181,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
       setTotalSearchPages(1);
     } finally {
       setSearching(false);
+      setIsPaginating(false);
     }
   };
 
@@ -955,7 +966,6 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search title, author, or keyword..."
                   className="form-input"
-                  autoFocus
                 />
                 <select
                   value={selectedCategory}
@@ -974,9 +984,9 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                 </select>
                 <button
                   type="submit"
-                  disabled={searching}
+                  disabled={searching || isPaginating}
                   className="btn btn-primary"
-                  style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                  style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', minWidth: '72px' }}
                 >
                   {searching ? '...' : 'Search'}
                 </button>
@@ -1057,10 +1067,6 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                 ) : (
                   <div
                     style={{
-                      opacity: searching ? 0.55 : 1,
-                      filter: searching ? 'grayscale(20%)' : 'none',
-                      transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease',
-                      pointerEvents: searching ? 'none' : 'auto',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '0.5rem',
@@ -1108,20 +1114,20 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border-medium, #29334F)' }}>
                         <button
                           type="button"
-                          disabled={searchPage <= 1 || searching}
-                          onClick={() => handleSearchCatalogue(searchPage - 1)}
+                          disabled={searchPage <= 1 || searching || isPaginating}
+                          onClick={() => handleSearchCatalogue(searchPage - 1, undefined, undefined, true)}
                           className="btn btn-secondary btn-sm"
                           style={{ fontSize: '0.72rem' }}
                         >
                           ← Previous
                         </button>
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted, #77829E)' }}>
-                          {searching ? '⏳ Updating holdings...' : `Page ${searchPage} of ${totalSearchPages} (${totalSearchCount} monographs)`}
+                          Page {searchPage} of {totalSearchPages} ({totalSearchCount} monographs)
                         </span>
                         <button
                           type="button"
-                          disabled={searchPage >= totalSearchPages || searching}
-                          onClick={() => handleSearchCatalogue(searchPage + 1)}
+                          disabled={searchPage >= totalSearchPages || searching || isPaginating}
+                          onClick={() => handleSearchCatalogue(searchPage + 1, undefined, undefined, true)}
                           className="btn btn-secondary btn-sm"
                           style={{ fontSize: '0.72rem' }}
                         >

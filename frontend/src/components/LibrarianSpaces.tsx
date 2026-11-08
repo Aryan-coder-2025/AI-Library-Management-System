@@ -301,14 +301,7 @@ export const LibrarianSpaces: React.FC = () => {
         ) : reservations.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No reservations found.</div>
         ) : (
-          <div
-            className="table-responsive"
-            style={{
-              opacity: loading ? 0.55 : 1,
-              transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              pointerEvents: loading ? 'none' : 'auto',
-            }}
-          >
+          <div className="table-responsive">
             <table className="table" style={{ width: '100%', fontSize: '0.875rem' }}>
               <thead>
                 <tr>
@@ -397,7 +390,7 @@ export const LibrarianSpaces: React.FC = () => {
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              disabled={page <= 1}
+              disabled={page <= 1 || loading}
             >
               Previous
             </button>
@@ -408,7 +401,7 @@ export const LibrarianSpaces: React.FC = () => {
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-              disabled={page >= totalPages}
+              disabled={page >= totalPages || loading}
             >
               Next
             </button>

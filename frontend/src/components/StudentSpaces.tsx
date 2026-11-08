@@ -311,9 +311,6 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
                 gap: '1.25rem',
-                opacity: loading ? 0.55 : 1,
-                transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                pointerEvents: loading ? 'none' : 'auto',
               }}
             >
               {reservations.map((res) => {
@@ -414,7 +411,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
                 type="button"
                 className="btn btn-secondary btn-sm"
                 onClick={() => setPage((p) => Math.max(p - 1, 1))}
-                disabled={page <= 1}
+                disabled={page <= 1 || loading}
               >
                 Previous
               </button>
@@ -425,7 +422,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
                 type="button"
                 className="btn btn-secondary btn-sm"
                 onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-                disabled={page >= totalPages}
+                disabled={page >= totalPages || loading}
               >
                 Next
               </button>

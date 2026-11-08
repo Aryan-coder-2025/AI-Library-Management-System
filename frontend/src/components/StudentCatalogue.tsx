@@ -224,23 +224,11 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
           )}
         </div>
       ) : (
-        <div
-          style={{
-            opacity: loading ? 0.55 : 1,
-            filter: loading ? 'grayscale(15%)' : 'none',
-            transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease',
-            pointerEvents: loading ? 'none' : 'auto',
-          }}
-        >
+        <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
               Showing {books.length} of {totalItems} titles {submittedQuery && `for "${submittedQuery}" (${searchMode})`}
             </span>
-            {loading && (
-              <span style={{ fontSize: '0.8rem', color: 'var(--brand-secondary, #38BDF8)', fontWeight: 600 }}>
-                ⏳ Updating catalogue...
-              </span>
-            )}
           </div>
 
           <div className="book-grid">
@@ -317,7 +305,7 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  disabled={page <= 1}
+                  disabled={page <= 1 || loading}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   Previous
@@ -325,7 +313,7 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  disabled={page >= totalPages}
+                  disabled={page >= totalPages || loading}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
                   Next

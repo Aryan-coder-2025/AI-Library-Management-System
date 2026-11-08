@@ -373,16 +373,9 @@ export const LibrarianCatalogue: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div
-          style={{
-            opacity: loading ? 0.55 : 1,
-            transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            pointerEvents: loading ? 'none' : 'auto',
-          }}
-        >
+        <div>
           <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Showing {books.length} of {totalCount} records</span>
-            {loading && <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>⏳ Updating records...</span>}
           </div>
 
           <div className="table-responsive">
@@ -493,7 +486,7 @@ export const LibrarianCatalogue: React.FC = () => {
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  disabled={page <= 1}
+                  disabled={page <= 1 || loading}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   Previous
@@ -501,7 +494,7 @@ export const LibrarianCatalogue: React.FC = () => {
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  disabled={page >= totalPages}
+                  disabled={page >= totalPages || loading}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
                   Next
