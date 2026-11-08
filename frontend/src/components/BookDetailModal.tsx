@@ -292,29 +292,93 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 )}
 
                 {!recsLoading && recs.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(215px, 1fr))', gap: '0.85rem' }}>
                     {recs.map((rec) => (
                       <div
                         key={rec.id}
                         style={{
                           border: '1px solid var(--border-subtle)',
                           borderRadius: 'var(--radius-md)',
-                          padding: '0.75rem',
+                          padding: '0.85rem',
                           backgroundColor: 'var(--bg-subtle)',
                           cursor: onSelectBook ? 'pointer' : 'default',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          minHeight: '136px',
+                          overflow: 'hidden',
+                          boxSizing: 'border-box',
                         }}
                         onClick={() => onSelectBook && onSelectBook(rec.id)}
                       >
-                        <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.2rem', color: 'var(--color-primary)' }}>
-                          {rec.title}
+                        <div>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              fontSize: '0.875rem',
+                              color: 'var(--color-primary)',
+                              lineHeight: 1.25,
+                              marginBottom: '0.25rem',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              minHeight: '2.5em',
+                            }}
+                            title={rec.title}
+                          >
+                            {rec.title}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '0.78rem',
+                              color: 'var(--text-muted)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              marginBottom: '0.5rem',
+                            }}
+                            title={rec.author}
+                          >
+                            {rec.author}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
-                          {rec.author}
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span className="badge badge-neutral" style={{ fontSize: '0.68rem' }}>{rec.category}</span>
-                          <span className="badge badge-info" style={{ fontSize: '0.68rem' }}>
-                            Cosine Sim: {rec.similarity_score.toFixed(3)}
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            flexWrap: 'wrap',
+                            marginTop: 'auto',
+                            paddingTop: '0.45rem',
+                            borderTop: '1px solid var(--border-subtle)',
+                          }}
+                        >
+                          <span
+                            className="badge badge-neutral"
+                            style={{
+                              fontSize: '0.68rem',
+                              maxWidth: '110px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={rec.category}
+                          >
+                            {rec.category}
+                          </span>
+                          <span
+                            className="badge badge-info"
+                            style={{
+                              fontSize: '0.68rem',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                              fontFamily: 'var(--font-mono, monospace)',
+                            }}
+                          >
+                            Cosine: {rec.similarity_score.toFixed(3)}
                           </span>
                         </div>
                       </div>
