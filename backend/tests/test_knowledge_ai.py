@@ -375,3 +375,49 @@ def test_agent_history_validation_and_rejection(ai_env: dict):
     assert r_empty.status_code == 422
 
 
+def test_agent_conversational_greeting_routing(ai_env: dict):
+    """Verifies that conversational greetings do NOT trigger unsolicited book searches."""
+    client = TestClient(app)
+    auth = auth_headers(ai_env["student"])
+
+    for greeting in ["ok so hey hello", "hello", "hi there", "hey copilot"]:
+        r = client.post(
+            "/api/knowledge/agent/chat",
+            json={"message": greeting},
+            headers=auth["headers"],
+            cookies=auth["cookies"],
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["intent"] == "GREETING"
+        assert len(data.get("book_cards") or []) == 0
+        assert "Copilot" in data["answer"] or "Hello" in data["answer"]
+
+
+def test_agent_conversational_thanks_and_help(ai_env: dict):
+    """Verifies gratitude and help queries return natural conversational guidance."""
+    client = TestClient(app)
+    auth = auth_headers(ai_env["student"])
+
+    # Thanks
+    r_thanks = client.post(
+        "/api/knowledge/agent/chat",
+        json={"message": "thank you for your help"},
+        headers=auth["headers"],
+        cookies=auth["cookies"],
+    )
+    assert r_thanks.status_code == 200
+    assert r_thanks.json()["intent"] == "THANKS"
+
+    # Help
+    r_help = client.post(
+        "/api/knowledge/agent/chat",
+        json={"message": "what can you do?"},
+        headers=auth["headers"],
+        cookies=auth["cookies"],
+    )
+    assert r_help.status_code == 200
+    assert r_help.json()["intent"] == "HELP"
+
+
+

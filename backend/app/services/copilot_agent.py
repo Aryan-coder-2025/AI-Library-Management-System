@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import Book, BookCopy, LibraryFloor, Loan, SpatialResourceMapping, StudyRoom, StudySeat, StudyZone, User
 from app.schemas import (
     ChatMessageInput,
@@ -20,10 +21,11 @@ from app.schemas import (
     StructuredCitation,
 )
 from app.services import spatial as spatial_service
-from app.services.copilot import get_policy_sections, search_policies
+from app.services.copilot import get_llm_provider, get_policy_sections, search_policies
 from app.services.semantic import hybrid_search_service
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 # ── Structured Tool Registry ──────────────────────────────────────────────────
@@ -140,6 +142,99 @@ def execute_librarian_agent_rag(
         "other books like", "similar books", "tell me more about", "first recommendation",
         "first one", "second one"
     ])
+
+    # ── 0. SOCIAL CONVERSATIONAL & CAPABILITY INTENTS ─────────────────────────
+    filler_stripped = re.sub(r"^(ok(ay)?|so|well|umm*|uhh*)\b[\s,;!?-]*", "", normalized, flags=re.IGNORECASE).strip()
+
+    greeting_match = re.search(r"^(hello|hi|hey|greetings|good\s+(morning|afternoon|evening)|howdy|sup)\b[\s,;!?-]*", filler_stripped)
+    is_pure_greeting = False
+    if greeting_match:
+        remainder = filler_stripped[greeting_match.end():].strip()
+        remainder_cleaned = re.sub(r"[^\w\s]", "", remainder).strip()
+        if not remainder_cleaned or remainder_cleaned in ["there", "copilot", "assistant", "bot", "library", "ai", "hello", "hey"]:
+            is_pure_greeting = True
+    elif normalized in ["hey", "hi", "hello", "ok so hey hello", "hey hello", "hello there", "hi there", "greetings"]:
+        is_pure_greeting = True
+
+    if is_pure_greeting:
+        provider, provider_name = get_llm_provider()
+        suggested_followups = [
+            "What books do I currently have checked out?",
+            "What is the borrowing duration and limit?",
+            "Find books on Distributed Systems",
+        ]
+        if provider_name != "fallback":
+            try:
+                system_inst = "You are the Athenaeum AI Library Copilot. Keep responses professional, warm, concise, and helpful."
+                prompt = (
+                    f"The user '{current_user.full_name}' greeted you with: '{query}'. "
+                    "Respond warmly, naturally, and concisely in 2-3 sentences. Introduce yourself as the Athenaeum AI Library Copilot. "
+                    "Invite them to search our catalog, locate study spaces, or check active loan records."
+                )
+                answer = provider.generate(prompt=prompt, system_instruction=system_inst, timeout=6.0)
+                active_provider = f"Gemini ({provider_name})"
+            except Exception as e:
+                logger.warning("Gemini greeting failed, using deterministic fallback: %s", e)
+                answer = (
+                    f"Hello, {current_user.full_name}! I am your **Athenaeum AI Library Copilot**.\n\n"
+                    "I am connected directly to our verified collection of monographs, live physical copy availability, "
+                    "campus floor plans, and your personal loan records. How can I assist your research today?"
+                )
+                active_provider = "Librarian Agent Tool Runner"
+        else:
+            answer = (
+                f"Hello, {current_user.full_name}! I am your **Athenaeum AI Library Copilot**.\n\n"
+                "I am connected directly to our verified collection of monographs, live physical copy availability, "
+                "campus floor plans, and your personal loan records. How can I assist your research today?"
+            )
+            active_provider = "Librarian Agent Tool Runner"
+
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="GREETING",
+            confidence=0.99,
+            provider=active_provider,
+            tool_calls=[],
+            citations=[],
+            suggested_followups=suggested_followups,
+        )
+
+    # Thanks intent
+    if any(k in normalized for k in ["thank you", "thanks", "thx", "appreciate it", "thank u"]):
+        return EnhancedCopilotResponse(
+            answer=f"You're very welcome, {current_user.full_name}! Let me know if you need any assistance with book reservations, study spaces, or borrowing policies.",
+            intent="THANKS",
+            confidence=0.98,
+            provider="Librarian Agent Tool Runner",
+            suggested_followups=["What are my active loans?", "Where are available study seats?"],
+        )
+
+    # Goodbye intent
+    if any(k in normalized for k in ["goodbye", "bye", "see you", "farewell", "cya", "have a good day"]):
+        return EnhancedCopilotResponse(
+            answer="Goodbye! Have a productive study session, and feel free to reopen the Copilot anytime you have questions.",
+            intent="GOODBYE",
+            confidence=0.98,
+            provider="Librarian Agent Tool Runner",
+            suggested_followups=["Find books on Computer Science"],
+        )
+
+    # Help / capabilities intent
+    if any(k in normalized for k in ["what can you do", "who are you", "help me", "how to use", "how does this work", "copilot features"]):
+        answer = (
+            "Here is how I can assist you as your **AI Library Copilot**:\n\n"
+            "• **Catalogue & Hybrid Search**: Ask for monographs on any topic or author (e.g. *'Find books on Machine Learning'*).\n"
+            "• **Study Space Wayfinding**: Inquire about seat or room locations (e.g. *'Where is Seat S-01?'* or *'Available rooms on floor 1'*).\n"
+            "• **Circulation & Due Dates**: Check your personal active loans (e.g. *'What are my active loans?'*).\n"
+            "• **Borrowing Regulations**: Clarify loan limits, durations, and return policies (e.g. *'What is the borrowing duration?'*)."
+        )
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="HELP",
+            confidence=0.98,
+            provider="Librarian Agent Tool Runner",
+            suggested_followups=["What are my active loans?", "Where is Seat S-01 located?", "What is the borrowing limit?"],
+        )
 
     # ── 1. PATRON LOANS INTENT ────────────────────────────────────────────────
     # Strict patron isolation: always derived from authenticated current_user
@@ -433,6 +528,9 @@ def execute_librarian_agent_rag(
     search_res = tool_search_catalogue(db=db, query=catalogue_query, limit=4)
     tool_calls.append(CopilotToolCall(tool_name="search_catalogue", arguments={"query": catalogue_query, "limit": 4}, result=search_res))
     books = search_res.get("books", [])
+    provider, provider_name = get_llm_provider()
+    active_provider = "Librarian Agent Tool Runner"
+
     if books:
         book_cards = books
         for b in books:
@@ -444,17 +542,48 @@ def execute_librarian_agent_rag(
                 url_or_action=f"book_{b['id']}",
             ))
         book_list = [f"• **{b['title']}** by {b['author']} ({b['available_copies']} copy available)" for b in books]
-        answer = f"Based on our catalog, here are relevant recommended titles for '{catalogue_query}':\n\n" + "\n".join(book_list) + "\n\nYou can click on any title to view details or place a reservation hold."
+        default_answer = f"Based on our catalog, here are relevant recommended titles for '{catalogue_query}':\n\n" + "\n".join(book_list) + "\n\nYou can click on any title to view details or place a reservation hold."
+
+        if provider_name != "fallback":
+            try:
+                holdings_summary = "\n".join([
+                    f"- '{b['title']}' by {b['author']} (Category: {b['category']}, Available copies: {b['available_copies']})"
+                    for b in books
+                ])
+                prompt = (
+                    f"<verified_catalog_holdings>\n{holdings_summary}\n</verified_catalog_holdings>\n\n"
+                    f"User Inquiry: {query}\n\n"
+                    "Based strictly on the verified catalog items above, write a concise, professional recommendation response. "
+                    "Mention the title, author, and available copy count for each recommended book. Do not fabricate books outside this list."
+                )
+                system_inst = "You are the Athenaeum AI Library Copilot. Ground recommendations strictly in the verified library holdings provided."
+                llm_reply = provider.generate(prompt=prompt, system_instruction=system_inst, timeout=8.0)
+                answer = llm_reply
+                active_provider = f"Gemini ({provider_name})"
+            except Exception as e:
+                logger.warning("Gemini recommendation synthesis failed: %s", e)
+                answer = default_answer
+        else:
+            answer = default_answer
+
         suggested_followups = ["Tell me more about the first recommendation", "Where is this located on the floor plan?"]
     else:
-        answer = f"I searched the library collection for '{catalogue_query}', but could not find exact matching monographs. Would you like to explore related academic subjects or consult a librarian?"
+        if provider_name != "fallback":
+            try:
+                prompt = f"The user asked: '{query}'. We searched the library catalog and found no matching physical books. Write a polite, helpful 2-sentence response explaining this and suggesting related topics or asking a librarian."
+                answer = provider.generate(prompt=prompt, system_instruction="You are Athenaeum AI Library Copilot.", timeout=6.0)
+                active_provider = f"Gemini ({provider_name})"
+            except Exception:
+                answer = f"I searched the library collection for '{catalogue_query}', but could not find exact matching monographs. Would you like to explore related academic subjects or consult a librarian?"
+        else:
+            answer = f"I searched the library collection for '{catalogue_query}', but could not find exact matching monographs. Would you like to explore related academic subjects or consult a librarian?"
         suggested_followups = ["Browse Computer Science subjects", "Search by author name"]
 
     return EnhancedCopilotResponse(
         answer=answer,
         intent="RECOMMENDATION_RAG",
         confidence=0.92,
-        provider="Librarian Agent Tool Runner",
+        provider=active_provider,
         tool_calls=tool_calls,
         citations=citations,
         book_cards=book_cards,
