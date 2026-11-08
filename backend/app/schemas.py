@@ -111,6 +111,92 @@ class RegisterRequest(BaseModel):
         return self
 
 
+class InstitutionalRegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(..., min_length=2, max_length=100, description="Full name")
+    email: str = Field(..., min_length=3, max_length=255, description="Valid email address")
+    username: str = Field(..., min_length=3, max_length=20, description="Unique username")
+    password: str = Field(..., min_length=12, max_length=100, description="Password (min 12 characters)")
+    confirm_password: Optional[str] = Field(None, min_length=1, description="Password confirmation")
+    role: str = Field("student", description="Requested role: student, teacher, or librarian")
+    verification_key: Optional[str] = Field(None, description="Department passkey or invite code")
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        cleaned = v.strip()
+        if len(cleaned) < 2:
+            raise ValueError("Full name must be at least 2 characters long.")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_address(cls, v: str) -> str:
+        from app.cli import validate_email
+        return validate_email(v)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username_field(cls, v: str) -> str:
+        from app.auth import validate_username
+        return validate_username(v)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_field(cls, v: str) -> str:
+        from app.auth import validate_password_policy
+        return validate_password_policy(v)
+
+    @field_validator("role")
+    @classmethod
+    def validate_role_field(cls, v: str) -> str:
+        cleaned = v.strip().lower()
+        if cleaned not in ("student", "teacher", "librarian"):
+            raise ValueError("Role must be 'student', 'teacher', or 'librarian'.")
+        return cleaned
+
+    @model_validator(mode="after")
+    def verify_password_match(self) -> "InstitutionalRegisterRequest":
+        if self.confirm_password is not None and self.password != self.confirm_password:
+            raise ValueError("Passwords do not match.")
+        return self
+
+
+class CreateInvitationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(..., min_length=3, max_length=255, description="Email to invite")
+    role: str = Field("teacher", description="Role: teacher or librarian")
+
+    @field_validator("email")
+    @classmethod
+    def validate_invite_email(cls, v: str) -> str:
+        from app.cli import validate_email
+        return validate_email(v)
+
+    @field_validator("role")
+    @classmethod
+    def validate_invite_role(cls, v: str) -> str:
+        cleaned = v.strip().lower()
+        if cleaned not in ("teacher", "librarian"):
+            raise ValueError("Invited role must be 'teacher' or 'librarian'.")
+        return cleaned
+
+
+class InvitationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    role: str
+    invite_code: str
+    created_at: datetime
+    expires_at: datetime
+    used_at: Optional[datetime] = None
+    is_used: bool = False
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -519,6 +605,92 @@ class ResetPasswordRequest(BaseModel):
         if self.confirm_password is not None and self.new_password != self.confirm_password:
             raise ValueError("Passwords do not match.")
         return self
+
+
+class InstitutionalRegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(..., min_length=2, max_length=100, description="Full name")
+    email: str = Field(..., min_length=3, max_length=255, description="Valid email address")
+    username: str = Field(..., min_length=3, max_length=20, description="Unique username")
+    password: str = Field(..., min_length=12, max_length=100, description="Password (min 12 characters)")
+    confirm_password: Optional[str] = Field(None, min_length=1, description="Password confirmation")
+    role: str = Field("student", description="Requested role: student, teacher, or librarian")
+    verification_key: Optional[str] = Field(None, description="Department passkey or invite code")
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        cleaned = v.strip()
+        if len(cleaned) < 2:
+            raise ValueError("Full name must be at least 2 characters long.")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_address(cls, v: str) -> str:
+        from app.cli import validate_email
+        return validate_email(v)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username_field(cls, v: str) -> str:
+        from app.auth import validate_username
+        return validate_username(v)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_field(cls, v: str) -> str:
+        from app.auth import validate_password_policy
+        return validate_password_policy(v)
+
+    @field_validator("role")
+    @classmethod
+    def validate_role_field(cls, v: str) -> str:
+        cleaned = v.strip().lower()
+        if cleaned not in ("student", "teacher", "librarian"):
+            raise ValueError("Role must be 'student', 'teacher', or 'librarian'.")
+        return cleaned
+
+    @model_validator(mode="after")
+    def verify_password_match(self) -> "InstitutionalRegisterRequest":
+        if self.confirm_password is not None and self.password != self.confirm_password:
+            raise ValueError("Passwords do not match.")
+        return self
+
+
+class CreateInvitationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(..., min_length=3, max_length=255, description="Email to invite")
+    role: str = Field("teacher", description="Role: teacher or librarian")
+
+    @field_validator("email")
+    @classmethod
+    def validate_invite_email(cls, v: str) -> str:
+        from app.cli import validate_email
+        return validate_email(v)
+
+    @field_validator("role")
+    @classmethod
+    def validate_invite_role(cls, v: str) -> str:
+        cleaned = v.strip().lower()
+        if cleaned not in ("teacher", "librarian"):
+            raise ValueError("Invited role must be 'teacher' or 'librarian'.")
+        return cleaned
+
+
+class InvitationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    role: str
+    invite_code: str
+    created_at: datetime
+    expires_at: datetime
+    used_at: Optional[datetime] = None
+    is_used: bool = False
 
 
 # ── Book Waitlists & Holds (CIRC-02) ─────────────────────────────────────────

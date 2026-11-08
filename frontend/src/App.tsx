@@ -142,20 +142,39 @@ export const App: React.FC = () => {
     username: string;
     pass: string;
     confirmPass: string;
+    role?: 'student' | 'teacher' | 'librarian';
+    verificationKey?: string;
   }) => {
     setIsRegistering(true);
     setRegisterError(null);
 
-    try {
-      const user = await apiFetch<UserProfile>('/api/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({
+    const isInstitutional = data.role && data.role !== 'student';
+    const endpoint = isInstitutional
+      ? '/api/auth/register/institutional'
+      : '/api/auth/register';
+
+    const payload = isInstitutional
+      ? {
           full_name: data.fullName,
           email: data.email,
           username: data.username,
           password: data.pass,
           confirm_password: data.confirmPass,
-        }),
+          role: data.role,
+          verification_key: data.verificationKey || undefined,
+        }
+      : {
+          full_name: data.fullName,
+          email: data.email,
+          username: data.username,
+          password: data.pass,
+          confirm_password: data.confirmPass,
+        };
+
+    try {
+      const user = await apiFetch<UserProfile>(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(payload),
       });
       setCurrentUser(user);
       setActiveTab('dashboard');

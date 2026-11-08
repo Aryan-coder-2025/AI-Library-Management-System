@@ -924,4 +924,80 @@ def test_patron_profile_username_claim_and_update(client, test_users):
     assert res_uname_login.status_code == 200
 
 
+def test_institutional_faculty_registration_with_passkey(client, db):
+    """Verifies that a faculty member can register with FACULTY-2026 passkey and receive teacher role."""
+    res = client.post(
+        "/api/auth/register/institutional",
+        json={
+            "full_name": "Prof. Alan Turing",
+            "email": "alan.turing@cambridge.edu",
+            "username": "alan_turing",
+            "password": "SecureTeacherPass123!",
+            "confirm_password": "SecureTeacherPass123!",
+            "role": "teacher",
+            "verification_key": "FACULTY-2026",
+        },
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["role"] == "teacher"
+    assert data["email"] == "alan.turing@cambridge.edu"
+
+
+def test_institutional_registration_rejects_wrong_key(client, db):
+    """Verifies that attempting to register as faculty with wrong key is rejected with 403."""
+    res = client.post(
+        "/api/auth/register/institutional",
+        json={
+            "full_name": "Fake Teacher",
+            "email": "fake.teacher@gmail.com",
+            "username": "fake_prof",
+            "password": "SecureTeacherPass123!",
+            "confirm_password": "SecureTeacherPass123!",
+            "role": "teacher",
+            "verification_key": "WRONG-KEY-XYZ",
+        },
+    )
+    assert res.status_code == 403
+    assert "Invalid institutional verification key" in res.json()["detail"]
+
+
+def test_institutional_librarian_invitation_flow(client, test_users, db):
+    """Verifies that librarian can invite an email, and that email registers successfully without passkey."""
+    # 1. Login as librarian
+    login_res = client.post(
+        "/api/auth/login",
+        json={"email": "head_librarian@library.org", "password": "LibrarianPass123!"},
+        headers={"Origin": "http://localhost:5173"},
+    )
+    assert login_res.status_code == 200
+    csrf = login_res.cookies.get("csrf_token")
+
+    # 2. Create invitation for teacher
+    invite_res = client.post(
+        "/api/auth/invitations",
+        json={"email": "invited.prof@gmail.com", "role": "teacher"},
+        headers={"Origin": "http://localhost:5173", "X-CSRF-Token": csrf},
+    )
+    assert invite_res.status_code == 201
+    invite_code = invite_res.json()["invite_code"]
+
+    # 3. Invited email registers with role='teacher' and empty passkey -> accepted via active email invitation!
+    reg_res = client.post(
+        "/api/auth/register/institutional",
+        json={
+            "full_name": "Invited Professor",
+            "email": "invited.prof@gmail.com",
+            "username": "invited_prof",
+            "password": "SecureTeacherPass123!",
+            "confirm_password": "SecureTeacherPass123!",
+            "role": "teacher",
+        },
+    )
+    assert reg_res.status_code == 201
+    assert reg_res.json()["role"] == "teacher"
+
+
+
+
 

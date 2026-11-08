@@ -856,3 +856,19 @@ class AcquisitionRequest(Base):
     requested_by = relationship("User", foreign_keys=[requested_by_id])
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
 
+
+class InstitutionalInvitation(Base):
+    __tablename__ = "institutional_invitations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), index=True, nullable=False)
+    role = Column(String(20), nullable=False)  # 'teacher' or 'librarian'
+    invite_code = Column(String(64), unique=True, index=True, nullable=False)
+    invited_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+    invited_by = relationship("User", foreign_keys=[invited_by_id])
+
+

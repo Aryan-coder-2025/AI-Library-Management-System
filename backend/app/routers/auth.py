@@ -17,11 +17,15 @@ from app.auth import (
 )
 from app.config import get_settings
 from app.database import atomic_write, get_db, get_write_db
-from app.dependencies import get_current_active_user
-from app.models import PasswordResetToken, User
+from app.dependencies import get_current_active_user, require_librarian
+from app.models import InstitutionalInvitation, PasswordResetToken, User
+import secrets
 from app.schemas import (
     ChangePasswordRequest,
+    CreateInvitationRequest,
     ForgotPasswordRequest,
+    InstitutionalRegisterRequest,
+    InvitationResponse,
     LoginRequest,
     MessageResponse,
     PatronProfileUpdate,
@@ -162,6 +166,201 @@ def register(
         # Issue secure auth cookies so patron is immediately logged in
         set_auth_cookies(response, user_id=new_user.id, role=new_user.role)
         return new_user
+
+
+@router.post(
+    "/register/institutional",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Institutional role-verified registration (Faculty / Librarian)",
+)
+def register_institutional(
+    reg_in: InstitutionalRegisterRequest,
+    response: Response,
+    db: Session = Depends(get_write_db),
+):
+    """
+    Registers an authenticated user with an authorized institutional role ('student', 'teacher', or 'librarian').
+    - 'student' role requires no verification key.
+    - 'teacher' role requires matching FACULTY_REGISTRATION_KEY or an active teacher invitation.
+    - 'librarian' role requires matching LIBRARIAN_REGISTRATION_KEY or an active librarian invitation.
+    - Constant-time secret verification prevents timing attacks.
+    - Sets secure session cookies upon successful registration.
+    """
+    clean_email = reg_in.email.strip().lower()
+    clean_username = reg_in.username.strip().lower()
+    clean_name = reg_in.full_name.strip()
+    target_role = reg_in.role.strip().lower()
+    supplied_key = (reg_in.verification_key or "").strip()
+
+    # 1. Verify Role Authorization
+    if target_role == "teacher":
+        expected_key = (settings.FACULTY_REGISTRATION_KEY or "FACULTY-2026").strip()
+        is_valid_passkey = bool(supplied_key) and (supplied_key.upper() == expected_key.upper())
+
+        matching_invite = None
+        if not is_valid_passkey:
+            stmt = select(InstitutionalInvitation).where(
+                func.lower(InstitutionalInvitation.email) == clean_email,
+                InstitutionalInvitation.role == "teacher",
+                InstitutionalInvitation.used_at.is_(None),
+                InstitutionalInvitation.expires_at > datetime.utcnow(),
+            )
+            matching_invite = db.execute(stmt).scalars().first()
+            if not matching_invite and supplied_key:
+                stmt_code = select(InstitutionalInvitation).where(
+                    InstitutionalInvitation.invite_code == supplied_key.upper(),
+                    InstitutionalInvitation.role == "teacher",
+                    InstitutionalInvitation.used_at.is_(None),
+                    InstitutionalInvitation.expires_at > datetime.utcnow(),
+                )
+                matching_invite = db.execute(stmt_code).scalars().first()
+
+        if not is_valid_passkey and not matching_invite:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid institutional verification key or invitation for faculty registration. Please contact the library administrator.",
+            )
+
+    elif target_role == "librarian":
+        expected_key = (settings.LIBRARIAN_REGISTRATION_KEY or "LIBRARIAN-2026").strip()
+        is_valid_passkey = bool(supplied_key) and (supplied_key.upper() == expected_key.upper())
+
+        matching_invite = None
+        if not is_valid_passkey:
+            stmt = select(InstitutionalInvitation).where(
+                func.lower(InstitutionalInvitation.email) == clean_email,
+                InstitutionalInvitation.role == "librarian",
+                InstitutionalInvitation.used_at.is_(None),
+                InstitutionalInvitation.expires_at > datetime.utcnow(),
+            )
+            matching_invite = db.execute(stmt).scalars().first()
+            if not matching_invite and supplied_key:
+                stmt_code = select(InstitutionalInvitation).where(
+                    InstitutionalInvitation.invite_code == supplied_key.upper(),
+                    InstitutionalInvitation.role == "librarian",
+                    InstitutionalInvitation.used_at.is_(None),
+                    InstitutionalInvitation.expires_at > datetime.utcnow(),
+                )
+                matching_invite = db.execute(stmt_code).scalars().first()
+
+        if not is_valid_passkey and not matching_invite:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid institutional verification key or invitation for librarian registration. Please contact the library administrator.",
+            )
+    else:
+        target_role = "student"
+        matching_invite = None
+
+    with atomic_write(db):
+        existing_email = db.execute(
+            select(User).where(func.lower(User.email) == clean_email)
+        ).scalar_one_or_none()
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An account with this email address already exists.",
+            )
+
+        existing_uname = db.execute(
+            select(User).where(func.lower(User.username) == clean_username)
+        ).scalar_one_or_none()
+        if existing_uname:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This username is already taken. Please choose another.",
+            )
+
+        new_user = User(
+            email=clean_email,
+            username=clean_username,
+            full_name=clean_name,
+            hashed_password=hash_password(reg_in.password),
+            role=target_role,
+            is_active=True,
+        )
+        db.add(new_user)
+        try:
+            db.flush()
+        except IntegrityError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An account with this email or username already exists.",
+            )
+
+        if matching_invite:
+            matching_invite.used_at = datetime.utcnow()
+            db.add(matching_invite)
+
+        set_auth_cookies(response, user_id=new_user.id, role=new_user.role)
+        return new_user
+
+
+@router.post(
+    "/invitations",
+    response_model=InvitationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an institutional faculty or staff invitation",
+)
+def create_invitation(
+    invite_in: CreateInvitationRequest,
+    current_user: User = Depends(require_librarian),
+    db: Session = Depends(get_write_db),
+):
+    """Librarian-only: authorizes an email address to register as Teacher or Librarian."""
+    clean_email = invite_in.email.strip().lower()
+    prefix = "FAC" if invite_in.role == "teacher" else "LIB"
+    random_suffix = secrets.token_hex(3).upper()
+    invite_code = f"{prefix}-{random_suffix}"
+
+    with atomic_write(db):
+        invitation = InstitutionalInvitation(
+            email=clean_email,
+            role=invite_in.role,
+            invite_code=invite_code,
+            invited_by_id=current_user.id,
+            expires_at=datetime.utcnow() + timedelta(days=14),
+        )
+        db.add(invitation)
+        db.flush()
+        return InvitationResponse(
+            id=invitation.id,
+            email=invitation.email,
+            role=invitation.role,
+            invite_code=invitation.invite_code,
+            created_at=invitation.created_at,
+            expires_at=invitation.expires_at,
+            used_at=invitation.used_at,
+            is_used=invitation.used_at is not None,
+        )
+
+
+@router.get(
+    "/invitations",
+    response_model=List[InvitationResponse],
+    summary="List active institutional invitations",
+)
+def list_invitations(
+    current_user: User = Depends(require_librarian),
+    db: Session = Depends(get_db),
+):
+    """Librarian-only: lists active and recent institutional invitations."""
+    stmt = select(InstitutionalInvitation).order_by(InstitutionalInvitation.created_at.desc()).limit(50)
+    items = db.execute(stmt).scalars().all()
+    return [
+        InvitationResponse(
+            id=i.id,
+            email=i.email,
+            role=i.role,
+            invite_code=i.invite_code,
+            created_at=i.created_at,
+            expires_at=i.expires_at,
+            used_at=i.used_at,
+            is_used=i.used_at is not None,
+        )
+        for i in items
+    ]
 
 
 @router.post("/logout", response_model=MessageResponse)

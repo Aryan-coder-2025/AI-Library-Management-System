@@ -127,6 +127,10 @@ class Settings(BaseSettings):
     RESET_TOKEN_EXPIRE_MINUTES: int = 30
     SMTP_TIMEOUT_SECONDS: float = 10.0
 
+    # Institutional Role Registration Passkeys
+    FACULTY_REGISTRATION_KEY: str = "FACULTY-2026"
+    LIBRARIAN_REGISTRATION_KEY: str = "LIBRARIAN-2026"
+
     # AI Copilot & LLM Configuration
     LLM_PROVIDER: str = "auto"  # 'auto', 'gemini', 'openai_compatible', 'fallback'
     LLM_API_KEY: Optional[str] = None

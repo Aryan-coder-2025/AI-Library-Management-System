@@ -7,6 +7,8 @@ interface RegisterProps {
     username: string;
     pass: string;
     confirmPass: string;
+    role?: 'student' | 'teacher' | 'librarian';
+    verificationKey?: string;
   }) => Promise<void>;
   loading: boolean;
   error: string | null;
@@ -19,6 +21,8 @@ export const Register: React.FC<RegisterProps> = ({
   error,
   onSwitchToLogin,
 }) => {
+  const [role, setRole] = useState<'student' | 'teacher' | 'librarian'>('student');
+  const [verificationKey, setVerificationKey] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -66,6 +70,8 @@ export const Register: React.FC<RegisterProps> = ({
       username: cleanUsername,
       pass: password,
       confirmPass: confirmPassword,
+      role,
+      verificationKey: verificationKey.trim(),
     });
   };
 
@@ -73,10 +79,18 @@ export const Register: React.FC<RegisterProps> = ({
 
   return (
     <div className="signin-page-wrapper">
-      <div className="signin-card" style={{ maxWidth: '460px' }}>
+      <div className="signin-card" style={{ maxWidth: '480px' }}>
         <div className="signin-header">
-          <h2>Create Student Account</h2>
-          <p>Register as an Athenaeum scholar to borrow books, reserve study spaces, and use AI features</p>
+          <h2>
+            {role === 'student' && 'Create Student Account'}
+            {role === 'teacher' && 'Create Faculty Account'}
+            {role === 'librarian' && 'Create Staff Librarian Account'}
+          </h2>
+          <p>
+            {role === 'student' && 'Register as an Athenaeum scholar to borrow books, reserve study spaces, and use AI features'}
+            {role === 'teacher' && 'Register as an Athenaeum faculty member to curate syllabus reserves and manage reading lists'}
+            {role === 'librarian' && 'Register as a library administrator to manage circulation, forecasting, and models'}
+          </p>
         </div>
 
         <div className="signin-body">
@@ -86,7 +100,116 @@ export const Register: React.FC<RegisterProps> = ({
             </div>
           )}
 
+          {/* Role Selection Pills */}
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.35rem',
+              marginBottom: '1.25rem',
+              background: 'var(--bg-subtle, #1D2742)',
+              padding: '0.3rem',
+              borderRadius: '12px',
+              border: '1px solid var(--border-subtle, #1E293B)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setRole('student');
+                setClientError(null);
+              }}
+              style={{
+                flex: 1,
+                padding: '0.45rem',
+                borderRadius: '8px',
+                border: 'none',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: role === 'student' ? 'var(--color-primary, #8057F5)' : 'transparent',
+                color: role === 'student' ? '#ffffff' : 'var(--text-secondary, #A9B2CC)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              🎓 Student
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setRole('teacher');
+                setClientError(null);
+              }}
+              style={{
+                flex: 1,
+                padding: '0.45rem',
+                borderRadius: '8px',
+                border: 'none',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: role === 'teacher' ? 'var(--color-primary, #8057F5)' : 'transparent',
+                color: role === 'teacher' ? '#ffffff' : 'var(--text-secondary, #A9B2CC)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              🧑‍🏫 Teacher
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setRole('librarian');
+                setClientError(null);
+              }}
+              style={{
+                flex: 1,
+                padding: '0.45rem',
+                borderRadius: '8px',
+                border: 'none',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: role === 'librarian' ? 'var(--color-primary, #8057F5)' : 'transparent',
+                color: role === 'librarian' ? '#ffffff' : 'var(--text-secondary, #A9B2CC)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              🏛️ Librarian
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit} noValidate>
+            {role !== 'student' && (
+              <div
+                className="form-group"
+                style={{
+                  background: 'var(--bg-surface-elevated, #171D35)',
+                  padding: '0.75rem',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-medium, #29334F)',
+                  marginBottom: '1rem',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                  <label htmlFor="reg-key" className="form-label" style={{ margin: 0, fontWeight: 600 }}>
+                    Institutional Verification Key
+                  </label>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--color-secondary-violet, #A78BFA)' }}>
+                    {role === 'teacher' ? 'Faculty Passkey' : 'Staff Admin Passkey'}
+                  </span>
+                </div>
+                <input
+                  id="reg-key"
+                  type="text"
+                  className="form-input"
+                  placeholder={role === 'teacher' ? 'e.g. FACULTY-2026 or invite code...' : 'e.g. LIBRARIAN-2026...'}
+                  value={verificationKey}
+                  onChange={(e) => setVerificationKey(e.target.value)}
+                />
+                <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: 'var(--text-muted, #77829E)' }}>
+                  💡 Demo Passkey: <strong>{role === 'teacher' ? 'FACULTY-2026' : 'LIBRARIAN-2026'}</strong> (or leave blank if your email was authorized by librarian).
+                </div>
+              </div>
+            )}
             <div className="form-group">
               <label htmlFor="reg-fullname" className="form-label">
                 Full Name
@@ -188,7 +311,15 @@ export const Register: React.FC<RegisterProps> = ({
             </div>
 
             <div style={{ margin: '0.75rem 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              🔒 Public registration automatically provisions an authenticated <strong>Student Scholar</strong> profile.
+              {role === 'student' && (
+                <span>🔒 Public registration automatically provisions an authenticated <strong>Student Scholar</strong> profile.</span>
+              )}
+              {role === 'teacher' && (
+                <span>🧑‍🏫 Faculty registration grants access to the <strong>Teacher Portal</strong> to curate course reading lists.</span>
+              )}
+              {role === 'librarian' && (
+                <span>🏛️ Staff registration grants administrative access to <strong>Circulation Desk</strong> and <strong>Forecasting</strong>.</span>
+              )}
             </div>
 
             <button

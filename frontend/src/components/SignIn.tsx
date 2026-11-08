@@ -108,6 +108,71 @@ export const SignIn: React.FC<SignInProps> = ({
               />
             </div>
 
+            <div style={{ marginTop: '0.85rem', marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted, #77829E)', marginBottom: '0.35rem', textAlign: 'center' }}>
+                ⚡ Quick Demo Pre-fill:
+              </div>
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdentifier('student1');
+                    setPassword('StudentPass123!');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.35rem 0.2rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-medium, #29334F)',
+                    background: 'var(--bg-subtle, #1D2742)',
+                    color: 'var(--text-primary, #F5F6FF)',
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🎓 Student
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdentifier('teacher1');
+                    setPassword('TeacherPass123!');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.35rem 0.2rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-medium, #29334F)',
+                    background: 'var(--bg-subtle, #1D2742)',
+                    color: 'var(--text-primary, #F5F6FF)',
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🧑‍🏫 Teacher
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdentifier('librarian1');
+                    setPassword('AdminPass123!');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.35rem 0.2rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-medium, #29334F)',
+                    background: 'var(--bg-subtle, #1D2742)',
+                    color: 'var(--text-primary, #F5F6FF)',
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🏛️ Librarian
+                </button>
+              </div>
+            </div>
+
             <button
               type="submit"
               className="btn btn-primary"
@@ -120,7 +185,7 @@ export const SignIn: React.FC<SignInProps> = ({
 
           {onSwitchToRegister && (
             <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--card-border)', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              <span>New student scholar? </span>
+              <span>Need an account? </span>
               <button
                 type="button"
                 onClick={onSwitchToRegister}
@@ -134,7 +199,7 @@ export const SignIn: React.FC<SignInProps> = ({
                   textDecoration: 'underline',
                 }}
               >
-                Create Student Account
+                Create Account
               </button>
             </div>
           )}
