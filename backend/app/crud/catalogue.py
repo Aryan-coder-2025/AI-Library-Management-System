@@ -42,14 +42,25 @@ def get_books(
         query = query.where(Book.category.ilike(category.strip()))
 
     if search:
-        term = f"%{search.strip()}%"
-        query = query.where(
-            or_(
-                Book.title.ilike(term),
-                Book.author.ilike(term),
-                Book.isbn.ilike(term),
-            )
-        )
+        clean_search = search.strip()
+        term = f"%{clean_search}%"
+        search_clauses = [
+            Book.title.ilike(term),
+            Book.author.ilike(term),
+            Book.isbn.ilike(term),
+            Book.category.ilike(term),
+            Book.description.ilike(term),
+        ]
+        words = [w for w in clean_search.split() if len(w) > 2]
+        if len(words) > 1:
+            for w in words:
+                w_term = f"%{w}%"
+                search_clauses.extend([
+                    Book.title.ilike(w_term),
+                    Book.category.ilike(w_term),
+                    Book.description.ilike(w_term),
+                ])
+        query = query.where(or_(*search_clauses))
 
     # Total matching records count
     count_query = select(func.count()).select_from(query.subquery())

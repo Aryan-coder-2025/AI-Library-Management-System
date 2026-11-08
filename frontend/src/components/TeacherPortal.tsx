@@ -37,6 +37,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<Book[]>([]);
   const [searching, setSearching] = useState<boolean>(false);
+  const [hasSearched, setHasSearched] = useState<boolean>(false);
   const [reqType, setReqType] = useState<'required' | 'recommended' | 'supplementary'>('required');
   const [itemNotes, setItemNotes] = useState<string>('');
   const [addingBookId, setAddingBookId] = useState<number | null>(null);
@@ -126,12 +127,14 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
     }
   };
 
-  const handleSearchCatalogue = async () => {
-    if (!searchQuery.trim()) return;
+  const handleSearchCatalogue = async (overrideQuery?: string) => {
+    const q = (overrideQuery !== undefined ? overrideQuery : searchQuery).trim();
+    if (!q) return;
     try {
       setSearching(true);
+      setHasSearched(true);
       const data = await apiFetch<BookPaginationResponse>(
-        `/api/books?search=${encodeURIComponent(searchQuery.trim())}&page_size=8`
+        `/api/books?search=${encodeURIComponent(q)}&page_size=8`
       );
       setSearchResults(data.items || []);
     } catch (err) {
@@ -140,6 +143,14 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
     } finally {
       setSearching(false);
     }
+  };
+
+  const openAddBookModal = () => {
+    const initialQ = selectedCourse?.title ? selectedCourse.title.split(' ')[0] : 'intelligence';
+    setSearchQuery(initialQ);
+    setHasSearched(false);
+    setShowAddBookModal(true);
+    handleSearchCatalogue(initialQ);
   };
 
   const handleAddReadingListItem = async (bookId: number) => {
@@ -407,7 +418,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
                       type="button"
-                      onClick={() => setShowAddBookModal(true)}
+                      onClick={openAddBookModal}
                       style={{
                         padding: '0.55rem 0.95rem',
                         borderRadius: '8px',
@@ -483,7 +494,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                     {canManage && (
                       <button
                         type="button"
-                        onClick={() => setShowAddBookModal(true)}
+                        onClick={openAddBookModal}
                         style={{
                           background: 'none',
                           border: 'none',
@@ -897,28 +908,32 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
             </div>
 
             <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto' }}>
-              {/* Search Bar */}
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {/* Search Bar Form */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSearchCatalogue();
+                }}
+                style={{ display: 'flex', gap: '0.5rem' }}
+              >
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearchCatalogue()}
                   placeholder="Search catalogue by title, author, or category..."
                   className="form-input"
                   style={{ flex: 1 }}
                   autoFocus
                 />
                 <button
-                  type="button"
-                  onClick={handleSearchCatalogue}
+                  type="submit"
                   disabled={searching}
                   className="btn btn-primary"
                   style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                 >
                   {searching ? 'Searching...' : 'Search'}
                 </button>
-              </div>
+              </form>
 
               {/* Requirement Type & Notes Configuration */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
@@ -964,7 +979,9 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                   </div>
                 ) : searchResults.length === 0 ? (
                   <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted, #77829E)', fontSize: '0.82rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '10px' }}>
-                    Enter keywords (e.g. "artificial intelligence", "algorithms") and click Search.
+                    {hasSearched
+                      ? `No monographs found matching "${searchQuery}". Try different keywords (e.g. "linear", "robotics", "algorithms").`
+                      : 'Enter keywords (e.g. "artificial intelligence", "algorithms") and click Search.'}
                   </div>
                 ) : (
                   searchResults.map((b) => (
