@@ -6,9 +6,13 @@ export const AcademicResearchDiscovery: React.FC = () => {
   const [query, setQuery] = useState('');
   const [papers, setPapers] = useState<AcademicPaperResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const [extractedTopic, setExtractedTopic] = useState<string | null>(null);
+  const [aiNotes, setAiNotes] = useState<string | null>(null);
+  const [page, setPage] = useState<number>(1);
+  const [activeQuery, setActiveQuery] = useState<string>('');
 
   // Filters
   const [selectedProvider, setSelectedProvider] = useState<string>('all');
@@ -20,12 +24,17 @@ export const AcademicResearchDiscovery: React.FC = () => {
     let cleaned = raw.trim().replace(/[\?\.!]+$/, '');
     const patterns = [
       /^(?:ok|okay|hey|hi|hello|please)[\s,]+/i,
-      /^(?:can|could|would)\s+you\s+(?:please\s+)?(?:tell|show|give|find|search|recommend|suggest)\s+(?:me\s+)?(?:about\s+)?/i,
-      /^(?:tell|show|give|find|search)\s+(?:me\s+)?(?:about\s+)?/i,
-      /^(?:what\s+are\s+(?:some\s+)?(?:famous|the\s+best|top|the\s+latest|popular|major)\s+)?(?:research\s+)?(?:papers|articles|studies|publications|books)\s+(?:on|about|regarding|in)\s+/i,
+      /^(?:can|could|would)\s+you\s+(?:please\s+)?(?:tell|show|give|provide|find|search|recommend|suggest)\s+(?:me\s+)?(?:about\s+)?/i,
+      /^(?:tell|show|give|provide|find|search)\s+(?:me\s+)?(?:about\s+)?/i,
+      /^(?:research\s+)?notes\s+(?:for\s+the\s+topic|for|on|about|regarding)\s+/i,
+      /^(?:what\s+are\s+(?:some\s+)?(?:famous|the\s+best|top|the\s+latest|popular|major)\s+)?(?:research\s+)?(?:papers|articles|studies|publications|books|notes)\s+(?:on|about|regarding|in)\s+/i,
       /^(?:some\s+)?(?:famous|best|top|latest|popular|major)\s+(?:research\s+)?(?:papers|articles|studies|publications)\s+(?:on|about|regarding|in)\s+/i,
       /^(?:papers|articles|studies|publications)\s+(?:on|about|regarding|in)\s+/i,
       /^(?:looking\s+for|search\s+for|find)\s+(?:papers|articles|studies)?\s*(?:on|about|regarding)?\s+/i,
+      /^(?:the\s+topic\s+is|topic\s+is|topic\s*:)\s+/i,
+      /^(?:is|are|can|could|why|how|what)\s+/i,
+      /\b(?:really|actually|simply|truly)\b\s*/gi,
+      /\bat\s+any\s+stage\b/gi,
     ];
     let changed = true;
     while (changed) {
@@ -46,6 +55,9 @@ export const AcademicResearchDiscovery: React.FC = () => {
     const rawSearchQuery = (customQuery !== undefined ? customQuery : query).trim();
     if (!rawSearchQuery) return;
 
+    setActiveQuery(rawSearchQuery);
+    setPage(1);
+
     const cleaned = cleanConversationalPreamble(rawSearchQuery);
     if (cleaned !== rawSearchQuery) {
       setExtractedTopic(cleaned);
@@ -56,11 +68,13 @@ export const AcademicResearchDiscovery: React.FC = () => {
     setLoading(true);
     setError(null);
     setSearched(true);
+    setAiNotes(null);
 
     try {
       const params = new URLSearchParams();
       params.set('q', rawSearchQuery);
-      params.set('limit', '20');
+      params.set('limit', '30');
+      params.set('page', '1');
 
       if (selectedProvider !== 'all') {
         params.set('providers', selectedProvider);
@@ -74,11 +88,55 @@ export const AcademicResearchDiscovery: React.FC = () => {
 
       const res = await apiFetch<AcademicSearchResponse>(`/api/research/search?${params.toString()}`);
       setPapers(res.results);
+      if (res.ai_research_notes) {
+        setAiNotes(res.ai_research_notes);
+      }
+      if (res.focused_topic) {
+        setExtractedTopic(res.focused_topic);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Scholarly research search failed.';
       setError(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    const nextQuery = activeQuery || query;
+    if (!nextQuery.trim() || loadingMore) return;
+
+    const nextPage = page + 1;
+    setLoadingMore(true);
+
+    try {
+      const params = new URLSearchParams();
+      params.set('q', nextQuery.trim());
+      params.set('limit', '30');
+      params.set('page', nextPage.toString());
+
+      if (selectedProvider !== 'all') {
+        params.set('providers', selectedProvider);
+      }
+      if (openAccessOnly) {
+        params.set('is_oa', 'true');
+      }
+      if (yearFilter.trim()) {
+        params.set('year', yearFilter.trim());
+      }
+
+      const res = await apiFetch<AcademicSearchResponse>(`/api/research/search?${params.toString()}`);
+      setPapers((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newPapers = res.results.filter((p) => !existingIds.has(p.id));
+        return [...prev, ...newPapers];
+      });
+      setPage(nextPage);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch additional papers.';
+      setError(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -247,16 +305,17 @@ export const AcademicResearchDiscovery: React.FC = () => {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-secondary)' }}>
           <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
-          <p>Querying OpenAlex, arXiv, and Crossref APIs...</p>
+          <p style={{ fontWeight: 600 }}>Synthesizing literature & querying OpenAlex, arXiv, and Crossref APIs...</p>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Retrieving peer-reviewed works and generating high-yield study notes</span>
         </div>
       ) : searched && papers.length === 0 ? (
         <div
           style={{
-            background: 'var(--card-bg)',
+            background: 'var(--glass-card)',
             padding: '2.5rem',
             borderRadius: '12px',
             textAlign: 'center',
-            border: '1px solid var(--card-border)',
+            border: '1px solid var(--border-medium)',
             color: 'var(--text-muted)',
           }}
         >
@@ -265,161 +324,263 @@ export const AcademicResearchDiscovery: React.FC = () => {
           <p style={{ fontSize: '0.875rem' }}>Try adjusting your search terms, removing filters, or searching for broader topics.</p>
         </div>
       ) : (
-        papers.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Displaying {papers.length} scholarly results</span>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', background: '#0284c720', color: '#38bdf8', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>OpenAlex</span>
-                <span style={{ fontSize: '0.75rem', background: '#ea580c20', color: '#fb923c', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>arXiv</span>
-                <span style={{ fontSize: '0.75rem', background: '#05966920', color: '#34d399', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>Crossref</span>
-              </div>
-            </div>
-
-            {papers.map((paper) => {
-              const isExpanded = !!expandedAbstracts[paper.id];
-              return (
+        (papers.length > 0 || aiNotes) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {/* AI Research Notes & Literature Synthesis Briefing */}
+            {aiNotes && (
+              <div
+                style={{
+                  background: 'var(--glass-card)',
+                  border: '1px solid var(--border-strong)',
+                  borderRadius: '12px',
+                  padding: '1.5rem 1.75rem',
+                  boxShadow: 'var(--shadow-md)',
+                  position: 'relative',
+                }}
+              >
                 <div
-                  key={paper.id}
                   style={{
-                    background: 'var(--card-bg)',
-                    padding: '1.25rem',
-                    borderRadius: '10px',
-                    border: '1px solid var(--card-border)',
-                    boxShadow: 'var(--card-shadow)',
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.65rem',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '1rem',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    paddingBottom: '0.75rem',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
                   }}
                 >
-                  {/* Top Badges & Venue */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <span style={{ fontSize: '1.5rem' }}>🧠</span>
+                    <div>
+                      <h4
                         style={{
-                          backgroundColor: `${getProviderColor(paper.source_provider)}22`,
-                          color: getProviderColor(paper.source_provider),
-                          border: `1px solid ${getProviderColor(paper.source_provider)}44`,
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: '4px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          textTransform: 'uppercase',
+                          margin: 0,
+                          fontSize: '1.1rem',
+                          color: 'var(--text-primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
                         }}
                       >
-                        {paper.source_provider}
-                      </span>
-
-                      {paper.open_access && (
+                        AI Literature Synthesis & Research Notes
                         <span
                           style={{
-                            backgroundColor: '#10b98122',
-                            color: '#10b981',
-                            padding: '0.15rem 0.45rem',
+                            fontSize: '0.68rem',
+                            background: 'rgba(139, 92, 246, 0.2)',
+                            color: 'var(--color-secondary-violet)',
+                            padding: '0.15rem 0.5rem',
                             borderRadius: '4px',
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
+                            border: '1px solid rgba(139, 92, 246, 0.4)',
+                            fontWeight: 700,
                           }}
                         >
-                          🔓 Open Access
+                          EXECUTIVE CONSENSUS BRIEF
                         </span>
-                      )}
-
-                      {paper.publication_year && (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                          📅 {paper.publication_year}
-                        </span>
-                      )}
-                    </div>
-
-                    {paper.citation_count !== null && paper.citation_count !== undefined && (
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                        📊 {paper.citation_count} Citations
+                      </h4>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        Synthesized peer-reviewed medical & scientific consensus from verified literature
                       </span>
-                    )}
-                  </div>
-
-                  {/* Title */}
-                  <h4 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
-                    {paper.url ? (
-                      <a
-                        href={paper.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: 'var(--brand-secondary)', textDecoration: 'none' }}
-                      >
-                        {paper.title} ↗
-                      </a>
-                    ) : (
-                      paper.title
-                    )}
-                  </h4>
-
-                  {/* Authors & Venue */}
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                    {paper.authors.length > 0 && (
-                      <span>✍️ {paper.authors.slice(0, 5).join(', ')}{paper.authors.length > 5 ? ` +${paper.authors.length - 5} more` : ''}</span>
-                    )}
-                    {paper.venue && (
-                      <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>
-                        • {paper.venue}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Abstract */}
-                  {paper.abstract && (
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'var(--bg-glass)', padding: '0.65rem 0.85rem', borderRadius: '6px' }}>
-                      <p style={{ margin: 0 }}>
-                        {isExpanded ? paper.abstract : `${paper.abstract.slice(0, 240)}...`}
-                      </p>
-                      {paper.abstract.length > 240 && (
-                        <button
-                          type="button"
-                          onClick={() => toggleAbstract(paper.id)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--brand-secondary)',
-                            fontSize: '0.75rem',
-                            cursor: 'pointer',
-                            padding: 0,
-                            marginTop: '0.35rem',
-                            fontWeight: 600,
-                          }}
-                        >
-                          {isExpanded ? 'Show less ▲' : 'Read full abstract ▼'}
-                        </button>
-                      )}
                     </div>
-                  )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(aiNotes);
+                      alert('AI research notes copied to clipboard!');
+                    }}
+                    title="Copy research notes to clipboard"
+                  >
+                    📋 Copy Notes
+                  </button>
+                </div>
 
-                  {/* Identifiers & Links */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px solid var(--card-border)' }}>
-                    <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      {paper.doi && (
-                        <span>DOI: <code style={{ color: 'var(--text-secondary)' }}>{paper.doi}</code></span>
-                      )}
-                      {paper.arxiv_id && (
-                        <span>arXiv: <code style={{ color: 'var(--text-secondary)' }}>{paper.arxiv_id}</code></span>
-                      )}
-                    </div>
+                <div
+                  style={{
+                    fontSize: '0.9rem',
+                    lineHeight: 1.7,
+                    color: 'var(--text-primary)',
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  {aiNotes}
+                </div>
+              </div>
+            )}
 
-                    {paper.url && (
-                      <a
-                        href={paper.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
-                      >
-                        View Official Paper ↗
-                      </a>
-                    )}
+            {/* Papers Section Header */}
+            {papers.length > 0 && (
+              <>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Displaying {papers.length} peer-reviewed works (Sorted by authority & citations)</span>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', background: '#0284c720', color: '#38bdf8', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>OpenAlex</span>
+                    <span style={{ fontSize: '0.75rem', background: '#ea580c20', color: '#fb923c', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>arXiv</span>
+                    <span style={{ fontSize: '0.75rem', background: '#05966920', color: '#34d399', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>Crossref</span>
                   </div>
                 </div>
-              );
-            })}
+
+                {papers.map((paper) => {
+                  const isExpanded = !!expandedAbstracts[paper.id];
+                  return (
+                    <div
+                      key={paper.id}
+                      style={{
+                        background: 'var(--glass-card)',
+                        padding: '1.25rem',
+                        borderRadius: '10px',
+                        border: '1px solid var(--border-subtle)',
+                        boxShadow: 'var(--shadow-sm)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.65rem',
+                      }}
+                    >
+                      {/* Top Badges & Venue */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span
+                            style={{
+                              backgroundColor: `${getProviderColor(paper.source_provider)}22`,
+                              color: getProviderColor(paper.source_provider),
+                              border: `1px solid ${getProviderColor(paper.source_provider)}44`,
+                              padding: '0.15rem 0.5rem',
+                              borderRadius: '4px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {paper.source_provider}
+                          </span>
+
+                          {paper.open_access && (
+                            <span
+                              style={{
+                                backgroundColor: '#10b98122',
+                                color: '#10b981',
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '4px',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                              }}
+                            >
+                              🔓 Open Access
+                            </span>
+                          )}
+
+                          {paper.publication_year && (
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                              📅 {paper.publication_year}
+                            </span>
+                          )}
+                        </div>
+
+                        {paper.citation_count !== null && paper.citation_count !== undefined && (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--color-accent)', fontWeight: 600 }}>
+                            📊 {paper.citation_count.toLocaleString()} Citations
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Title */}
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                        {paper.url ? (
+                          <a
+                            href={paper.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: 'var(--color-primary)', textDecoration: 'none' }}
+                          >
+                            {paper.title} ↗
+                          </a>
+                        ) : (
+                          paper.title
+                        )}
+                      </h4>
+
+                      {/* Authors & Venue */}
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {paper.authors.length > 0 && (
+                          <span>✍️ {paper.authors.slice(0, 5).join(', ')}{paper.authors.length > 5 ? ` +${paper.authors.length - 5} more` : ''}</span>
+                        )}
+                        {paper.venue && (
+                          <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>
+                            • {paper.venue}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Abstract */}
+                      {paper.abstract && (
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, background: 'var(--bg-subtle)', padding: '0.65rem 0.85rem', borderRadius: '6px' }}>
+                          <p style={{ margin: 0 }}>
+                            {isExpanded ? paper.abstract : `${paper.abstract.slice(0, 240)}...`}
+                          </p>
+                          {paper.abstract.length > 240 && (
+                            <button
+                              type="button"
+                              onClick={() => toggleAbstract(paper.id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--color-accent)',
+                                fontSize: '0.75rem',
+                                cursor: 'pointer',
+                                padding: 0,
+                                marginTop: '0.35rem',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {isExpanded ? 'Show less ▲' : 'Read full abstract ▼'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Identifiers & Links */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          {paper.doi && (
+                            <span>DOI: <code style={{ color: 'var(--text-secondary)' }}>{paper.doi}</code></span>
+                          )}
+                          {paper.arxiv_id && (
+                            <span>arXiv: <code style={{ color: 'var(--text-secondary)' }}>{paper.arxiv_id}</code></span>
+                          )}
+                        </div>
+
+                        {paper.url && (
+                          <a
+                            href={paper.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
+                          >
+                            View Official Paper ↗
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Load More Button */}
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem', paddingBottom: '1rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    style={{ padding: '0.65rem 2rem', fontSize: '0.88rem' }}
+                  >
+                    {loadingMore ? 'Fetching Additional Papers...' : '📚 Load More Scholarly Papers'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )
       )}

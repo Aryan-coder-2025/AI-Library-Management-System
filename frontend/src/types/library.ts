@@ -514,6 +514,8 @@ export interface AcademicSearchResponse {
   providers_queried: string[];
   active_providers: string[];
   results: AcademicPaperResult[];
+  ai_research_notes?: string;
+  focused_topic?: string;
 }
 
 // ── Stage 12.14 Types ────────────────────────────────────────────────────────

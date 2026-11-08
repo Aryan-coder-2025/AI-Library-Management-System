@@ -752,6 +752,8 @@ class AcademicSearchResponse(BaseModel):
     providers_queried: List[str]
     active_providers: List[str]
     results: List[AcademicPaperResult]
+    ai_research_notes: Optional[str] = None
+    focused_topic: Optional[str] = None
 
 
 class NotificationResponse(BaseModel):

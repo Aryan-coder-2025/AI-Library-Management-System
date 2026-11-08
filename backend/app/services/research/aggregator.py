@@ -40,12 +40,17 @@ def clean_scholarly_query(q: str) -> str:
 
     patterns = [
         r"^(?:ok|okay|hey|hi|hello|please)[\s,]+",
-        r"^(?:can|could|would)\s+you\s+(?:please\s+)?(?:tell|show|give|find|search|recommend|suggest)\s+(?:me\s+)?(?:about\s+)?",
-        r"^(?:tell|show|give|find|search)\s+(?:me\s+)?(?:about\s+)?",
-        r"^(?:what\s+are\s+(?:some\s+)?(?:famous|the\s+best|top|the\s+latest|popular|major)\s+)?(?:research\s+)?(?:papers|articles|studies|publications|books)\s+(?:on|about|regarding|in)\s+",
+        r"^(?:can|could|would)\s+you\s+(?:please\s+)?(?:tell|show|give|provide|find|search|recommend|suggest)\s+(?:me\s+)?(?:about\s+)?",
+        r"^(?:tell|show|give|provide|find|search)\s+(?:me\s+)?(?:about\s+)?",
+        r"^(?:research\s+)?notes\s+(?:for\s+the\s+topic|for|on|about|regarding)\s+",
+        r"^(?:what\s+are\s+(?:some\s+)?(?:famous|the\s+best|top|the\s+latest|popular|major)\s+)?(?:research\s+)?(?:papers|articles|studies|publications|books|notes)\s+(?:on|about|regarding|in)\s+",
         r"^(?:some\s+)?(?:famous|best|top|latest|popular|major)\s+(?:research\s+)?(?:papers|articles|studies|publications)\s+(?:on|about|regarding|in)\s+",
         r"^(?:papers|articles|studies|publications)\s+(?:on|about|regarding|in)\s+",
         r"^(?:looking\s+for|search\s+for|find)\s+(?:papers|articles|studies)?\s*(?:on|about|regarding)?\s+",
+        r"^(?:the\s+topic\s+is|topic\s+is|topic\s*:)\s+",
+        r"^(?:is|are|can|could|why|how|what)\s+",
+        r"\b(?:really|actually|simply|truly)\b\s*",
+        r"\bat\s+any\s+stage\b",
     ]
     changed = True
     while changed:
@@ -56,6 +61,50 @@ def clean_scholarly_query(q: str) -> str:
                 cleaned = new_q
                 changed = True
     return cleaned if cleaned else q.strip()
+
+
+def generate_ai_research_notes_and_keywords(user_query: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    If the query asks for study notes, synthesis, or is phrased as a research question,
+    invokes Gemini to generate an academic briefing and extract precise indexing keywords.
+    """
+    q_lower = user_query.lower()
+    needs_notes = any(kw in q_lower for kw in ["notes", "explain", "is it", "is ", "why ", "how ", "curable", "cure", "summary", "synthesize", "overview", "can you", "what are"]) or len(user_query.split()) >= 6
+    if not needs_notes:
+        return None, None
+
+    try:
+        from app.services.copilot import get_llm_provider
+        provider, _ = get_llm_provider()
+        prompt = (
+            f"The user has submitted an academic research inquiry: {user_query!r}\n"
+            f"1. On the very first line, output: KEYWORDS: <2 to 4 high-precision academic search terms in English, e.g. cancer curability stage oncology>\n"
+            f"2. Then output:\nNOTES:\n<Concise, high-yield academic study notes in markdown synthesizing the current consensus in peer-reviewed literature, including definitions, mechanisms, and key conclusions>\n"
+        )
+        res = provider.generate(prompt, "You are a distinguished university research librarian and academic literature synthesizer.", 12.0)
+        if not res:
+            return None, None
+
+        keywords: Optional[str] = None
+        notes: Optional[str] = None
+
+        if "KEYWORDS:" in res:
+            parts = res.split("KEYWORDS:", 1)[1]
+            if "NOTES:" in parts:
+                kw_part, notes_part = parts.split("NOTES:", 1)
+                keywords = kw_part.strip()
+                notes = notes_part.strip()
+            else:
+                keywords = parts.strip()
+        elif "NOTES:" in res:
+            notes = res.split("NOTES:", 1)[1].strip()
+        else:
+            notes = res.strip()
+
+        return notes, keywords
+    except Exception as exc:
+        logger.warning("AI research notes generation skipped: %s", type(exc).__name__)
+        return None, None
 
 
 class AcademicResearchService:
@@ -95,8 +144,26 @@ class AcademicResearchService:
             )
 
         scholarly_query = clean_scholarly_query(clean_query)
+        ai_notes: Optional[str] = None
+        focused_topic: Optional[str] = None
+
+        # Check if user query is a research question or asks for notes/synthesis
+        q_lower = clean_query.lower()
+        needs_ai_brief = (
+            any(w in q_lower for w in ["notes", "explain", "is it", "is ", "why ", "how ", "curable", "cure", "summary", "synthesize", "can you", "what are", "what is"])
+            or len(clean_query.split()) >= 6
+        )
+        if needs_ai_brief:
+            ai_notes, extracted_kw = generate_ai_research_notes_and_keywords(clean_query)
+            if extracted_kw:
+                focused_topic = extracted_kw
+                scholarly_query = clean_scholarly_query(extracted_kw)
+
+        if not focused_topic and scholarly_query != clean_query:
+            focused_topic = scholarly_query
+
         if scholarly_query != clean_query:
-            logger.info("Sanitized conversational scholarly query: %r -> %r", clean_query, scholarly_query)
+            logger.info("Sanitized conversational scholarly query: %r -> %r (focused_topic: %r)", clean_query, scholarly_query, focused_topic)
 
         target_providers = [p.lower() for p in providers] if providers else ["openalex", "arxiv", "crossref"]
         valid_providers = [p for p in target_providers if p in self.providers]
@@ -112,7 +179,7 @@ class AcademicResearchService:
         active_providers: List[str] = []
         raw_results: List[AcademicPaperResult] = []
 
-        per_provider_limit = max(5, limit // len(valid_providers) + 2) if valid_providers else limit
+        per_provider_limit = max(10, limit // len(valid_providers) + 4) if valid_providers else limit
 
         # Query OpenAlex
         if "openalex" in valid_providers:
@@ -183,6 +250,8 @@ class AcademicResearchService:
 
             deduped.append(paper)
 
+        # Sort results: prioritize high citation counts and authoritative papers
+        deduped.sort(key=lambda p: (p.citation_count or 0), reverse=True)
         final_results = deduped[:limit]
 
         response = AcademicSearchResponse(
@@ -193,6 +262,8 @@ class AcademicResearchService:
             providers_queried=valid_providers,
             active_providers=active_providers,
             results=final_results,
+            ai_research_notes=ai_notes,
+            focused_topic=focused_topic,
         )
 
         _RESEARCH_CACHE[cache_key] = (now, response)

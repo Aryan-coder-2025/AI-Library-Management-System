@@ -53,6 +53,7 @@ class OpenAlexAdapter:
             "search": query,
             "per_page": min(limit, 50),
             "page": max(page, 1),
+            "sort": "cited_by_count:desc",
         }
 
         filters = []
