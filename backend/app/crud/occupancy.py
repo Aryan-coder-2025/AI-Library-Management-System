@@ -332,12 +332,58 @@ def get_latest_observation_time(db: Session) -> Optional[datetime]:
 
 
 def find_existing_observation(
-    db: Session, zone_id: int, recorded_at: datetime
+    db: Session,
+    zone_id: int,
+    recorded_at: datetime,
+    source_sensor_id: Optional[str] = None,
 ) -> Optional[OccupancyObservation]:
-    """Finds an observation matching exact zone_id and recorded_at timestamp."""
-    stmt = select(OccupancyObservation).where(
+    """
+    Finds an observation matching exact composite key (zone_id, source_sensor_id, recorded_at).
+    Correctly distinguishes independent sensors reporting at the same timestamp.
+    """
+    filters = [
         OccupancyObservation.zone_id == zone_id,
         OccupancyObservation.recorded_at == recorded_at,
+    ]
+    if source_sensor_id is not None:
+        filters.append(OccupancyObservation.source_sensor_id == source_sensor_id)
+    else:
+        filters.append(OccupancyObservation.source_sensor_id.is_(None))
+
+    stmt = select(OccupancyObservation).where(*filters)
+    return db.execute(stmt).scalars().first()
+
+
+def find_recent_sensor_observation(
+    db: Session,
+    zone_id: int,
+    as_of: datetime,
+    window_seconds: int = 15,
+    source_sensor_id: Optional[str] = None,
+) -> Optional[OccupancyObservation]:
+    """
+    Finds the most recent observation from the same (zone_id, source_sensor_id)
+    within a trailing sliding window [as_of - window_seconds, as_of + 5s].
+    Used to achieve genuine idempotency for rapid sensor retries when recorded_at is omitted.
+    """
+    window_start = as_of - timedelta(seconds=window_seconds)
+    window_end = as_of + timedelta(seconds=5)
+
+    filters = [
+        OccupancyObservation.zone_id == zone_id,
+        OccupancyObservation.recorded_at >= window_start,
+        OccupancyObservation.recorded_at <= window_end,
+    ]
+    if source_sensor_id is not None:
+        filters.append(OccupancyObservation.source_sensor_id == source_sensor_id)
+    else:
+        filters.append(OccupancyObservation.source_sensor_id.is_(None))
+
+    stmt = (
+        select(OccupancyObservation)
+        .where(*filters)
+        .order_by(OccupancyObservation.recorded_at.desc())
+        .limit(1)
     )
     return db.execute(stmt).scalars().first()
 
@@ -347,31 +393,59 @@ def save_telemetry_observation(
     zone_id: int,
     observed_count: int,
     capacity_utilization: float,
-    recorded_at: datetime,
+    recorded_at: Optional[datetime] = None,
     source_sensor_id: Optional[str] = None,
+    idempotency_window_seconds: int = 15,
 ) -> Tuple[OccupancyObservation, str]:
     """
     Idempotently records a telemetry observation.
-    - If duplicate observation exists with same count/sensor, returns existing with 'idempotent_duplicate'.
-    - If duplicate exists with different count, updates it with 'updated'.
-    - Otherwise inserts new record with 'recorded'.
+
+    Deduplication Semantics:
+    1. Explicit Timestamp:
+       Deduplication key is (zone_id, source_sensor_id, recorded_at).
+       - If exact match exists with identical count: returns (existing, 'idempotent_duplicate')
+       - If exact match exists with updated count: updates row and returns (existing, 'updated')
+       - Otherwise inserts new row with 'recorded'.
+    2. Omitted Timestamp (recorded_at is None):
+       Evaluated as a live observation.
+       - Checks for an observation from the same (zone_id, source_sensor_id) within
+         the trailing idempotency window (default 15s).
+       - Rapid retry within window with identical count returns (existing, 'idempotent_duplicate').
+       - Rapid retry with corrected count returns (existing, 'updated').
+       - Outside the window, a new independent row is created with 'recorded' at current timestamp.
     """
-    existing = find_existing_observation(db=db, zone_id=zone_id, recorded_at=recorded_at)
+    now = datetime.utcnow()
+    is_live = recorded_at is None
+
+    if is_live:
+        existing = find_recent_sensor_observation(
+            db=db,
+            zone_id=zone_id,
+            as_of=now,
+            window_seconds=idempotency_window_seconds,
+            source_sensor_id=source_sensor_id,
+        )
+        effective_dt = now
+    else:
+        existing = find_existing_observation(
+            db=db,
+            zone_id=zone_id,
+            recorded_at=recorded_at,
+            source_sensor_id=source_sensor_id,
+        )
+        effective_dt = recorded_at
+
     if existing is not None:
-        if (
-            existing.observed_count == observed_count
-            and existing.source_sensor_id == source_sensor_id
-        ):
+        if existing.observed_count == observed_count:
             return existing, "idempotent_duplicate"
         existing.observed_count = observed_count
         existing.capacity_utilization = capacity_utilization
-        existing.source_sensor_id = source_sensor_id
         db.flush()
         return existing, "updated"
 
     new_obs = OccupancyObservation(
         zone_id=zone_id,
-        recorded_at=recorded_at,
+        recorded_at=effective_dt,
         observed_count=observed_count,
         capacity_utilization=capacity_utilization,
         source_sensor_id=source_sensor_id,

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { CopilotChatResponse, CopilotMessage, CopilotSource, UserProfile } from '../types/library';
+import type { CopilotMessage, CopilotSource, UserProfile } from '../types/library';
 
 interface AICopilotDrawerProps {
   currentUser: UserProfile;
@@ -89,30 +89,35 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
     setErrorMessage(null);
 
     try {
-      const historyPayload = messages
-        .filter((m) => m.id !== 'welcome-1')
+      const history = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-6)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      const resp = await apiFetch<CopilotChatResponse>('/api/copilot/chat', {
+      const resp = await apiFetch<any>('/api/knowledge/agent/chat', {
         method: 'POST',
         body: JSON.stringify({
           message: text,
-          conversation_history: historyPayload,
+          conversation_history: history,
         }),
       });
 
-      setLastProvider(resp.provider);
-      setLastIsFallback(resp.is_fallback);
+      setLastProvider(resp.provider || 'Librarian Agent Tool Runner');
+      setLastIsFallback(false);
 
       const assistantMsg: CopilotMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: resp.reply,
+        content: resp.answer,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         provider: resp.provider,
-        is_fallback: resp.is_fallback,
-        sources: resp.sources,
+        is_fallback: false,
+        sources: resp.citations?.map((c: any) => ({
+          title: c.title,
+          source_type: c.source_type,
+          snippet: c.snippet,
+          url_or_action: c.url_or_action,
+        })),
         suggested_followups: resp.suggested_followups,
       };
 

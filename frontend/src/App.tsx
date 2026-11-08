@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from './services/apiClient';
 import type { UserProfile } from './types/library';
+import { getInitialTheme, applyTheme, type ThemeMode } from './services/theme';
 import { Navbar } from './components/Navbar';
 import { SignIn } from './components/SignIn';
+import { Register } from './components/Register';
+import { ForgotPassword } from './components/ForgotPassword';
+import { ResetPassword } from './components/ResetPassword';
+import { DashboardView } from './components/DashboardView';
 import { StudentCatalogue } from './components/StudentCatalogue';
 import { SemanticSearch } from './components/SemanticSearch';
 import { StudentLoans } from './components/StudentLoans';
@@ -15,15 +20,23 @@ import { BookDetailModal } from './components/BookDetailModal';
 import { AICopilotDrawer } from './components/AICopilotDrawer';
 import { GuidedTourModal } from './components/GuidedTourModal';
 import { PatronProfileModal } from './components/PatronProfileModal';
+import { CommandPalette } from './components/CommandPalette';
+import { KnowledgeExplorer } from './components/knowledge/KnowledgeExplorer';
+import { ModelComparisonStudio } from './components/knowledge/ModelComparisonStudio';
+import { TeacherPortal } from './components/TeacherPortal';
+import { LibrarianIntelligenceCenter } from './components/intelligence/LibrarianIntelligenceCenter';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
 
-  // Active navigation tab
-  const [activeTab, setActiveTab] = useState<string>('catalogue');
+  // Active navigation tab (defaults to unified futuristic Dashboard)
+  const [activeTab, setActiveTab] = useState<string>('dashboard');
 
   // Book Detail Modal state
   const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
@@ -35,8 +48,50 @@ export const App: React.FC = () => {
   // Patron Profile state
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  // Check existing session on load
+  // Global Command Palette state
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Theme Management (Midnight Intelligence / Academic Aurora)
+  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
+
   useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    const nextTheme: ThemeMode = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    applyTheme(nextTheme);
+  };
+
+  // Keyboard Shortcuts (Ctrl+K: Command Palette, Ctrl+J: AI Copilot)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setIsCopilotOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
+  // Check existing session on load and detect password recovery token in URL
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tokenParam = urlParams.get('reset_token') || urlParams.get('token');
+      if (tokenParam) {
+        setResetToken(tokenParam);
+        setActiveTab('reset_password');
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
+
     apiFetch<UserProfile>('/api/auth/me')
       .then((user) => {
         setCurrentUser(user);
@@ -72,12 +127,43 @@ export const App: React.FC = () => {
         body: JSON.stringify({ email, password: pass }),
       });
       setCurrentUser(user);
-      setActiveTab('catalogue');
+      setActiveTab('dashboard');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Invalid credentials';
       setLoginError(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  const handleRegister = async (data: {
+    fullName: string;
+    email: string;
+    username: string;
+    pass: string;
+    confirmPass: string;
+  }) => {
+    setIsRegistering(true);
+    setRegisterError(null);
+
+    try {
+      const user = await apiFetch<UserProfile>('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          full_name: data.fullName,
+          email: data.email,
+          username: data.username,
+          password: data.pass,
+          confirm_password: data.confirmPass,
+        }),
+      });
+      setCurrentUser(user);
+      setActiveTab('dashboard');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Registration failed';
+      setRegisterError(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setIsRegistering(false);
     }
   };
 
@@ -88,18 +174,22 @@ export const App: React.FC = () => {
       // Ignore logout errors
     } finally {
       setCurrentUser(null);
-      setActiveTab('catalogue');
+      setActiveTab('dashboard');
       setSelectedBookId(null);
       setIsCopilotOpen(false);
       setIsTourOpen(false);
       setIsProfileOpen(false);
+      setIsCommandPaletteOpen(false);
     }
   };
 
   if (authLoading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-        Verifying session...
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+          <span style={{ fontSize: '2rem' }}>🏛️</span>
+          <span style={{ letterSpacing: '0.05em', fontWeight: 600 }}>INITIALIZING ATHENAEUM PLATFORM...</span>
+        </div>
       </div>
     );
   }
@@ -116,6 +206,9 @@ export const App: React.FC = () => {
         onOpenTour={() => setIsTourOpen(true)}
         onOpenCopilot={() => setIsCopilotOpen(true)}
         onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        currentTheme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       <main className="main-content">
@@ -126,29 +219,138 @@ export const App: React.FC = () => {
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={() => setActiveTab('catalogue')}
+                  onClick={() => setActiveTab('dashboard')}
                 >
-                  ← Back to Public Catalogue
+                  ← Back to Academic Portal
                 </button>
               </div>
               <SignIn
                 onLogin={handleLogin}
                 loading={isLoggingIn}
                 error={loginError}
+                onSwitchToRegister={() => {
+                  setLoginError(null);
+                  setRegisterError(null);
+                  setActiveTab('register');
+                }}
+                onSwitchToForgotPassword={() => {
+                  setLoginError(null);
+                  setRegisterError(null);
+                  setActiveTab('forgot_password');
+                }}
               />
             </div>
-          ) : (
+          ) : activeTab === 'forgot_password' ? (
+            <div>
+              <div style={{ maxWidth: '420px', margin: '0 auto 1rem', display: 'flex', justifyContent: 'flex-start' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setActiveTab('dashboard')}
+                >
+                  ← Back to Academic Portal
+                </button>
+              </div>
+              <ForgotPassword
+                onBackToLogin={() => {
+                  setLoginError(null);
+                  setActiveTab('login');
+                }}
+              />
+            </div>
+          ) : activeTab === 'reset_password' ? (
+            <div>
+              <div style={{ maxWidth: '420px', margin: '0 auto 1rem', display: 'flex', justifyContent: 'flex-start' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setActiveTab('dashboard')}
+                >
+                  ← Back to Academic Portal
+                </button>
+              </div>
+              <ResetPassword
+                token={resetToken || ''}
+                onSuccessToLogin={() => {
+                  setLoginError(null);
+                  setResetToken(null);
+                  // Clean URL query parameter
+                  try {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                  } catch {
+                    // Ignore history errors
+                  }
+                  setActiveTab('login');
+                }}
+                onRequestNewLink={() => {
+                  setResetToken(null);
+                  try {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                  } catch {
+                    // Ignore history errors
+                  }
+                  setActiveTab('forgot_password');
+                }}
+              />
+            </div>
+          ) : activeTab === 'register' ? (
+            <div>
+              <div style={{ maxWidth: '480px', margin: '0 auto 1rem', display: 'flex', justifyContent: 'flex-start' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setActiveTab('dashboard')}
+                >
+                  ← Back to Academic Portal
+                </button>
+              </div>
+              <Register
+                onRegister={handleRegister}
+                loading={isRegistering}
+                error={registerError}
+                onSwitchToLogin={() => {
+                  setLoginError(null);
+                  setRegisterError(null);
+                  setActiveTab('login');
+                }}
+              />
+            </div>
+          ) : activeTab === 'catalogue' ? (
             <div>
               <div className="alert alert-info" style={{ marginBottom: '1.25rem' }}>
                 <div>
-                  <strong>Public OPAC Mode:</strong> You are browsing the catalogue as a guest. Physical copy barcodes and borrower status are hidden. Sign in with your patron credentials to borrow books or access semantic search and account history.
+                  <strong>Public OPAC Mode:</strong> You are browsing the catalogue as a guest scholar. Sign in with your university credentials to borrow books or access semantic search and account history.
                 </div>
               </div>
               <StudentCatalogue onSelectBook={(id) => setSelectedBookId(id)} />
             </div>
+          ) : activeTab === 'semantic' ? (
+            <SemanticSearch
+              onSelectBook={(id) => setSelectedBookId(id)}
+              onGoToCatalogue={() => setActiveTab('catalogue')}
+            />
+          ) : activeTab === 'knowledge' ? (
+            <KnowledgeExplorer />
+          ) : (
+            <DashboardView
+              currentUser={null}
+              onSelectTab={setActiveTab}
+              onOpenCopilot={() => setActiveTab('login')}
+              onSelectBook={(id) => setSelectedBookId(id)}
+            />
           )
         ) : (
           <>
+            {/* Unified Academic Dashboard */}
+            {activeTab === 'dashboard' && (
+              <DashboardView
+                currentUser={currentUser}
+                onSelectTab={setActiveTab}
+                onOpenCopilot={() => setIsCopilotOpen(true)}
+                onSelectBook={(id) => setSelectedBookId(id)}
+              />
+            )}
+
             {/* Patron & Shared Views */}
             {activeTab === 'catalogue' && (
               <StudentCatalogue onSelectBook={(id) => setSelectedBookId(id)} />
@@ -169,7 +371,20 @@ export const App: React.FC = () => {
               <StudentSpaces currentUser={currentUser} />
             )}
 
+            {activeTab === 'knowledge' && (
+              <KnowledgeExplorer />
+            )}
+
+            {/* Teacher Portal (PORT-03 & INTEL-06) */}
+            {activeTab === 'teacher_portal' && (currentUser.role === 'teacher' || currentUser.role === 'librarian') && (
+              <TeacherPortal currentUser={currentUser} />
+            )}
+
             {/* Librarian-Only Views */}
+            {activeTab === 'intelligence' && currentUser.role === 'librarian' && (
+              <LibrarianIntelligenceCenter />
+            )}
+
             {activeTab === 'manage_catalogue' && currentUser.role === 'librarian' && (
               <LibrarianCatalogue />
             )}
@@ -185,11 +400,15 @@ export const App: React.FC = () => {
             {activeTab === 'embeddings' && currentUser.role === 'librarian' && (
               <LibrarianEmbeddings />
             )}
+
+            {activeTab === 'ai_studio' && currentUser.role === 'librarian' && (
+              <ModelComparisonStudio />
+            )}
           </>
         )}
       </main>
 
-      {/* Global Book Detail Modal (Available to both authenticated users and public guests) */}
+      {/* Global Book Detail Modal */}
       {selectedBookId !== null && (
         <BookDetailModal
           bookId={selectedBookId}
@@ -210,6 +429,19 @@ export const App: React.FC = () => {
           }}
         />
       )}
+
+      {/* Global Command Palette (Ctrl+K) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onSelectTab={setActiveTab}
+        onOpenCopilot={() => setIsCopilotOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenTour={() => setIsTourOpen(true)}
+        onToggleTheme={toggleTheme}
+        currentTheme={theme}
+        currentUser={currentUser}
+      />
 
       {/* First-Time Guided Assistant Tour Modal */}
       {currentUser && (

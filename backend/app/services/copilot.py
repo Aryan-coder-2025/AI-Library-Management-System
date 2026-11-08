@@ -268,7 +268,15 @@ class DeterministicFallbackProvider(BaseLLMProvider):
 
 def get_llm_provider() -> Tuple[BaseLLMProvider, str]:
     """Selects the active LLM provider based on configuration."""
-    api_key = (settings.LLM_API_KEY or os.environ.get("LLM_API_KEY") or "").strip()
+    api_key = (
+        settings.LLM_API_KEY
+        or getattr(settings, "GEMINI_API_KEY", None)
+        or getattr(settings, "GOOGLE_API_KEY", None)
+        or os.environ.get("LLM_API_KEY")
+        or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+        or ""
+    ).strip()
     api_url = (settings.LLM_API_URL or os.environ.get("LLM_API_URL") or "").strip()
     provider_pref = (settings.LLM_PROVIDER or "auto").lower().strip()
 

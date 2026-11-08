@@ -1,6 +1,6 @@
 from datetime import datetime, date
 import re
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 VALID_OPERATIONAL_STATUSES = {"available", "maintenance", "lost", "retired"}
@@ -54,8 +54,61 @@ class HealthResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(..., min_length=3, max_length=255, description="Account email address")
+    identifier: Optional[str] = Field(None, min_length=1, max_length=255, description="Email address or username")
+    email: Optional[str] = Field(None, min_length=1, max_length=255, description="Email address or username (alias)")
+    username: Optional[str] = Field(None, min_length=1, max_length=255, description="Username or email (alias)")
     password: str = Field(..., min_length=1, description="Account password")
+
+    @model_validator(mode="after")
+    def resolve_login_identifier(self) -> "LoginRequest":
+        effective = self.identifier or self.email or self.username
+        if not effective or not effective.strip():
+            raise ValueError("Email address or username is required.")
+        self.identifier = effective.strip()
+        self.email = self.identifier
+        return self
+
+
+class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(..., min_length=2, max_length=100, description="Patron full name")
+    email: str = Field(..., min_length=3, max_length=255, description="Valid email address")
+    username: str = Field(..., min_length=3, max_length=20, description="Unique username")
+    password: str = Field(..., min_length=12, max_length=100, description="Password (min 12 characters)")
+    confirm_password: Optional[str] = Field(None, min_length=1, description="Password confirmation")
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        cleaned = v.strip()
+        if len(cleaned) < 2:
+            raise ValueError("Full name must be at least 2 characters long.")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_address(cls, v: str) -> str:
+        from app.cli import validate_email
+        return validate_email(v)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username_field(cls, v: str) -> str:
+        from app.auth import validate_username
+        return validate_username(v)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_field(cls, v: str) -> str:
+        from app.auth import validate_password_policy
+        return validate_password_policy(v)
+
+    @model_validator(mode="after")
+    def verify_password_match(self) -> "RegisterRequest":
+        if self.confirm_password is not None and self.password != self.confirm_password:
+            raise ValueError("Passwords do not match.")
+        return self
 
 
 class UserResponse(BaseModel):
@@ -63,6 +116,7 @@ class UserResponse(BaseModel):
 
     id: int
     email: str
+    username: Optional[str] = None
     full_name: str
     role: str
     is_active: bool
@@ -394,28 +448,138 @@ class CopilotChatResponse(BaseModel):
 class PatronProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    full_name: str = Field(..., min_length=2, max_length=100, description="Patron full name")
+    full_name: Optional[str] = Field(None, min_length=2, max_length=100, description="Patron full name")
+    username: Optional[str] = Field(None, min_length=3, max_length=20, description="Patron username")
 
     @field_validator("full_name")
     @classmethod
-    def validate_name(cls, v: str) -> str:
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
         cleaned = v.strip()
         if len(cleaned) < 2:
             raise ValueError("Full name must be at least 2 characters long.")
         return cleaned
+
+    @field_validator("username")
+    @classmethod
+    def validate_username_field(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        from app.auth import validate_username
+        return validate_username(v)
+
+    @model_validator(mode="after")
+    def check_at_least_one_field(self) -> "PatronProfileUpdate":
+        if self.full_name is None and self.username is None:
+            raise ValueError("At least one profile field (full_name or username) must be provided.")
+        return self
 
 
 class ChangePasswordRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     current_password: str = Field(..., min_length=1, description="Current account password")
-    new_password: str = Field(..., min_length=8, max_length=100, description="New secure password")
+    new_password: str = Field(..., min_length=12, max_length=100, description="New secure password")
 
     @field_validator("new_password")
     @classmethod
     def check_password_policy(cls, v: str) -> str:
         from app.auth import validate_password_policy
         return validate_password_policy(v)
+
+
+class ForgotPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(..., min_length=3, max_length=255, description="Registered email address")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_address(cls, v: str) -> str:
+        from app.cli import validate_email
+        return validate_email(v)
+
+
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(..., min_length=10, max_length=128, description="Cryptographic password reset token")
+    new_password: str = Field(..., min_length=12, max_length=100, description="New password (minimum 12 characters)")
+    confirm_password: Optional[str] = Field(None, min_length=1, description="Password confirmation")
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_field(cls, v: str) -> str:
+        from app.auth import validate_password_policy
+        return validate_password_policy(v)
+
+    @model_validator(mode="after")
+    def verify_password_match(self) -> "ResetPasswordRequest":
+        if self.confirm_password is not None and self.new_password != self.confirm_password:
+            raise ValueError("Passwords do not match.")
+        return self
+
+
+# ── Book Waitlists & Holds (CIRC-02) ─────────────────────────────────────────
+
+class BookHoldCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    book_id: int = Field(..., gt=0, description="Target book monograph ID")
+
+
+class BookHoldResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    book_id: int
+    book_title: str
+    book_author: Optional[str] = None
+    book_isbn: Optional[str] = None
+    user_id: int
+    patron_name: Optional[str] = None
+    copy_id: Optional[int] = None
+    copy_code: Optional[str] = None
+    status: str
+    queue_position: Optional[int] = None
+    created_at: datetime
+    allocated_at: Optional[datetime] = None
+    pickup_expires_at: Optional[datetime] = None
+    fulfilled_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
+
+
+class BookHoldListResponse(BaseModel):
+    total: int
+    items: List[BookHoldResponse]
+
+
+# ── External Academic Research Discovery ─────────────────────────────────────
+
+class AcademicPaperResult(BaseModel):
+    id: str
+    title: str
+    authors: List[str] = []
+    abstract: Optional[str] = None
+    publication_year: Optional[int] = None
+    doi: Optional[str] = None
+    arxiv_id: Optional[str] = None
+    venue: Optional[str] = None
+    source_provider: str  # 'openalex', 'arxiv', 'crossref'
+    open_access: bool = False
+    url: Optional[str] = None
+    citation_count: Optional[int] = None
+
+
+class AcademicSearchResponse(BaseModel):
+    query: str
+    total_results: int
+    page: int
+    page_size: int
+    providers_queried: List[str]
+    active_providers: List[str]
+    results: List[AcademicPaperResult]
 
 
 class NotificationResponse(BaseModel):
@@ -739,7 +903,7 @@ class TelemetryObservationCreate(BaseModel):
 
     zone_id: int
     recorded_at: Optional[datetime] = None
-    observed_count: int = Field(..., ge=0, description="Observed headcount in study zone")
+    observed_count: int = Field(..., description="Observed headcount in study zone")
     source_sensor_id: Optional[str] = Field(None, max_length=50)
 
 
@@ -753,5 +917,679 @@ class TelemetryObservationResponse(BaseModel):
     capacity_utilization: float
     source_sensor_id: Optional[str] = None
     status: str = "recorded"
+
+
+# ── Stage 10.5 Spatial Schemas: Floors, Floor Plans, Mapping & Wayfinding ─────
+
+class LibraryFloorBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    floor_number: int = Field(..., ge=0, description="Floor level identifier (0=Ground, 1=First, etc.)")
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    display_order: int = Field(0, description="Display sorting order")
+    width: float = Field(1000.0, gt=0, description="Canvas coordinate width")
+    height: float = Field(700.0, gt=0, description="Canvas coordinate height")
+    is_active: bool = True
+
+
+class LibraryFloorCreate(LibraryFloorBase):
+    pass
+
+
+class LibraryFloorUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    display_order: Optional[int] = None
+    width: Optional[float] = Field(None, gt=0)
+    height: Optional[float] = Field(None, gt=0)
+    is_active: Optional[bool] = None
+
+
+class LibraryFloorResponse(LibraryFloorBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    published_layout_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FloorPlanElementBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    element_type: str = Field(..., max_length=50, description="wall, door, entrance, exit, stairs, elevator, restroom, service_desk, label, facility, zone_boundary")
+    label: Optional[str] = Field(None, max_length=100)
+    geometry_type: str = Field(..., description="rect, circle, polygon, path, text")
+    geometry_data: Dict[str, Any] = Field(..., description="Normalized coordinates and dimensional attributes")
+    style_properties: Optional[Dict[str, Any]] = None
+    display_order: int = 0
+    is_active: bool = True
+
+
+class FloorPlanElementCreate(FloorPlanElementBase):
+    layout_id: Optional[int] = None
+
+
+class FloorPlanElementUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    element_type: Optional[str] = Field(None, max_length=50)
+    label: Optional[str] = Field(None, max_length=100)
+    geometry_type: Optional[str] = None
+    geometry_data: Optional[Dict[str, Any]] = None
+    style_properties: Optional[Dict[str, Any]] = None
+    display_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class FloorPlanElementResponse(FloorPlanElementBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    floor_id: int
+    layout_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FloorPlanBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    svg_viewbox: str = Field("0 0 1000 700", max_length=50)
+
+
+class FloorPlanCreate(FloorPlanBase):
+    pass
+
+
+class FloorPlanUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    svg_viewbox: Optional[str] = Field(None, max_length=50)
+
+
+class FloorPlanResponse(FloorPlanBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    floor_id: int
+    version: int
+    status: str
+    created_by_user_id: Optional[int] = None
+    published_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SpatialResourceMappingBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resource_type: str = Field(..., description="'zone', 'room', or 'seat'")
+    resource_id: int = Field(..., gt=0)
+    label: Optional[str] = Field(None, max_length=100)
+    x: float = Field(..., ge=0.0, le=1.05, description="Normalized X coordinate [0.0 - 1.0]")
+    y: float = Field(..., ge=0.0, le=1.05, description="Normalized Y coordinate [0.0 - 1.0]")
+    width: Optional[float] = Field(None, gt=0.0, le=1.0)
+    height: Optional[float] = Field(None, gt=0.0, le=1.0)
+    rotation: float = Field(0.0, ge=0.0, le=360.0)
+    is_active: bool = True
+
+    @field_validator("resource_type")
+    @classmethod
+    def validate_resource_type(cls, v: str) -> str:
+        if v not in ("zone", "room", "seat"):
+            raise ValueError("resource_type must be 'zone', 'room', or 'seat'")
+        return v
+
+
+class SpatialResourceMappingCreate(SpatialResourceMappingBase):
+    pass
+
+
+class SpatialResourceMappingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: Optional[str] = Field(None, max_length=100)
+    x: Optional[float] = Field(None, ge=0.0, le=1.05)
+    y: Optional[float] = Field(None, ge=0.0, le=1.05)
+    width: Optional[float] = Field(None, gt=0.0, le=1.0)
+    height: Optional[float] = Field(None, gt=0.0, le=1.0)
+    rotation: Optional[float] = Field(None, ge=0.0, le=360.0)
+    is_active: Optional[bool] = None
+
+
+class SpatialResourceMappingResponse(SpatialResourceMappingBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    floor_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SpatialResourceAvailability(BaseModel):
+    resource_type: str  # 'seat', 'room', 'zone'
+    resource_id: int
+    label: Optional[str] = None
+    availability_status: str  # 'available', 'reserved', 'occupied', 'unavailable', 'unknown'
+    current_attendees: Optional[int] = None
+    capacity: Optional[int] = None
+    provenance: str = "reservation_state"
+    x: float
+    y: float
+    width: Optional[float] = None
+    height: Optional[float] = None
+    rotation: float = 0.0
+    zone_id: Optional[int] = None
+    zone_code: Optional[str] = None
+    zone_name: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+
+
+class FloorPlanDetailResponse(BaseModel):
+    floor: LibraryFloorResponse
+    layout: Optional[FloorPlanResponse] = None
+    elements: List[FloorPlanElementResponse] = []
+    resources: List[SpatialResourceAvailability] = []
+    is_demonstration_layout: bool = True
+    disclosure: str = "ILLUSTRATIVE DEMONSTRATION LAYOUT — NOT A SURVEYED BUILDING PLAN"
+
+
+class ResourceLocationResponse(BaseModel):
+    resource_type: str
+    resource_id: int
+    label: Optional[str] = None
+    floor_id: int
+    floor_number: int
+    floor_name: str
+    zone_id: Optional[int] = None
+    zone_code: Optional[str] = None
+    zone_name: Optional[str] = None
+    x: float
+    y: float
+    availability_status: str
+    directional_guidance: Optional[str] = None
+    is_demonstration: bool = True
+    disclosure: str = "ILLUSTRATIVE DEMONSTRATION LAYOUT — NOT A SURVEYED BUILDING PLAN"
+
+
+class WayfindingStep(BaseModel):
+    step_number: int
+    instruction: str
+    floor_number: int
+    node_type: str
+    x: float
+    y: float
+
+
+class WayfindingRouteResponse(BaseModel):
+    destination_resource_type: str
+    destination_resource_id: int
+    destination_label: str
+    destination_floor_number: int
+    total_distance: float
+    is_accessible: bool
+    path_points: List[List[float]]
+    steps: List[WayfindingStep]
+    is_demonstration: bool = True
+    disclosure: str = "ILLUSTRATIVE DEMONSTRATION ROUTE — FOR VISUAL WAYFINDING GUIDANCE ONLY"
+
+
+class SpatialCompletenessReport(BaseModel):
+    total_zones: int
+    mapped_zones: int
+    unmapped_zone_ids: List[int]
+    total_seats: int
+    mapped_seats: int
+    unmapped_seat_ids: List[int]
+    total_rooms: int
+    mapped_rooms: int
+    unmapped_room_ids: List[int]
+    mapping_completeness_percentage: float
+    published_floors_count: int
+    draft_floors_count: int
+
+
+# ── PILLAR 1: Knowledge Representation Schemas ────────────────────────────────
+
+class ConceptResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    topic_id: int
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+
+
+class TopicResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    subject_id: int
+    name: str
+    description: Optional[str] = None
+    concepts: List[ConceptResponse] = []
+    created_at: datetime
+
+
+class SubjectTreeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    code: str
+    description: Optional[str] = None
+    parent_id: Optional[int] = None
+    children: List['SubjectTreeResponse'] = []
+    topics: List[TopicResponse] = []
+    created_at: datetime
+
+
+class BookKnowledgeAssociationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    book_id: int
+    book_title: str
+    author: str
+    isbn: Optional[str] = None
+    category: str
+    subjects: List[str] = []
+    topics: List[str] = []
+    concepts: List[str] = []
+
+
+class SubjectDetailResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    code: str
+    description: Optional[str] = None
+    parent_id: Optional[int] = None
+    topics: List[TopicResponse] = []
+    associated_books: List[BookKnowledgeAssociationResponse] = []
+
+
+# ── PILLAR 2: Search-Based Navigation Schemas ─────────────────────────────────
+
+class KnowledgeSearchResult(BaseModel):
+    item_type: str  # 'subject', 'topic', 'concept', 'book'
+    id: int
+    title: str
+    description: Optional[str] = None
+    relevance_score: float
+    explanation: str
+    context_path: str  # e.g. "Computer Science > Artificial Intelligence > Machine Learning"
+    associated_books_count: int = 0
+
+
+class KnowledgeSearchResponse(BaseModel):
+    query: str
+    results: List[KnowledgeSearchResult]
+    total: int
+
+
+# ── PILLAR 4: Modern AI Comparison Schemas ────────────────────────────────────
+
+class ModelComparisonRequest(BaseModel):
+    prompt: str
+    models: List[str] = Field(default=["local-deterministic", "gemini-1.5-pro", "gpt-4o"])
+    temperature: float = 0.2
+    max_tokens: int = 512
+    include_rag_context: bool = True
+
+
+class ModelExecutionResult(BaseModel):
+    model_name: str
+    provider: str
+    response_text: str
+    latency_ms: float
+    token_usage: Optional[Dict[str, int]] = None
+    factual_grounding_score: float  # 0.0 to 1.0 (overlap with retrieved library knowledge)
+    citations_count: int
+    error: Optional[str] = None
+
+
+class ModelComparisonResponse(BaseModel):
+    prompt: str
+    timestamp: datetime
+    rag_context_used: Optional[str] = None
+    results: List[ModelExecutionResult]
+
+
+# ── PILLAR 3 & 5: Enhanced Agentic Copilot & RAG Schemas ──────────────────────
+
+class CopilotToolCall(BaseModel):
+    tool_name: str
+    arguments: Dict[str, Any]
+    result: Optional[Any] = None
+    execution_time_ms: float = 0.0
+
+
+class StructuredCitation(BaseModel):
+    source_type: str  # 'policy', 'monograph', 'study_space', 'subject'
+    title: str
+    reference_id: Optional[str] = None
+    snippet: str
+    url_or_action: Optional[str] = None
+
+
+class EnhancedCopilotResponse(BaseModel):
+    answer: str
+    intent: str
+    confidence: float
+    provider: str
+    tool_calls: List[CopilotToolCall] = []
+    citations: List[StructuredCitation] = []
+    spatial_card: Optional[Dict[str, Any]] = None
+    book_cards: List[Dict[str, Any]] = []
+    suggested_followups: List[str] = []
+
+
+class ChatMessageInput(BaseModel):
+    role: str = Field(..., description="Role of the message sender: 'user' or 'assistant'")
+    content: str = Field(..., min_length=1, max_length=1000, description="Message content")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        role_cleaned = v.strip().lower()
+        if role_cleaned not in ("user", "assistant"):
+            raise ValueError(f"Role must be 'user' or 'assistant', got '{v}'. 'system' and other roles are rejected.")
+        return role_cleaned
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Message content cannot be empty or whitespace only.")
+        return cleaned
+
+
+class AgentChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000, description="Patron query")
+    conversation_history: Optional[List[ChatMessageInput]] = Field(
+        default_factory=list,
+        description="Prior conversation history bounded to user and assistant turns (max 6 messages retained)",
+    )
+
+
+# ── Stage 12.14 Schemas: Canonical Feature Completion ────────────────────────
+
+# 1. Course Management & Reading Lists (PORT-03, INTEL-06)
+class CourseCreateRequest(BaseModel):
+    code: str = Field(..., min_length=2, max_length=50, description="Course code (e.g. CS-301)")
+    title: str = Field(..., min_length=2, max_length=255, description="Course title")
+    department: str = Field(..., min_length=2, max_length=100, description="Academic department")
+    term: str = Field(..., min_length=2, max_length=50, description="Academic term (e.g. Fall 2026)")
+    description: Optional[str] = None
+
+
+class CourseResponse(BaseModel):
+    id: int
+    code: str
+    title: str
+    department: str
+    term: str
+    instructor_id: int
+    instructor_name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    reading_list_count: int = 0
+    reserves_count: int = 0
+
+
+class CourseListResponse(BaseModel):
+    courses: List[CourseResponse]
+    total: int
+
+
+class ReadingListItemCreateRequest(BaseModel):
+    book_id: int
+    requirement_type: str = Field(default="required", description="'required', 'recommended', 'supplementary'")
+    notes: Optional[str] = None
+
+    @field_validator("requirement_type")
+    @classmethod
+    def validate_req_type(cls, v: str) -> str:
+        clean = v.strip().lower()
+        if clean not in ("required", "recommended", "supplementary"):
+            raise ValueError("Requirement type must be 'required', 'recommended', or 'supplementary'.")
+        return clean
+
+
+class ReadingListItemResponse(BaseModel):
+    id: int
+    course_id: int
+    book_id: int
+    book_title: str
+    book_author: Optional[str] = None
+    book_isbn: Optional[str] = None
+    added_by_id: int
+    requirement_type: str
+    notes: Optional[str] = None
+    created_at: datetime
+    available_copies_count: int = 0
+    total_copies_count: int = 0
+
+
+# 2. Course Reserves (CIRC-06)
+class CourseReserveCreateRequest(BaseModel):
+    copy_id: int
+    reserve_type: str = Field(default="2_hour", description="'2_hour' or '24_hour'")
+    notes: Optional[str] = None
+
+    @field_validator("reserve_type")
+    @classmethod
+    def validate_res_type(cls, v: str) -> str:
+        clean = v.strip().lower()
+        if clean not in ("2_hour", "24_hour"):
+            raise ValueError("Reserve type must be '2_hour' or '24_hour'.")
+        return clean
+
+
+class CourseReserveResponse(BaseModel):
+    id: int
+    course_id: int
+    course_code: str
+    copy_id: int
+    copy_code: str
+    book_id: int
+    book_title: str
+    reserve_type: str
+    is_active: bool
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+# 3. QR Book Collection (CIRC-03)
+class BookCollectionPassResponse(BaseModel):
+    hold_id: int
+    copy_id: int
+    copy_code: str
+    book_id: int
+    book_title: str
+    patron_id: int
+    patron_name: str
+    token: str
+    qr_payload: str
+    expires_at: datetime
+
+
+class BookCollectionVerifyRequest(BaseModel):
+    token: str = Field(..., min_length=10, description="Collection pass token string")
+
+
+class BookCollectionVerifyResponse(BaseModel):
+    success: bool
+    message: str
+    loan_id: int
+    book_title: str
+    copy_code: str
+    patron_name: str
+    due_date: date
+
+
+# 4. Lost & Damaged Processing & Audit History (CIRC-07)
+class CopyStatusUpdateRequest(BaseModel):
+    status: str = Field(..., description="'available', 'maintenance', 'lost', 'damaged', 'retired'")
+    notes: Optional[str] = Field(None, max_length=500, description="Incident details or maintenance reason")
+
+    @field_validator("status")
+    @classmethod
+    def validate_copy_status(cls, v: str) -> str:
+        clean = v.strip().lower()
+        if clean not in ("available", "maintenance", "lost", "damaged", "retired"):
+            raise ValueError("Status must be 'available', 'maintenance', 'lost', 'damaged', or 'retired'.")
+        return clean
+
+
+class InventoryEventResponse(BaseModel):
+    id: int
+    copy_id: int
+    copy_code: Optional[str] = None
+    book_title: Optional[str] = None
+    auditor_id: int
+    auditor_name: Optional[str] = None
+    event_type: str
+    previous_status: Optional[str] = None
+    new_status: str
+    notes: Optional[str] = None
+    recorded_at: datetime
+
+
+class InventoryEventListResponse(BaseModel):
+    items: List[InventoryEventResponse]
+    total: int
+
+
+# 5. Librarian Intelligence Centre & Snapshot & Inventory Analytics (INTEL-01, INTEL-02, INTEL-04)
+class IntelligenceSnapshotResponse(BaseModel):
+    timestamp: datetime
+    active_loans_count: int
+    overdue_loans_count: int
+    overdue_rate_pct: float
+    total_monographs: int
+    total_copies: int
+    active_holds_count: int
+    active_seat_reservations: int
+    active_room_reservations: int
+    current_occupancy_pct: float
+    peak_occupancy_hour: Optional[int] = None
+
+
+class InventoryAnalyticsResponse(BaseModel):
+    total_monographs: int
+    total_physical_copies: int
+    available_copies: int
+    borrowed_copies: int
+    maintenance_copies: int
+    lost_copies: int
+    damaged_copies: int
+    collection_turnover_rate: float
+    zero_borrow_titles_count: int
+    high_demand_titles_count: int
+    total_audit_events_count: int
+
+
+class CirculationDailyPoint(BaseModel):
+    date: str
+    issues: int
+    returns: int
+    renewals: int
+
+
+class CirculationTrendsResponse(BaseModel):
+    points: List[CirculationDailyPoint]
+    total_issues: int
+    total_returns: int
+    period_days: int
+
+
+# 6. Demand Forecasting (INTEL-03)
+class DemandForecastDay(BaseModel):
+    date: str
+    projected_checkouts: float
+    lower_bound: float
+    upper_bound: float
+    day_of_week: str
+
+
+class TwoWeekDemandForecastResponse(BaseModel):
+    horizon_days: int
+    start_date: str
+    end_date: str
+    projections: List[DemandForecastDay]
+    baseline_daily_average: float
+    trend_direction: str
+    confidence_level: float
+    methodology: str
+
+
+# 7. Acquisition Suggestions & Review Workflow (INTEL-05)
+class AcquisitionSuggestion(BaseModel):
+    query_text: str
+    frequency: int
+    first_searched: datetime
+    last_searched: datetime
+
+
+class AcquisitionSuggestionListResponse(BaseModel):
+    suggestions: List[AcquisitionSuggestion]
+    total_zero_result_queries: int
+
+
+class AcquisitionRequestCreate(BaseModel):
+    title: str = Field(..., min_length=2, max_length=255)
+    author: Optional[str] = Field(None, max_length=255)
+    isbn: Optional[str] = Field(None, max_length=20)
+    search_query_origin: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class AcquisitionRequestUpdate(BaseModel):
+    status: str = Field(..., description="'approved', 'rejected', 'ordered', 'received'")
+    reviewer_notes: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_acq_status(cls, v: str) -> str:
+        clean = v.strip().lower()
+        if clean not in ("approved", "rejected", "ordered", "received"):
+            raise ValueError("Status must be 'approved', 'rejected', 'ordered', or 'received'.")
+        return clean
+
+
+class AcquisitionRequestResponse(BaseModel):
+    id: int
+    suggested_title: str
+    suggested_author: Optional[str] = None
+    isbn: Optional[str] = None
+    search_query_origin: Optional[str] = None
+    frequency_score: int
+    status: str
+    requested_by_id: Optional[int] = None
+    reviewed_by_id: Optional[int] = None
+    reviewer_notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AcquisitionRequestListResponse(BaseModel):
+    items: List[AcquisitionRequestResponse]
+    total: int
+
+
+
 
 

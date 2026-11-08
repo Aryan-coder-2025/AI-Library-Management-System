@@ -11,6 +11,9 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 CSRF_TOKEN_EXEMPT_PATHS = frozenset({
     "/api/auth/login",
     "/api/auth/logout",
+    "/api/auth/register",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
 })
 
 

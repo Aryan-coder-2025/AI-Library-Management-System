@@ -21,6 +21,10 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
   const [nameLoading, setNameLoading] = useState<boolean>(false);
   const [nameMessage, setNameMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const [username, setUsername] = useState<string>(currentUser.username || '');
+  const [usernameLoading, setUsernameLoading] = useState<boolean>(false);
+  const [usernameMessage, setUsernameMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const [currentPassword, setCurrentPassword] = useState<string>('');
   const [newPassword, setNewPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
@@ -53,6 +57,39 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
     }
   };
 
+  const handleUpdateUsername = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUsernameMessage(null);
+    const cleanUsername = username.trim().toLowerCase();
+
+    if (cleanUsername.length < 3 || cleanUsername.length > 20) {
+      setUsernameMessage({ type: 'error', text: 'Username must be between 3 and 20 characters long.' });
+      return;
+    }
+    if (!/^[a-z0-9._-]+$/.test(cleanUsername)) {
+      setUsernameMessage({
+        type: 'error',
+        text: 'Username may only contain letters, numbers, periods (.), underscores (_), and hyphens (-).',
+      });
+      return;
+    }
+
+    try {
+      setUsernameLoading(true);
+      const updatedUser = await apiFetch<UserProfile>('/api/auth/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ username: cleanUsername }),
+      });
+      setUsernameMessage({ type: 'success', text: 'Username handle successfully updated.' });
+      onProfileUpdated(updatedUser);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update username';
+      setUsernameMessage({ type: 'error', text: msg.replace(/^\d+:\s*/, '') });
+    } finally {
+      setUsernameLoading(false);
+    }
+  };
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPwdMessage(null);
@@ -61,8 +98,8 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
       setPwdMessage({ type: 'error', text: 'Please enter your current password.' });
       return;
     }
-    if (newPassword.length < 8) {
-      setPwdMessage({ type: 'error', text: 'New password must be at least 8 characters long.' });
+    if (newPassword.length < 12) {
+      setPwdMessage({ type: 'error', text: 'New password must be at least 12 characters long.' });
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -131,31 +168,32 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
       <div
         className="modal-dialog"
         style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
+          backgroundColor: 'var(--card-bg)',
+          borderRadius: '16px',
           maxWidth: '560px',
           width: '100%',
           maxHeight: '90vh',
           overflowY: 'auto',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+          boxShadow: 'var(--card-shadow)',
+          border: '1px solid var(--card-border)',
         }}
       >
         {/* Header */}
         <div
           style={{
             padding: '1.25rem 1.5rem',
-            borderBottom: '1px solid #e2e8f0',
+            borderBottom: '1px solid var(--card-border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
               Account & Profile Settings
             </h2>
-            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0.25rem 0 0' }}>
-              Manage patron identity details, borrowing credentials, and password security
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>
+              Manage patron identity details, username handle, and password security
             </p>
           </div>
           <button
@@ -165,7 +203,7 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
               background: 'none',
               border: 'none',
               fontSize: '1.5rem',
-              color: '#94a3b8',
+              color: 'var(--text-muted)',
               cursor: 'pointer',
               lineHeight: 1,
             }}
@@ -180,22 +218,30 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
           <div
             style={{
               padding: '1rem',
-              backgroundColor: '#f8fafc',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
+              backgroundColor: 'var(--bg-tertiary)',
+              borderRadius: '12px',
+              border: '1px solid var(--card-border)',
             }}
           >
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Email Address
                 </span>
-                <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
                   {currentUser.email}
                 </div>
               </div>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Current Username
+                </span>
+                <div style={{ fontWeight: 600, color: currentUser.username ? 'var(--brand-secondary)' : 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  {currentUser.username ? `@${currentUser.username}` : 'Not set'}
+                </div>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Patron Role
                 </span>
                 <div>
@@ -208,16 +254,16 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
                       fontWeight: 600,
                       backgroundColor:
                         currentUser.role === 'teacher'
-                          ? '#fef3c7'
+                          ? 'rgba(245, 158, 11, 0.15)'
                           : currentUser.role === 'librarian'
-                          ? '#e0e7ff'
-                          : '#e0f2fe',
+                          ? 'rgba(128, 87, 245, 0.15)'
+                          : 'rgba(34, 211, 238, 0.15)',
                       color:
                         currentUser.role === 'teacher'
-                          ? '#92400e'
+                          ? '#f59e0b'
                           : currentUser.role === 'librarian'
-                          ? '#3730a3'
-                          : '#0369a1',
+                          ? 'var(--brand-secondary)'
+                          : 'var(--accent-cyan)',
                       textTransform: 'capitalize',
                     }}
                   >
@@ -226,23 +272,11 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
                 </div>
               </div>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Account Status
                 </span>
-                <div style={{ color: currentUser.is_active ? '#16a34a' : '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>
+                <div style={{ color: currentUser.is_active ? 'var(--status-success)' : 'var(--status-danger)', fontWeight: 600, fontSize: '0.85rem' }}>
                   {currentUser.is_active ? '● Active' : '● Inactive'}
-                </div>
-              </div>
-              <div>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Member Since
-                </span>
-                <div style={{ color: '#475569', fontSize: '0.85rem' }}>
-                  {new Date(currentUser.created_at).toLocaleDateString(undefined, {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                  })}
                 </div>
               </div>
             </div>
@@ -251,9 +285,9 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
               style={{
                 marginTop: '0.75rem',
                 paddingTop: '0.75rem',
-                borderTop: '1px solid #e2e8f0',
+                borderTop: '1px solid var(--card-border)',
                 fontSize: '0.8rem',
-                color: '#475569',
+                color: 'var(--text-secondary)',
               }}
             >
               <strong>Policy: </strong>
@@ -263,7 +297,7 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
 
           {/* Section 1: Update Full Name */}
           <form onSubmit={handleUpdateName}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#1e293b', marginBottom: '0.5rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
               Personal Information
             </h3>
 
@@ -274,9 +308,9 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
                   borderRadius: '6px',
                   marginBottom: '0.75rem',
                   fontSize: '0.85rem',
-                  backgroundColor: nameMessage.type === 'success' ? '#f0fdf4' : '#fef2f2',
-                  color: nameMessage.type === 'success' ? '#166534' : '#991b1b',
-                  border: `1px solid ${nameMessage.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+                  backgroundColor: nameMessage.type === 'success' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: nameMessage.type === 'success' ? '#22c55e' : '#ef4444',
+                  border: `1px solid ${nameMessage.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
                 }}
               >
                 {nameMessage.text}
@@ -284,7 +318,7 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <label htmlFor="full-name-input" style={{ fontSize: '0.85rem', fontWeight: 500, color: '#334155' }}>
+              <label htmlFor="full-name-input" style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
                 Full Name
               </label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -296,9 +330,11 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
                   style={{
                     flex: 1,
                     padding: '0.5rem 0.75rem',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
+                    border: '1px solid var(--card-border)',
+                    borderRadius: '8px',
                     fontSize: '0.9rem',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
                   }}
                   required
                 />
@@ -314,10 +350,70 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
             </div>
           </form>
 
-          {/* Section 2: Change Password */}
+          {/* Section 2: Update Username Handle */}
+          <form onSubmit={handleUpdateUsername}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+              Username Handle
+            </h3>
+
+            {usernameMessage && (
+              <div
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '6px',
+                  marginBottom: '0.75rem',
+                  fontSize: '0.85rem',
+                  backgroundColor: usernameMessage.type === 'success' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: usernameMessage.type === 'success' ? '#22c55e' : '#ef4444',
+                  border: `1px solid ${usernameMessage.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                }}
+              >
+                {usernameMessage.text}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label htmlFor="username-input" style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                Username (3–20 alphanumeric chars, '.', '_', '-')
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  id="username-input"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                  placeholder="e.g. marie.curie"
+                  style={{
+                    flex: 1,
+                    padding: '0.5rem 0.75rem',
+                    border: '1px solid var(--card-border)',
+                    borderRadius: '8px',
+                    fontSize: '0.9rem',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
+                  }}
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={
+                    usernameLoading ||
+                    !username.trim() ||
+                    username.trim().toLowerCase() === (currentUser.username || '').toLowerCase()
+                  }
+                  className="btn btn-primary btn-sm"
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {usernameLoading ? 'Saving...' : 'Save Username'}
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* Section 3: Change Password */}
           <form onSubmit={handleChangePassword}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#1e293b', marginBottom: '0.5rem' }}>
-              Change Password
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+              Change Password (min. 12 characters)
             </h3>
 
             {pwdMessage && (
@@ -327,9 +423,9 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
                   borderRadius: '6px',
                   marginBottom: '0.75rem',
                   fontSize: '0.85rem',
-                  backgroundColor: pwdMessage.type === 'success' ? '#f0fdf4' : '#fef2f2',
-                  color: pwdMessage.type === 'success' ? '#166534' : '#991b1b',
-                  border: `1px solid ${pwdMessage.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+                  backgroundColor: pwdMessage.type === 'success' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: pwdMessage.type === 'success' ? '#22c55e' : '#ef4444',
+                  border: `1px solid ${pwdMessage.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
                 }}
               >
                 {pwdMessage.text}
@@ -340,7 +436,7 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
               <div>
                 <label
                   htmlFor="current-pwd-input"
-                  style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: '#334155', marginBottom: '0.25rem' }}
+                  style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '4px' }}
                 >
                   Current Password
                 </label>
@@ -352,9 +448,11 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
                   style={{
                     width: '100%',
                     padding: '0.5rem 0.75rem',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
+                    border: '1px solid var(--card-border)',
+                    borderRadius: '8px',
                     fontSize: '0.9rem',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
                     boxSizing: 'border-box',
                   }}
                   required
@@ -364,22 +462,24 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
               <div>
                 <label
                   htmlFor="new-pwd-input"
-                  style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: '#334155', marginBottom: '0.25rem' }}
+                  style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '4px' }}
                 >
-                  New Password
+                  New Password (min 12 characters)
                 </label>
                 <input
                   id="new-pwd-input"
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Min 8 chars (uppercase, lowercase, number, symbol)"
+                  placeholder="At least 12 characters..."
                   style={{
                     width: '100%',
                     padding: '0.5rem 0.75rem',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
+                    border: '1px solid var(--card-border)',
+                    borderRadius: '8px',
                     fontSize: '0.9rem',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
                     boxSizing: 'border-box',
                   }}
                   required
@@ -389,7 +489,7 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
               <div>
                 <label
                   htmlFor="confirm-pwd-input"
-                  style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: '#334155', marginBottom: '0.25rem' }}
+                  style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '4px' }}
                 >
                   Confirm New Password
                 </label>
@@ -401,25 +501,25 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
                   style={{
                     width: '100%',
                     padding: '0.5rem 0.75rem',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
+                    border: '1px solid var(--card-border)',
+                    borderRadius: '8px',
                     fontSize: '0.9rem',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
                     boxSizing: 'border-box',
                   }}
                   required
                 />
               </div>
 
-              <div style={{ marginTop: '0.5rem' }}>
-                <button
-                  type="submit"
-                  disabled={pwdLoading}
-                  className="btn btn-secondary btn-sm"
-                  style={{ width: '100%' }}
-                >
-                  {pwdLoading ? 'Updating Password...' : 'Change Password'}
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={pwdLoading || !currentPassword || newPassword.length < 12 || newPassword !== confirmPassword}
+                className="btn btn-primary"
+                style={{ marginTop: '0.5rem' }}
+              >
+                {pwdLoading ? 'Updating Password...' : 'Update Password'}
+              </button>
             </div>
           </form>
         </div>
@@ -427,8 +527,8 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
         <div
           style={{
             padding: '1rem 1.5rem',
-            borderTop: '1px solid #e2e8f0',
-            backgroundColor: '#f8fafc',
+            borderTop: '1px solid var(--card-border)',
+            backgroundColor: 'var(--bg-tertiary)',
             display: 'flex',
             justifyContent: 'flex-end',
           }}
@@ -441,4 +541,3 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
     </div>
   );
 };
-

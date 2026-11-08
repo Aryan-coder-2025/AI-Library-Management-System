@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { Loan, LoanPaginationResponse } from '../types/library';
+import type { BookCollectionVerifyResult, Loan, LoanPaginationResponse } from '../types/library';
 
 export const LibrarianCirculation: React.FC = () => {
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -23,6 +23,12 @@ export const LibrarianCirculation: React.FC = () => {
 
   // Return action in-flight ID
   const [returningLoanId, setReturningLoanId] = useState<number | null>(null);
+
+  // QR Book Collection Verification (CIRC-03)
+  const [qrToken, setQrToken] = useState('');
+  const [qrVerifying, setQrVerifying] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
+  const [qrResult, setQrResult] = useState<BookCollectionVerifyResult | null>(null);
 
   const fetchLoans = useCallback(async () => {
     setLoading(true);
@@ -109,6 +115,31 @@ export const LibrarianCirculation: React.FC = () => {
     }
   };
 
+  const handleVerifyQrCollection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!qrToken.trim()) return;
+
+    setQrVerifying(true);
+    setQrError(null);
+    setQrResult(null);
+
+    try {
+      const res = await apiFetch<BookCollectionVerifyResult>('/api/circulation/qr-collection/verify', {
+        method: 'POST',
+        body: JSON.stringify({ token: qrToken.trim() }),
+      });
+      setQrResult(res);
+      setQrToken('');
+      setActionSuccess(`QR Collection Verified! Issued "${res.book_title}" (Barcode: ${res.copy_code}) to ${res.patron_name} (Due: ${new Date(res.due_date).toLocaleDateString()}).`);
+      fetchLoans();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'QR Verification failed';
+      setQrError(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setQrVerifying(false);
+    }
+  };
+
   const formatDate = (isoStr: string | null) => {
     if (!isoStr) return '—';
     try {
@@ -145,6 +176,59 @@ export const LibrarianCirculation: React.FC = () => {
           </button>
         </div>
       )}
+
+      {/* QR Book Collection Verification Station (CIRC-03) */}
+      <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--brand-primary, #6366f1)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+          <h3 style={{ fontSize: '1.05rem', margin: 0 }}>📱 QR Book Collection Desk (Hold Fulfillment)</h3>
+          <span className="badge badge-primary">CIRC-03 Verified</span>
+        </div>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+          Scan patron QR barcode or paste the secure single-use collection token string presented by a patron for an allocated hold.
+        </p>
+
+        {qrError && (
+          <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+            <span>{qrError}</span>
+          </div>
+        )}
+
+        {qrResult && (
+          <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
+            <div>
+              <strong>Hold Fulfilled & Loan Issued!</strong>
+              <div>Book: <strong>{qrResult.book_title}</strong> (Barcode: <code>{qrResult.copy_code}</code>)</div>
+              <div>Patron: <strong>{qrResult.patron_name}</strong> | Loan #{qrResult.loan_id} (Due: {new Date(qrResult.due_date).toLocaleDateString()})</div>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleVerifyQrCollection} style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: '0.75rem', alignItems: 'end' }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" htmlFor="qr-token-input">
+              Collection Pass Token *
+              <span className="form-label-hint">(e.g. ATN-COLLECT-... or scanned barcode text)</span>
+            </label>
+            <input
+              id="qr-token-input"
+              type="text"
+              className="form-input"
+              placeholder="Paste or scan ATN-COLLECT-..."
+              value={qrToken}
+              onChange={(e) => setQrToken(e.target.value)}
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ height: '38px' }}
+            disabled={qrVerifying || !qrToken.trim()}
+          >
+            {qrVerifying ? 'Verifying...' : 'Scan / Verify Pass'}
+          </button>
+        </form>
+      </div>
 
       {/* Quick Issue Panel */}
       <div className="card" data-tour="circulation-issue-panel" style={{ padding: '1.25rem', marginBottom: '1.75rem' }}>

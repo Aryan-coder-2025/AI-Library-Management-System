@@ -301,28 +301,40 @@ def ingest_telemetry_observation(
     if payload.observed_count < 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="observed_count must be non-negative.",
+            detail="observed_count must be a non-negative integer.",
         )
 
-    # Sanity guard against absurd sensor overshoots (> 5x zone capacity)
-    if zone.total_capacity > 0 and payload.observed_count > zone.total_capacity * 5:
+    # Plausibility threshold: allow reasonable overflow (e.g. standing/crowding),
+    # but reject implausible sensor spikes exceeding 3x capacity.
+    # Floor capacity at 20 for small or zero capacity zones.
+    max_credible_count = max(int(zone.total_capacity * 3.0), 20)
+    if payload.observed_count > max_credible_count:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"observed_count ({payload.observed_count}) exceeds rational sensor threshold for zone capacity ({zone.total_capacity}).",
+            detail=f"observed_count ({payload.observed_count}) exceeds plausible sensor threshold ({max_credible_count}) for zone '{zone.zone_code}'.",
         )
 
-    # Normalize recorded timestamp. Quantize unsupplied timestamps to the current minute
-    # to guarantee deduplication and idempotency across rapid retries or concurrent submissions.
+    # Timestamp validation:
+    # 1. Reject future timestamps beyond 10-minute clock skew.
+    # 2. Allow historical timestamps up to 5 years in the past for backfill/seeding.
+    # 3. When omitted (None), pass None to save_telemetry_observation to enable
+    #    sliding-window (15s) rapid-retry deduplication without clobbering independent readings.
     now_naive = _ensure_naive_utc(get_utc_now())
     if payload.recorded_at is not None:
         recorded_dt = _ensure_naive_utc(payload.recorded_at)
-        if recorded_dt > now_naive + timedelta(days=365):
+        max_allowed_future = now_naive + timedelta(minutes=10)
+        if recorded_dt > max_allowed_future:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="recorded_at cannot be more than 1 year in the future.",
+                detail="recorded_at cannot be in the future beyond acceptable sensor clock skew (10 minutes).",
+            )
+        if recorded_dt < now_naive - timedelta(days=365 * 5):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="recorded_at is too far in the past (maximum 5 years).",
             )
     else:
-        recorded_dt = now_naive.replace(second=0, microsecond=0)
+        recorded_dt = None
 
     util = (
         round(float(payload.observed_count) / float(zone.total_capacity), 4)
@@ -337,6 +349,7 @@ def ingest_telemetry_observation(
         capacity_utilization=util,
         recorded_at=recorded_dt,
         source_sensor_id=payload.source_sensor_id,
+        idempotency_window_seconds=15,
     )
     db.flush()
 

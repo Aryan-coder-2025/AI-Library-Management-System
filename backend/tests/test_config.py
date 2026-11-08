@@ -40,7 +40,9 @@ def test_default_database_resolution_independent_of_cwd(monkeypatch, tmp_path):
     anchored to backend/library.db regardless of whether the process runs from
     the repository root, backend directory, or an arbitrary temporary directory.
     """
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    # Set DATABASE_URL to empty string so environment overrides any local .env file
+    # and invokes assemble_database_url's default resolution.
+    monkeypatch.setenv("DATABASE_URL", "")
 
     # 1. From an isolated temporary directory
     monkeypatch.chdir(tmp_path)
@@ -105,7 +107,9 @@ def test_resolved_default_path_points_to_backend_library_db_not_root(monkeypatch
     Verifies that the resolved default database file specifically targets backend/library.db
     and does NOT resolve to root/library.db.
     """
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    # Set DATABASE_URL to empty string so environment overrides any local .env file
+    # and invokes assemble_database_url's default resolution.
+    monkeypatch.setenv("DATABASE_URL", "")
     settings = Settings()
     resolved_db_path = Path(make_url(settings.DATABASE_URL).database).resolve()
 

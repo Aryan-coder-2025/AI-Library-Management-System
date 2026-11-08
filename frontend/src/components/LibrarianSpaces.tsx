@@ -14,9 +14,10 @@ import {
 } from '../services/spacesApi';
 import { QRCodeModal } from './QRCodeModal';
 import { OccupancyAnalytics } from './OccupancyAnalytics';
+import { LibrarianFloorPlanManager } from './spatial/LibrarianFloorPlanManager';
 
 export const LibrarianSpaces: React.FC = () => {
-  const [deskSubTab, setDeskSubTab] = useState<'reservations' | 'occupancy'>('reservations');
+  const [deskSubTab, setDeskSubTab] = useState<'reservations' | 'spatial' | 'occupancy'>('reservations');
   const [reservations, setReservations] = useState<StudySpaceReservation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,9 +175,18 @@ export const LibrarianSpaces: React.FC = () => {
         >
           📊 Occupancy & Telemetry Analytics
         </button>
+        <button
+          type="button"
+          className={`btn ${deskSubTab === 'spatial' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setDeskSubTab('spatial')}
+        >
+          🗺️ Floor Plans & Spatial Manager
+        </button>
       </div>
 
-      {deskSubTab === 'occupancy' ? (
+      {deskSubTab === 'spatial' ? (
+        <LibrarianFloorPlanManager />
+      ) : deskSubTab === 'occupancy' ? (
         <OccupancyAnalytics userRole="librarian" />
       ) : (
         <>

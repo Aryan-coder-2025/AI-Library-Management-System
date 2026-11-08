@@ -50,6 +50,7 @@ from app.main import app
 from app.models import OccupancyObservation, Reservation, StudyRoom, StudySeat, StudyZone, User
 from app.services import occupancy as occupancy_service
 from app.schemas import TelemetryObservationCreate
+from app.utils.date import get_utc_now
 
 
 # ── Test Infrastructure Fixtures ──────────────────────────────────────────────
@@ -513,7 +514,7 @@ def test_telemetry_ingestion_role_enforcement(client: TestClient, occupancy_env:
 def test_telemetry_idempotent_duplicate_handling(client: TestClient, occupancy_env: dict):
     auth = auth_headers_for(occupancy_env["librarian"])
     zone_id = occupancy_env["z_quiet"].id
-    rec_time = "2026-11-10T09:00:00"
+    rec_time = "2026-11-04T09:00:00"
 
     payload = {
         "zone_id": zone_id,
@@ -769,7 +770,7 @@ def test_concurrent_telemetry_writes(tmp_path: Path):
         with SessionTest() as s:
             payload = TelemetryObservationCreate(
                 zone_id=zone_id,
-                recorded_at=datetime(2026, 11, 10, hour, 0, 0),
+                recorded_at=datetime(2026, 11, 4, hour, 0, 0),
                 observed_count=hour * 2,
                 source_sensor_id="CONCUR-SENSOR",
             )
@@ -824,7 +825,7 @@ def test_concurrent_duplicate_telemetry_deduplication(tmp_path: Path):
         s.commit()
         zone_id = z.id
 
-    target_dt = datetime(2026, 11, 10, 15, 0, 0)
+    target_dt = datetime(2026, 11, 4, 15, 0, 0)
 
     def duplicate_worker(worker_id: int):
         with SessionTest() as s:
@@ -854,4 +855,174 @@ def test_concurrent_duplicate_telemetry_deduplication(tmp_path: Path):
         assert len(rows) == 1
         assert rows[0].observed_count == 20
         assert rows[0].zone_id == zone_id
+
+
+def test_telemetry_omitted_timestamp_rapid_retry_deduplication(client: TestClient, occupancy_env: dict):
+    """
+    Verifies that when recorded_at is omitted:
+    1. Rapid retries within the sliding window (15s) with identical counts are acknowledged
+       as 'idempotent_duplicate' and do not create duplicate rows.
+    2. Rapid retries with updated count update the existing row ('updated').
+    3. Independent sensors reporting at the same time create separate rows.
+    """
+    auth = auth_headers_for(occupancy_env["librarian"])
+    zone_id = occupancy_env["z_quiet"].id
+
+    payload = {
+        "zone_id": zone_id,
+        "observed_count": 5,
+        "source_sensor_id": "SENSOR-LIVE-01",
+    }
+
+    # 1. Initial live ingestion
+    r1 = client.post("/api/spaces/occupancy/telemetry", json=payload, headers=auth["headers"], cookies=auth["cookies"])
+    assert r1.status_code == 201
+    assert r1.json()["status"] == "recorded"
+    obs_id = r1.json()["id"]
+
+    # 2. Rapid retry within 15 seconds with identical count
+    r2 = client.post("/api/spaces/occupancy/telemetry", json=payload, headers=auth["headers"], cookies=auth["cookies"])
+    assert r2.status_code == 201
+    assert r2.json()["status"] == "idempotent_duplicate"
+    assert r2.json()["id"] == obs_id
+
+    # 3. Rapid retry within window with updated count
+    updated_payload = dict(payload, observed_count=8)
+    r3 = client.post("/api/spaces/occupancy/telemetry", json=updated_payload, headers=auth["headers"], cookies=auth["cookies"])
+    assert r3.status_code == 201
+    assert r3.json()["status"] == "updated"
+    assert r3.json()["id"] == obs_id
+    assert r3.json()["observed_count"] == 8
+
+
+def test_telemetry_different_sensors_independent_recording(client: TestClient, occupancy_env: dict):
+    """
+    Verifies that distinct sensors reporting for the same zone at the same explicit timestamp
+    do not overwrite each other, creating independent observation records.
+    """
+    auth = auth_headers_for(occupancy_env["librarian"])
+    zone_id = occupancy_env["z_quiet"].id
+    ts = "2026-11-04T12:00:00"
+
+    p1 = {
+        "zone_id": zone_id,
+        "recorded_at": ts,
+        "observed_count": 3,
+        "source_sensor_id": "SENSOR-EAST-01",
+    }
+    p2 = {
+        "zone_id": zone_id,
+        "recorded_at": ts,
+        "observed_count": 4,
+        "source_sensor_id": "SENSOR-WEST-01",
+    }
+
+    r1 = client.post("/api/spaces/occupancy/telemetry", json=p1, headers=auth["headers"], cookies=auth["cookies"])
+    assert r1.status_code == 201
+    assert r1.json()["status"] == "recorded"
+    id1 = r1.json()["id"]
+
+    r2 = client.post("/api/spaces/occupancy/telemetry", json=p2, headers=auth["headers"], cookies=auth["cookies"])
+    assert r2.status_code == 201
+    assert r2.json()["status"] == "recorded"
+    id2 = r2.json()["id"]
+
+    assert id1 != id2
+
+
+def test_telemetry_input_validation_boundaries(client: TestClient, occupancy_env: dict):
+    """
+    Verifies boundary conditions for telemetry input validation:
+    - Negative count -> 400 Bad Request
+    - Spike > 3x capacity (or floor 20) -> 422 Unprocessable Entity
+    - Plausible count within 3x capacity (e.g. 150%) -> 201 Created
+    - Future timestamp exceeding 10 min clock skew -> 400 Bad Request
+    - Future timestamp within 10 min clock skew -> 201 Created
+    - Historical timestamp > 5 years old -> 400 Bad Request
+    """
+    auth = auth_headers_for(occupancy_env["librarian"])
+    zone = occupancy_env["z_quiet"]  # total_capacity = 10
+    now = get_utc_now()
+
+    # 1. Negative count
+    r_neg = client.post(
+        "/api/spaces/occupancy/telemetry",
+        json={"zone_id": zone.id, "observed_count": -1},
+        headers=auth["headers"],
+        cookies=auth["cookies"],
+    )
+    assert r_neg.status_code == 400
+
+    # 2. Spike exceeding 3x capacity (zone cap 10, floor 20, max_credible = max(30, 20) = 30)
+    # Count = 31 should be rejected with 422
+    r_spike = client.post(
+        "/api/spaces/occupancy/telemetry",
+        json={"zone_id": zone.id, "observed_count": 31},
+        headers=auth["headers"],
+        cookies=auth["cookies"],
+    )
+    assert r_spike.status_code == 422
+    assert "exceeds plausible sensor threshold" in r_spike.json()["detail"]
+
+    # 3. Reasonable overcapacity within 3x (e.g. count = 15, which is 150% capacity)
+    r_valid_overflow = client.post(
+        "/api/spaces/occupancy/telemetry",
+        json={"zone_id": zone.id, "observed_count": 15, "source_sensor_id": "SENSOR-VALID-OVERFLOW"},
+        headers=auth["headers"],
+        cookies=auth["cookies"],
+    )
+    assert r_valid_overflow.status_code == 201
+    assert r_valid_overflow.json()["observed_count"] == 15
+
+    # 4. Clock skew beyond 10 minutes (+30 minutes in future)
+    future_skew = (now + timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    r_skew_bad = client.post(
+        "/api/spaces/occupancy/telemetry",
+        json={"zone_id": zone.id, "observed_count": 5, "recorded_at": future_skew},
+        headers=auth["headers"],
+        cookies=auth["cookies"],
+    )
+    assert r_skew_bad.status_code == 400
+    assert "clock skew" in r_skew_bad.json()["detail"].lower()
+
+    # 5. Clock skew within 10 minutes (+5 minutes in future)
+    future_valid = (now + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    r_skew_ok = client.post(
+        "/api/spaces/occupancy/telemetry",
+        json={"zone_id": zone.id, "observed_count": 5, "recorded_at": future_valid, "source_sensor_id": "SENSOR-SKEW-OK"},
+        headers=auth["headers"],
+        cookies=auth["cookies"],
+    )
+    assert r_skew_ok.status_code == 201
+
+    # 6. Historical timestamp > 5 years old
+    old_ts = (now - timedelta(days=365 * 6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    r_old = client.post(
+        "/api/spaces/occupancy/telemetry",
+        json={"zone_id": zone.id, "observed_count": 5, "recorded_at": old_ts},
+        headers=auth["headers"],
+        cookies=auth["cookies"],
+    )
+    assert r_old.status_code == 400
+    assert "too far in the past" in r_old.json()["detail"].lower()
+
+
+def test_historical_occupancy_days_back_parameter(client: TestClient, occupancy_env: dict):
+    """
+    Verifies that the historical occupancy query parameter `days_back` correctly
+    controls the lookback window (e.g. 7, 14, 30, 90, 104).
+    """
+    auth = auth_headers_for(occupancy_env["student"])
+    zone_id = occupancy_env["z_quiet"].id
+
+    for days in [7, 14, 30, 90, 104]:
+        r = client.get(
+            f"/api/spaces/occupancy/historical?zone_id={zone_id}&interval=day&days_back={days}",
+            headers=auth["headers"],
+            cookies=auth["cookies"],
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert "data_points" in data
+        assert "overall_avg_occupancy" in data
 

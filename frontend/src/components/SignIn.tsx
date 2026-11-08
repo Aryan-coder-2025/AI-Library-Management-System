@@ -4,17 +4,25 @@ interface SignInProps {
   onLogin: (email: string, pass: string) => Promise<void>;
   loading: boolean;
   error: string | null;
+  onSwitchToRegister?: () => void;
+  onSwitchToForgotPassword?: () => void;
 }
 
-export const SignIn: React.FC<SignInProps> = ({ onLogin, loading, error }) => {
-  const [email, setEmail] = useState('');
+export const SignIn: React.FC<SignInProps> = ({
+  onLogin,
+  loading,
+  error,
+  onSwitchToRegister,
+  onSwitchToForgotPassword,
+}) => {
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password) return;
-    await onLogin(email.trim(), password);
+    if (!identifier.trim() || !password) return;
+    await onLogin(identifier.trim(), password);
   };
 
   return (
@@ -22,7 +30,7 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin, loading, error }) => {
       <div className="signin-card">
         <div className="signin-header">
           <h2>AI Library Management System</h2>
-          <p>Sign in to access your library account, search holdings, and manage circulation</p>
+          <p>Sign in using your institutional email or username to access your account</p>
         </div>
 
         <div className="signin-body">
@@ -34,17 +42,17 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin, loading, error }) => {
 
           <form onSubmit={handleSubmit} noValidate>
             <div className="form-group">
-              <label htmlFor="signin-email" className="form-label">
-                Email Address
+              <label htmlFor="signin-identifier" className="form-label">
+                Email Address or Username
               </label>
               <input
-                id="signin-email"
-                type="email"
+                id="signin-identifier"
+                type="text"
                 className="form-input"
-                placeholder="name@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
+                placeholder="name@example.com or username"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                autoComplete="username"
                 required
               />
             </div>
@@ -54,21 +62,39 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin, loading, error }) => {
                 <label htmlFor="signin-password" className="form-label">
                   Password
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--color-accent)',
-                    fontSize: '0.78rem',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? 'Hide' : 'Show'}
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {onSwitchToForgotPassword && (
+                    <button
+                      type="button"
+                      onClick={onSwitchToForgotPassword}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--brand-secondary)',
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      Forgot?
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
               <input
                 id="signin-password"
@@ -86,11 +112,32 @@ export const SignIn: React.FC<SignInProps> = ({ onLogin, loading, error }) => {
               type="submit"
               className="btn btn-primary"
               style={{ width: '100%', marginTop: '0.5rem', padding: '0.65rem' }}
-              disabled={loading || !email.trim() || !password}
+              disabled={loading || !identifier.trim() || !password}
             >
               {loading ? 'Authenticating...' : 'Sign In'}
             </button>
           </form>
+
+          {onSwitchToRegister && (
+            <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--card-border)', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              <span>New student scholar? </span>
+              <button
+                type="button"
+                onClick={onSwitchToRegister}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--brand-secondary)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: 0,
+                  textDecoration: 'underline',
+                }}
+              >
+                Create Student Account
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

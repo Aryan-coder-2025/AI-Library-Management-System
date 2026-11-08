@@ -7,6 +7,7 @@ import type {
   HybridSearchResponse,
   SemanticSearchResponse,
 } from '../types/library';
+import { CopyStatusModal } from './CopyStatusModal';
 
 interface DisplayBook extends Book {
   match_channels?: string[];
@@ -32,6 +33,7 @@ export const LibrarianCatalogue: React.FC = () => {
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [selectedBookForCopies, setSelectedBookForCopies] = useState<BookDetail | null>(null);
   const [copiesModalLoading, setCopiesModalLoading] = useState(false);
+  const [copyForStatusModal, setCopyForStatusModal] = useState<{ copyId: number; copyCode: string; currentStatus: string } | null>(null);
 
   // Book Form State (Add / Edit)
   const [formTitle, setFormTitle] = useState('');
@@ -693,22 +695,37 @@ export const LibrarianCatalogue: React.FC = () => {
                                   {copy.notes || '—'}
                                 </td>
                                 <td>
-                                  <select
-                                    className="form-select"
-                                    style={{ fontSize: '0.78rem', padding: '0.25rem 0.5rem', width: 'auto' }}
-                                    value={copy.operational_status}
-                                    onChange={(e) =>
-                                      handleUpdateCopyStatus(
-                                        copy.id,
-                                        e.target.value as 'available' | 'maintenance' | 'lost' | 'retired'
-                                      )
-                                    }
-                                  >
-                                    <option value="available">available</option>
-                                    <option value="maintenance">maintenance</option>
-                                    <option value="lost">lost</option>
-                                    <option value="retired">retired</option>
-                                  </select>
+                                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                    <select
+                                      className="form-select"
+                                      style={{ fontSize: '0.78rem', padding: '0.25rem 0.5rem', width: 'auto' }}
+                                      value={copy.operational_status}
+                                      onChange={(e) =>
+                                        handleUpdateCopyStatus(
+                                          copy.id,
+                                          e.target.value as 'available' | 'maintenance' | 'lost' | 'retired'
+                                        )
+                                      }
+                                    >
+                                      <option value="available">available</option>
+                                      <option value="maintenance">maintenance</option>
+                                      <option value="lost">lost</option>
+                                      <option value="retired">retired</option>
+                                    </select>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem', whiteSpace: 'nowrap' }}
+                                      onClick={() => setCopyForStatusModal({
+                                        copyId: copy.id,
+                                        copyCode: copy.copy_code,
+                                        currentStatus: copy.operational_status,
+                                      })}
+                                      title="Update status with notes and view audit trail"
+                                    >
+                                      🛠️ Audit
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -804,6 +821,22 @@ export const LibrarianCatalogue: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {/* Copy Operational Status & History Modal (CIRC-07) */}
+      {copyForStatusModal && selectedBookForCopies && (
+        <CopyStatusModal
+          copyId={copyForStatusModal.copyId}
+          copyCode={copyForStatusModal.copyCode}
+          bookTitle={selectedBookForCopies.title}
+          currentStatus={copyForStatusModal.currentStatus}
+          onClose={() => setCopyForStatusModal(null)}
+          onStatusUpdated={() => {
+            setCopyForStatusModal(null);
+            if (selectedBookForCopies) {
+              openCopiesModal(selectedBookForCopies);
+            }
+          }}
+        />
       )}
     </div>
   );
