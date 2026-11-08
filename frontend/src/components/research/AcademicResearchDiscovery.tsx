@@ -8,6 +8,7 @@ export const AcademicResearchDiscovery: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  const [extractedTopic, setExtractedTopic] = useState<string | null>(null);
 
   // Filters
   const [selectedProvider, setSelectedProvider] = useState<string>('all');
@@ -15,10 +16,42 @@ export const AcademicResearchDiscovery: React.FC = () => {
   const [yearFilter, setYearFilter] = useState<string>('');
   const [expandedAbstracts, setExpandedAbstracts] = useState<Record<string, boolean>>({});
 
+  const cleanConversationalPreamble = (raw: string): string => {
+    let cleaned = raw.trim().replace(/[\?\.!]+$/, '');
+    const patterns = [
+      /^(?:ok|okay|hey|hi|hello|please)[\s,]+/i,
+      /^(?:can|could|would)\s+you\s+(?:please\s+)?(?:tell|show|give|find|search|recommend|suggest)\s+(?:me\s+)?(?:about\s+)?/i,
+      /^(?:tell|show|give|find|search)\s+(?:me\s+)?(?:about\s+)?/i,
+      /^(?:what\s+are\s+(?:some\s+)?(?:famous|the\s+best|top|the\s+latest|popular|major)\s+)?(?:research\s+)?(?:papers|articles|studies|publications|books)\s+(?:on|about|regarding|in)\s+/i,
+      /^(?:some\s+)?(?:famous|best|top|latest|popular|major)\s+(?:research\s+)?(?:papers|articles|studies|publications)\s+(?:on|about|regarding|in)\s+/i,
+      /^(?:papers|articles|studies|publications)\s+(?:on|about|regarding|in)\s+/i,
+      /^(?:looking\s+for|search\s+for|find)\s+(?:papers|articles|studies)?\s*(?:on|about|regarding)?\s+/i,
+    ];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const p of patterns) {
+        const next = cleaned.replace(p, '').trim();
+        if (next && next !== cleaned) {
+          cleaned = next;
+          changed = true;
+        }
+      }
+    }
+    return cleaned || raw.trim();
+  };
+
   const handleSearch = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
-    const searchQuery = (customQuery !== undefined ? customQuery : query).trim();
-    if (!searchQuery) return;
+    const rawSearchQuery = (customQuery !== undefined ? customQuery : query).trim();
+    if (!rawSearchQuery) return;
+
+    const cleaned = cleanConversationalPreamble(rawSearchQuery);
+    if (cleaned !== rawSearchQuery) {
+      setExtractedTopic(cleaned);
+    } else {
+      setExtractedTopic(null);
+    }
 
     setLoading(true);
     setError(null);
@@ -26,7 +59,7 @@ export const AcademicResearchDiscovery: React.FC = () => {
 
     try {
       const params = new URLSearchParams();
-      params.set('q', searchQuery);
+      params.set('q', rawSearchQuery);
       params.set('limit', '20');
 
       if (selectedProvider !== 'all') {
@@ -71,11 +104,11 @@ export const AcademicResearchDiscovery: React.FC = () => {
       {/* Search Header Banner */}
       <div
         style={{
-          background: 'var(--card-bg)',
+          background: 'var(--glass-card)',
           padding: '1.5rem',
           borderRadius: '12px',
-          boxShadow: 'var(--card-shadow)',
-          border: '1px solid var(--card-border)',
+          boxShadow: 'var(--shadow-md)',
+          border: '1px solid var(--border-medium)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -96,7 +129,7 @@ export const AcademicResearchDiscovery: React.FC = () => {
             type="text"
             className="form-input"
             style={{ flex: 1, padding: '0.65rem 1rem', fontSize: '0.95rem' }}
-            placeholder="Search papers by title, author, keyword, or DOI (e.g. 'Transformer Architectures', 'CRISPR Cas9')..."
+            placeholder="Search papers by topic or keywords (e.g. 'Nanorobotics', 'CRISPR Cas9', 'Quantum Computing')..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -110,10 +143,33 @@ export const AcademicResearchDiscovery: React.FC = () => {
           </button>
         </form>
 
+        {/* Intent extraction notice */}
+        {extractedTopic && (
+          <div
+            style={{
+              marginTop: '0.65rem',
+              padding: '0.4rem 0.75rem',
+              borderRadius: '6px',
+              background: 'rgba(6, 182, 212, 0.12)',
+              border: '1px solid rgba(6, 182, 212, 0.3)',
+              color: 'var(--color-accent)',
+              fontSize: '0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <span>⚡</span>
+            <span>
+              Scholarly Intent Focused: Extracted <strong>"{extractedTopic}"</strong> (conversational preambles filtered for title matching on Crossref & arXiv).
+            </span>
+          </div>
+        )}
+
         {/* Suggested Queries */}
         <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Quick Exploration:</span>
-          {['Deep Learning', 'Quantum Computing', 'CRISPR Gene Editing', 'Renewable Energy Systems', 'Graph Neural Networks'].map((topic) => (
+          {['Nanorobotics', 'Deep Learning', 'Quantum Computing', 'CRISPR Gene Editing', 'Renewable Energy Systems', 'Graph Neural Networks'].map((topic) => (
             <button
               key={topic}
               type="button"
@@ -122,12 +178,12 @@ export const AcademicResearchDiscovery: React.FC = () => {
                 handleSearch(undefined, topic);
               }}
               style={{
-                background: 'var(--bg-glass)',
-                border: '1px solid var(--card-border)',
+                background: 'var(--bg-subtle)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: '16px',
                 padding: '0.2rem 0.65rem',
                 fontSize: '0.75rem',
-                color: 'var(--brand-secondary)',
+                color: 'var(--color-secondary-violet)',
                 cursor: 'pointer',
               }}
             >

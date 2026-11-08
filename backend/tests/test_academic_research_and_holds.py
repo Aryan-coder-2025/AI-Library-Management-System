@@ -679,3 +679,14 @@ def test_patron_view_my_holds(
     assert data["total"] == 1
     assert data["items"][0]["book_title"] == sample_monograph.title
     assert data["items"][0]["queue_position"] == 1
+
+
+def test_conversational_scholarly_query_cleaning():
+    from app.services.research.aggregator import clean_scholarly_query
+
+    assert clean_scholarly_query("ok can you tell me about some famous research papers on nanorobotics") == "nanorobotics"
+    assert clean_scholarly_query("please find me research papers on quantum computing") == "quantum computing"
+    assert clean_scholarly_query("what are the best articles on CRISPR gene editing?") == "CRISPR gene editing"
+    assert clean_scholarly_query("papers about distributed consensus") == "distributed consensus"
+    assert clean_scholarly_query("Attention Is All You Need") == "Attention Is All You Need"
+

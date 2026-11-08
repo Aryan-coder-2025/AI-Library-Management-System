@@ -29,6 +29,35 @@ def normalize_title_key(title: str) -> str:
     return re.sub(r"[^a-z0-9]", "", title.lower())
 
 
+def clean_scholarly_query(q: str) -> str:
+    """
+    Strips conversational chat filler (e.g. 'ok can you tell me about some famous research papers on ...')
+    to prevent external title keyword engines (Crossref, arXiv, OpenAlex) from searching for
+    literal words like 'can you tell me'.
+    """
+    cleaned = q.strip()
+    cleaned = re.sub(r"[\?\.!]+$", "", cleaned).strip()
+
+    patterns = [
+        r"^(?:ok|okay|hey|hi|hello|please)[\s,]+",
+        r"^(?:can|could|would)\s+you\s+(?:please\s+)?(?:tell|show|give|find|search|recommend|suggest)\s+(?:me\s+)?(?:about\s+)?",
+        r"^(?:tell|show|give|find|search)\s+(?:me\s+)?(?:about\s+)?",
+        r"^(?:what\s+are\s+(?:some\s+)?(?:famous|the\s+best|top|the\s+latest|popular|major)\s+)?(?:research\s+)?(?:papers|articles|studies|publications|books)\s+(?:on|about|regarding|in)\s+",
+        r"^(?:some\s+)?(?:famous|best|top|latest|popular|major)\s+(?:research\s+)?(?:papers|articles|studies|publications)\s+(?:on|about|regarding|in)\s+",
+        r"^(?:papers|articles|studies|publications)\s+(?:on|about|regarding|in)\s+",
+        r"^(?:looking\s+for|search\s+for|find)\s+(?:papers|articles|studies)?\s*(?:on|about|regarding)?\s+",
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for p in patterns:
+            new_q = re.sub(p, "", cleaned, flags=re.IGNORECASE).strip()
+            if new_q and new_q != cleaned:
+                cleaned = new_q
+                changed = True
+    return cleaned if cleaned else q.strip()
+
+
 class AcademicResearchService:
     """Aggregates and deduplicates scholarly papers across OpenAlex, arXiv, and Crossref."""
 
@@ -65,10 +94,14 @@ class AcademicResearchService:
                 results=[],
             )
 
+        scholarly_query = clean_scholarly_query(clean_query)
+        if scholarly_query != clean_query:
+            logger.info("Sanitized conversational scholarly query: %r -> %r", clean_query, scholarly_query)
+
         target_providers = [p.lower() for p in providers] if providers else ["openalex", "arxiv", "crossref"]
         valid_providers = [p for p in target_providers if p in self.providers]
 
-        cache_key = f"{clean_query.lower()}|{limit}|{page}|{','.join(sorted(valid_providers))}|{year}|{is_oa}"
+        cache_key = f"{scholarly_query.lower()}|{limit}|{page}|{','.join(sorted(valid_providers))}|{year}|{is_oa}"
         now = datetime.utcnow()
 
         if use_cache and cache_key in _RESEARCH_CACHE:
@@ -85,7 +118,7 @@ class AcademicResearchService:
         if "openalex" in valid_providers:
             try:
                 oa_papers = self.providers["openalex"].search(
-                    query=clean_query,
+                    query=scholarly_query,
                     limit=per_provider_limit,
                     page=page,
                     year=year,
@@ -100,7 +133,7 @@ class AcademicResearchService:
         if "arxiv" in valid_providers:
             try:
                 arxiv_papers = self.providers["arxiv"].search(
-                    query=clean_query,
+                    query=scholarly_query,
                     limit=per_provider_limit,
                     page=page,
                 )
@@ -116,7 +149,7 @@ class AcademicResearchService:
         if "crossref" in valid_providers:
             try:
                 crossref_papers = self.providers["crossref"].search(
-                    query=clean_query,
+                    query=scholarly_query,
                     limit=per_provider_limit,
                     page=page,
                 )
