@@ -1042,18 +1042,30 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                   )}
                 </div>
 
-                {searching ? (
-                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                    Querying catalogue collection...
-                  </div>
-                ) : searchResults.length === 0 ? (
-                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted, #77829E)', fontSize: '0.82rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '10px' }}>
-                    {hasSearched
-                      ? `No monographs found matching "${searchQuery}" in ${selectedCategory}. Try adjusting category or keywords.`
-                      : 'Choose an academic category or enter search terms above.'}
-                  </div>
+                {searchResults.length === 0 ? (
+                  searching ? (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                      Querying catalogue collection...
+                    </div>
+                  ) : (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted, #77829E)', fontSize: '0.82rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '10px' }}>
+                      {hasSearched
+                        ? `No monographs found matching "${searchQuery}" in ${selectedCategory}. Try adjusting category or keywords.`
+                        : 'Choose an academic category or enter search terms above.'}
+                    </div>
+                  )
                 ) : (
-                  <>
+                  <div
+                    style={{
+                      opacity: searching ? 0.55 : 1,
+                      filter: searching ? 'grayscale(20%)' : 'none',
+                      transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease',
+                      pointerEvents: searching ? 'none' : 'auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem',
+                    }}
+                  >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', maxHeight: '340px', overflowY: 'auto' }}>
                       {searchResults.map((b) => (
                         <div
@@ -1104,7 +1116,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                           ← Previous
                         </button>
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted, #77829E)' }}>
-                          Page {searchPage} of {totalSearchPages} ({totalSearchCount} monographs)
+                          {searching ? '⏳ Updating holdings...' : `Page ${searchPage} of ${totalSearchPages} (${totalSearchCount} monographs)`}
                         </span>
                         <button
                           type="button"
@@ -1117,7 +1129,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                         </button>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             </div>

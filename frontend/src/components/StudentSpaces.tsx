@@ -286,7 +286,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
             ))}
           </div>
 
-          {loading ? (
+          {loading && reservations.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
               Loading study space reservations...
             </div>
@@ -306,7 +306,16 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
               </button>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                gap: '1.25rem',
+                opacity: loading ? 0.55 : 1,
+                transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                pointerEvents: loading ? 'none' : 'auto',
+              }}
+            >
               {reservations.map((res) => {
                 const canCheckIn = res.status === 'active' && !res.checked_in_at;
                 const canViewQR = res.status === 'active';

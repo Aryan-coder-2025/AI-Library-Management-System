@@ -361,7 +361,7 @@ export const LibrarianCatalogue: React.FC = () => {
         </div>
       )}
 
-      {loading ? (
+      {loading && books.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
           Loading catalogue records...
         </div>
@@ -373,9 +373,16 @@ export const LibrarianCatalogue: React.FC = () => {
           </p>
         </div>
       ) : (
-        <>
-          <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Showing {books.length} of {totalCount} records
+        <div
+          style={{
+            opacity: loading ? 0.55 : 1,
+            transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            pointerEvents: loading ? 'none' : 'auto',
+          }}
+        >
+          <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Showing {books.length} of {totalCount} records</span>
+            {loading && <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>⏳ Updating records...</span>}
           </div>
 
           <div className="table-responsive">
@@ -502,7 +509,7 @@ export const LibrarianCatalogue: React.FC = () => {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Add / Edit Book Modal */}

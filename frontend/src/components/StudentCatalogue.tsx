@@ -204,7 +204,7 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
         </div>
       )}
 
-      {loading ? (
+      {loading && books.length === 0 ? (
         <div className="empty-state">
           <div className="loading-spinner" />
           <p style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>
@@ -224,11 +224,23 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
           )}
         </div>
       ) : (
-        <>
+        <div
+          style={{
+            opacity: loading ? 0.55 : 1,
+            filter: loading ? 'grayscale(15%)' : 'none',
+            transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease',
+            pointerEvents: loading ? 'none' : 'auto',
+          }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
               Showing {books.length} of {totalItems} titles {submittedQuery && `for "${submittedQuery}" (${searchMode})`}
             </span>
+            {loading && (
+              <span style={{ fontSize: '0.8rem', color: 'var(--brand-secondary, #38BDF8)', fontWeight: 600 }}>
+                ⏳ Updating catalogue...
+              </span>
+            )}
           </div>
 
           <div className="book-grid">
@@ -321,7 +333,7 @@ export const StudentCatalogue: React.FC<StudentCatalogueProps> = ({ onSelectBook
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

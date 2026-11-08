@@ -368,7 +368,7 @@ export const LibrarianCirculation: React.FC = () => {
         </div>
       )}
 
-      {loading ? (
+      {loading && loans.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
           Loading circulation records...
         </div>
@@ -380,9 +380,16 @@ export const LibrarianCirculation: React.FC = () => {
           </p>
         </div>
       ) : (
-        <>
-          <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Showing {loans.length} of {totalCount} total loan records
+        <div
+          style={{
+            opacity: loading ? 0.55 : 1,
+            transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            pointerEvents: loading ? 'none' : 'auto',
+          }}
+        >
+          <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Showing {loans.length} of {totalCount} total loan records</span>
+            {loading && <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>⏳ Updating loans...</span>}
           </div>
 
           <div className="table-responsive">
@@ -493,7 +500,7 @@ export const LibrarianCirculation: React.FC = () => {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

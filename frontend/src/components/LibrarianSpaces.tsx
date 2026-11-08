@@ -296,12 +296,19 @@ export const LibrarianSpaces: React.FC = () => {
           </div>
         </div>
 
-        {loading ? (
+        {loading && reservations.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Loading records...</div>
         ) : reservations.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No reservations found.</div>
         ) : (
-          <div className="table-responsive">
+          <div
+            className="table-responsive"
+            style={{
+              opacity: loading ? 0.55 : 1,
+              transition: 'opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              pointerEvents: loading ? 'none' : 'auto',
+            }}
+          >
             <table className="table" style={{ width: '100%', fontSize: '0.875rem' }}>
               <thead>
                 <tr>
