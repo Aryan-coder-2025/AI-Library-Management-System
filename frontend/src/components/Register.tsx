@@ -126,7 +126,7 @@ export const Register: React.FC<RegisterProps> = ({
                 fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',
-                background: role === 'student' ? 'var(--color-primary, #8057F5)' : 'transparent',
+                background: role === 'student' ? 'var(--color-primary, #2563EB)' : 'transparent',
                 color: role === 'student' ? '#ffffff' : 'var(--text-secondary, #A9B2CC)',
                 transition: 'all 0.15s ease',
               }}
@@ -147,7 +147,7 @@ export const Register: React.FC<RegisterProps> = ({
                 fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',
-                background: role === 'teacher' ? 'var(--color-primary, #8057F5)' : 'transparent',
+                background: role === 'teacher' ? 'var(--color-primary, #2563EB)' : 'transparent',
                 color: role === 'teacher' ? '#ffffff' : 'var(--text-secondary, #A9B2CC)',
                 transition: 'all 0.15s ease',
               }}
@@ -168,7 +168,7 @@ export const Register: React.FC<RegisterProps> = ({
                 fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',
-                background: role === 'librarian' ? 'var(--color-primary, #8057F5)' : 'transparent',
+                background: role === 'librarian' ? 'var(--color-primary, #2563EB)' : 'transparent',
                 color: role === 'librarian' ? '#ffffff' : 'var(--text-secondary, #A9B2CC)',
                 transition: 'all 0.15s ease',
               }}
@@ -193,7 +193,7 @@ export const Register: React.FC<RegisterProps> = ({
                   <label htmlFor="reg-key" className="form-label" style={{ margin: 0, fontWeight: 600 }}>
                     Institutional Verification Key
                   </label>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--color-secondary-violet, #A78BFA)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--color-secondary-violet, #38BDF8)' }}>
                     {role === 'teacher' ? 'Faculty Passkey' : 'Staff Admin Passkey'}
                   </span>
                 </div>

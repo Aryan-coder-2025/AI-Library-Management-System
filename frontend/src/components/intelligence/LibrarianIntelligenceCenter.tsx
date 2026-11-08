@@ -461,7 +461,7 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
                                   : item.status === 'ordered'
                                   ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
                                   : item.status === 'received'
-                                  ? 'bg-purple-950 text-purple-300 border border-purple-800'
+                                  ? 'bg-blue-950 text-blue-300 border border-blue-800'
                                   : item.status === 'rejected'
                                   ? 'bg-red-950 text-red-300 border border-red-800'
                                   : 'bg-slate-800 text-slate-300 border border-slate-700'
@@ -504,7 +504,7 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
                           {item.status === 'ordered' && (
                             <button
                               onClick={() => handleUpdateAcquisitionStatus(item.id, 'received')}
-                              className="px-2.5 py-1 bg-purple-900/60 hover:bg-purple-800/60 text-purple-300 rounded transition font-medium"
+                              className="px-2.5 py-1 bg-blue-900/60 hover:bg-blue-800/60 text-blue-300 rounded transition font-medium"
                             >
                               Mark Received
                             </button>

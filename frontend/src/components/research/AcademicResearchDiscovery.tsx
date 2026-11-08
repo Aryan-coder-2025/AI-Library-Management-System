@@ -367,11 +367,11 @@ export const AcademicResearchDiscovery: React.FC = () => {
                         <span
                           style={{
                             fontSize: '0.68rem',
-                            background: 'rgba(139, 92, 246, 0.2)',
+                            background: 'rgba(37, 99, 235, 0.2)',
                             color: 'var(--color-secondary-violet)',
                             padding: '0.15rem 0.5rem',
                             borderRadius: '4px',
-                            border: '1px solid rgba(139, 92, 246, 0.4)',
+                            border: '1px solid rgba(37, 99, 235, 0.4)',
                             fontWeight: 700,
                           }}
                         >

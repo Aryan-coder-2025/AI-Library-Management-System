@@ -604,9 +604,9 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
                       style={{
                         padding: '0.55rem 0.95rem',
                         borderRadius: '8px',
-                        border: '1px solid rgba(139, 92, 246, 0.45)',
-                        background: 'rgba(139, 92, 246, 0.12)',
-                        color: '#C4B5FD',
+                        border: '1px solid rgba(59, 130, 246, 0.45)',
+                        background: 'rgba(59, 130, 246, 0.12)',
+                        color: '#93C5FD',
                         fontWeight: 700,
                         fontSize: '0.78rem',
                         cursor: readingList.length === 0 ? 'not-allowed' : 'pointer',

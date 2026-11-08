@@ -178,7 +178,7 @@ export const LibrarianCirculation: React.FC = () => {
       )}
 
       {/* QR Book Collection Verification Station (CIRC-03) */}
-      <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--brand-primary, #6366f1)' }}>
+      <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--color-primary, #2563EB)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
           <h3 style={{ fontSize: '1.05rem', margin: 0 }}>📱 QR Book Collection Desk (Hold Fulfillment)</h3>
           <span className="badge badge-primary">CIRC-03 Verified</span>

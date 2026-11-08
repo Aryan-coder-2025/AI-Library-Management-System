@@ -422,7 +422,7 @@ export const OccupancyAnalytics: React.FC<OccupancyAnalyticsProps> = ({ userRole
                 </div>
 
                 {/* Study Rooms & Attendees */}
-                <div className="stat-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                <div className="stat-card" style={{ borderLeft: '4px solid #2563eb' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <div className="stat-value">{liveOccupancy.occupied_room_attendees}</div>
                     <span style={{ fontSize: '0.85rem', color: '#64748b' }}>

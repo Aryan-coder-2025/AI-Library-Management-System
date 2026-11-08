@@ -193,7 +193,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                   style={{
                     border: 'none',
                     background: 'none',
-                    color: 'var(--color-secondary-violet, #A78BFA)',
+                    color: 'var(--color-secondary-violet, #38BDF8)',
                     fontSize: '0.75rem',
                     cursor: 'pointer',
                     fontWeight: 500,
@@ -265,9 +265,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                   badgeBorder = '1px solid rgba(251, 113, 133, 0.35)';
                 } else if (isCourseReading) {
                   badgeLabel = '📚 Required Reading';
-                  badgeBg = 'rgba(128, 87, 245, 0.2)';
-                  badgeColor = '#C4B5FD';
-                  badgeBorder = '1px solid rgba(167, 139, 250, 0.4)';
+                  badgeBg = 'rgba(37, 99, 235, 0.16)';
+                  badgeColor = '#93C5FD';
+                  badgeBorder = '1px solid rgba(59, 130, 246, 0.35)';
                 } else if (isDueSoon) {
                   badgeLabel = '⏰ Due Soon';
                   badgeBg = 'rgba(251, 191, 36, 0.18)';
@@ -284,7 +284,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                       backgroundColor: n.is_read
                         ? 'transparent'
                         : 'var(--bg-subtle, rgba(29, 39, 66, 0.6))',
-                      borderLeft: n.is_read ? '3px solid transparent' : '3px solid var(--color-primary, #8057F5)',
+                      borderLeft: n.is_read ? '3px solid transparent' : '3px solid var(--color-primary, #2563EB)',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '0.35rem',
@@ -319,7 +319,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser 
                           style={{
                             border: 'none',
                             background: 'none',
-                            color: 'var(--color-secondary-violet, #A78BFA)',
+                            color: 'var(--color-secondary-violet, #38BDF8)',
                             fontSize: '0.75rem',
                             cursor: 'pointer',
                             padding: '0 2px',
