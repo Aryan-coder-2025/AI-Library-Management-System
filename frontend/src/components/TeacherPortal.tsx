@@ -1,8 +1,17 @@
 import React, { useEffect, useState } from 'react';
+import { apiFetch } from '../services/apiClient';
 import type { Book, Course, CourseReadingListItem, CourseReserve, UserProfile } from '../types/library';
 
 interface TeacherPortalProps {
   currentUser: UserProfile | null;
+}
+
+interface BookPaginationResponse {
+  items: Book[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => {
@@ -30,6 +39,7 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
   const [searching, setSearching] = useState<boolean>(false);
   const [reqType, setReqType] = useState<'required' | 'recommended' | 'supplementary'>('required');
   const [itemNotes, setItemNotes] = useState<string>('');
+  const [addingBookId, setAddingBookId] = useState<number | null>(null);
 
   // Course reserve modal state
   const [showReserveModal, setShowReserveModal] = useState<boolean>(false);
@@ -37,6 +47,8 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
   const [reserveType, setReserveType] = useState<'2_hour' | '24_hour'>('2_hour');
   const [reserveNotes, setReserveNotes] = useState<string>('');
   const [savingReserve, setSavingReserve] = useState<boolean>(false);
+
+  const canManage = currentUser?.role === 'teacher' || currentUser?.role === 'librarian';
 
   useEffect(() => {
     fetchCourses();
@@ -52,16 +64,14 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/courses');
-      if (res.ok) {
-        const data = await res.json();
-        setCourses(data.courses || []);
-        if (data.courses?.length > 0 && !selectedCourse) {
-          setSelectedCourse(data.courses[0]);
-        }
+      const data = await apiFetch<{ courses: Course[] }>('/api/courses');
+      setCourses(data.courses || []);
+      if (data.courses?.length > 0 && !selectedCourse) {
+        setSelectedCourse(data.courses[0]);
       }
-    } catch (err) {
-      setError('Failed to load courses.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to load courses.';
+      setError(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setLoading(false);
     }
@@ -70,19 +80,12 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
   const fetchCourseDetails = async (courseId: number) => {
     try {
       setLoadingDetails(true);
-      const [resRL, resRes] = await Promise.all([
-        fetch(`/api/courses/${courseId}/reading-list`),
-        fetch(`/api/courses/reserves?course_id=${courseId}`),
+      const [rlData, resData] = await Promise.all([
+        apiFetch<CourseReadingListItem[]>(`/api/courses/${courseId}/reading-list`),
+        apiFetch<CourseReserve[]>(`/api/courses/reserves?course_id=${courseId}`),
       ]);
-
-      if (resRL.ok) {
-        const rlData = await resRL.json();
-        setReadingList(rlData || []);
-      }
-      if (resRes.ok) {
-        const resData = await resRes.json();
-        setReserves(resData || []);
-      }
+      setReadingList(rlData || []);
+      setReserves(resData || []);
     } catch (err) {
       console.error('Failed to load course details:', err);
     } finally {
@@ -97,17 +100,8 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
     try {
       setSavingCourse(true);
       setError(null);
-      const csrfToken = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('csrf_token='))
-        ?.split('=')[1] || '';
-
-      const res = await fetch('/api/courses', {
+      const created = await apiFetch<Course>('/api/courses', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
-        },
         body: JSON.stringify({
           code: newCode.trim(),
           title: newTitle.trim(),
@@ -117,12 +111,6 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
         }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Failed to create course.');
-      }
-
-      const created: Course = await res.json();
       setCourses((prev) => [created, ...prev]);
       setSelectedCourse(created);
       setShowCourseModal(false);
@@ -130,8 +118,9 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
       setNewTitle('');
       setNewDept('');
       setNewDesc('');
-    } catch (err: any) {
-      setError(err.message || 'Error creating course.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error creating course.';
+      setError(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setSavingCourse(false);
     }
@@ -141,13 +130,13 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
     if (!searchQuery.trim()) return;
     try {
       setSearching(true);
-      const res = await fetch(`/api/books?search=${encodeURIComponent(searchQuery)}&limit=5`);
-      if (res.ok) {
-        const data = await res.json();
-        setSearchResults(data.books || []);
-      }
+      const data = await apiFetch<BookPaginationResponse>(
+        `/api/books?search=${encodeURIComponent(searchQuery.trim())}&page_size=8`
+      );
+      setSearchResults(data.items || []);
     } catch (err) {
       console.error('Search failed:', err);
+      setSearchResults([]);
     } finally {
       setSearching(false);
     }
@@ -156,17 +145,9 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
   const handleAddReadingListItem = async (bookId: number) => {
     if (!selectedCourse) return;
     try {
-      const csrfToken = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('csrf_token='))
-        ?.split('=')[1] || '';
-
-      const res = await fetch(`/api/courses/${selectedCourse.id}/reading-list`, {
+      setAddingBookId(bookId);
+      await apiFetch(`/api/courses/${selectedCourse.id}/reading-list`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
-        },
         body: JSON.stringify({
           book_id: bookId,
           requirement_type: reqType,
@@ -174,39 +155,28 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
         }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Failed to add reading list item.');
-      }
-
       setShowAddBookModal(false);
       setSearchQuery('');
       setSearchResults([]);
       setItemNotes('');
       fetchCourseDetails(selectedCourse.id);
       fetchCourses();
-    } catch (err: any) {
-      alert(err.message || 'Error adding book to reading list.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error adding monograph to reading list.';
+      alert(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setAddingBookId(null);
     }
   };
 
   const handleRemoveReadingListItem = async (itemId: number) => {
-    if (!selectedCourse || !confirm('Remove this monograph from the course reading list?')) return;
+    if (!selectedCourse || !confirm('Remove this monograph from course reading list?')) return;
     try {
-      const csrfToken = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('csrf_token='))
-        ?.split('=')[1] || '';
-
-      const res = await fetch(`/api/courses/${selectedCourse.id}/reading-list/${itemId}`, {
+      await apiFetch(`/api/courses/${selectedCourse.id}/reading-list/${itemId}`, {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': csrfToken },
       });
-
-      if (res.ok) {
-        setReadingList((prev) => prev.filter((i) => i.id !== itemId));
-        fetchCourses();
-      }
+      setReadingList((prev) => prev.filter((i) => i.id !== itemId));
+      fetchCourses();
     } catch (err) {
       console.error('Failed to remove item:', err);
     }
@@ -218,130 +188,165 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
 
     try {
       setSavingReserve(true);
-      const csrfToken = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('csrf_token='))
-        ?.split('=')[1] || '';
-
-      const res = await fetch(`/api/courses/${selectedCourse.id}/reserves`, {
+      await apiFetch(`/api/courses/${selectedCourse.id}/reserves`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
-        },
         body: JSON.stringify({
-          copy_id: parseInt(reserveCopyId),
+          copy_id: parseInt(reserveCopyId.trim(), 10),
           reserve_type: reserveType,
           notes: reserveNotes.trim() || undefined,
         }),
       });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Failed to designate course reserve.');
-      }
 
       setShowReserveModal(false);
       setReserveCopyId('');
       setReserveNotes('');
       fetchCourseDetails(selectedCourse.id);
       fetchCourses();
-    } catch (err: any) {
-      alert(err.message || 'Error designating course reserve.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error designating course reserve.';
+      alert(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setSavingReserve(false);
     }
   };
 
   const handleRemoveReserve = async (reserveId: number) => {
-    if (!confirm('Remove this copy from course reserve? It will return to regular circulating inventory.')) return;
+    if (!selectedCourse || !confirm('Release this physical copy from short-term course reserve?')) return;
     try {
-      const csrfToken = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('csrf_token='))
-        ?.split('=')[1] || '';
-
-      const res = await fetch(`/api/courses/reserves/${reserveId}`, {
+      await apiFetch(`/api/courses/reserves/${reserveId}`, {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': csrfToken },
       });
-
-      if (res.ok && selectedCourse) {
-        fetchCourseDetails(selectedCourse.id);
-        fetchCourses();
-      }
+      setReserves((prev) => prev.filter((r) => r.id !== reserveId));
+      fetchCourseDetails(selectedCourse.id);
+      fetchCourses();
     } catch (err) {
       console.error('Failed to remove reserve:', err);
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8 animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-6">
+    <div style={{ maxWidth: '1360px', margin: '0 auto', padding: '1.5rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+      {/* Hero Card Header */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, rgba(30, 41, 69, 0.7) 0%, rgba(19, 27, 46, 0.9) 100%)',
+          border: '1px solid var(--border-medium, #29334F)',
+          borderRadius: 'var(--radius-lg, 16px)',
+          padding: '1.75rem 2rem',
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1.25rem',
+          boxShadow: 'var(--shadow-md, 0 8px 24px rgba(0,0,0,0.25))',
+        }}
+      >
         <div>
-          <div className="flex items-center space-x-3">
-            <span className="text-3xl">🎓</span>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-100 tracking-tight">
-              Teacher Academic Resource Planner
-            </h1>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', padding: '0.2rem 0.65rem', borderRadius: '9999px', background: 'rgba(6, 182, 212, 0.12)', border: '1px solid rgba(6, 182, 212, 0.3)', color: '#38BDF8', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+            <span>🎓</span> Academic Faculty Portal
           </div>
-          <p className="text-slate-400 text-sm mt-1 max-w-2xl">
-            Organize course reading lists, monitor real-time library inventory support for your syllabi, and designate short-term Course Reserves.
+          <h1 style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', letterSpacing: '-0.02em', margin: 0 }}>
+            Teacher Academic Resource Planner
+          </h1>
+          <p style={{ color: 'var(--text-muted, #77829E)', fontSize: '0.85rem', marginTop: '0.35rem', marginBottom: 0, maxWidth: '640px' }}>
+            Organize course reading lists, monitor live physical library inventory support for your syllabi, and designate short-term high-demand course reserves.
           </p>
         </div>
 
-        {(currentUser?.role === 'teacher' || currentUser?.role === 'librarian') && (
+        {canManage && (
           <button
+            type="button"
             onClick={() => setShowCourseModal(true)}
-            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-semibold text-xs rounded-xl shadow-lg transition"
+            style={{
+              padding: '0.65rem 1.25rem',
+              borderRadius: '10px',
+              border: 'none',
+              background: 'linear-gradient(135deg, #06B6D4 0%, #3B82F6 100%)',
+              color: '#FFFFFF',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              boxShadow: '0 4px 14px rgba(6, 182, 212, 0.35)',
+              transition: 'transform 0.15s ease',
+            }}
           >
-            <span>+</span>
-            <span>Create New Course</span>
+            <span>+</span> Create New Course
           </button>
         )}
       </div>
 
       {error && (
-        <div className="p-4 bg-red-950/40 border border-red-800/60 rounded-xl text-xs text-red-300">
+        <div style={{ padding: '0.85rem 1.25rem', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#FCA5A5', fontSize: '0.82rem' }}>
           {error}
         </div>
       )}
 
-      {/* Main Layout: Course Sidebar + Course Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Course List Sidebar */}
-        <div className="space-y-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Academic Courses</h2>
+      {/* Main Grid: Sidebar + Selected Course Workspace */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 320px) 1fr', gap: '1.5rem', alignItems: 'start' }}>
+        {/* Left Column: Course Sidebar */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted, #77829E)' }}>
+              Academic Courses ({courses.length})
+            </span>
+          </div>
 
           {loading ? (
-            <div className="p-8 text-center text-xs text-slate-500">Loading courses...</div>
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+              Loading courses...
+            </div>
           ) : courses.length === 0 ? (
-            <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-2xl text-center text-xs text-slate-400">
-              No academic courses registered yet. Click "Create New Course" to start.
+            <div
+              style={{
+                padding: '1.5rem',
+                borderRadius: '12px',
+                background: 'var(--bg-card, #131B2E)',
+                border: '1px dashed var(--border-medium, #29334F)',
+                textAlign: 'center',
+                color: 'var(--text-muted, #77829E)',
+                fontSize: '0.82rem',
+              }}
+            >
+              No courses registered yet. Click "+ Create New Course" above to add your syllabus.
             </div>
           ) : (
-            <div className="space-y-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               {courses.map((course) => {
                 const isSelected = selectedCourse?.id === course.id;
                 return (
                   <button
                     key={course.id}
+                    type="button"
                     onClick={() => setSelectedCourse(course)}
-                    className={`w-full text-left p-3.5 rounded-xl border transition flex flex-col justify-between ${
-                      isSelected
-                        ? 'bg-slate-800/90 border-cyan-500/80 shadow-md ring-1 ring-cyan-500/30'
-                        : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800/40'
-                    }`}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '1rem 1.15rem',
+                      borderRadius: '12px',
+                      border: isSelected ? '1px solid #06B6D4' : '1px solid var(--border-medium, #29334F)',
+                      background: isSelected
+                        ? 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 41, 69, 0.7) 100%)'
+                        : 'var(--bg-card, #131B2E)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      boxShadow: isSelected ? '0 0 16px rgba(6, 182, 212, 0.2)' : 'none',
+                    }}
                   >
-                    <div className="flex justify-between items-center w-full">
-                      <span className="font-mono text-xs font-bold text-cyan-400">{course.code}</span>
-                      <span className="text-[10px] text-slate-500">{course.term}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                      <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.82rem', fontWeight: 800, color: '#38BDF8' }}>
+                        {course.code}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted, #77829E)' }}>{course.term}</span>
                     </div>
-                    <h3 className="text-xs font-bold text-slate-200 mt-1 line-clamp-1">{course.title}</h3>
-                    <div className="flex items-center space-x-3 text-[11px] text-slate-400 mt-2">
-                      <span>📚 {course.reading_list_count} titles</span>
-                      <span>🔒 {course.reserves_count} reserves</span>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary, #F5F6FF)', marginBottom: '0.45rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {course.title}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted, #77829E)' }}>
+                      <span>📚 {course.reading_list_count ?? 0} titles</span>
+                      <span>🔒 {course.reserves_count ?? 0} reserves</span>
                     </div>
                   </button>
                 );
@@ -350,147 +355,330 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
           )}
         </div>
 
-        {/* Selected Course Content Workspace */}
-        <div className="lg:col-span-3 space-y-6">
+        {/* Right Column: Course Workspace */}
+        <div>
           {selectedCourse ? (
-            <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-6">
-              {/* Course Banner */}
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-slate-800">
+            <div
+              style={{
+                background: 'var(--bg-card, #131B2E)',
+                border: '1px solid var(--border-medium, #29334F)',
+                borderRadius: 'var(--radius-lg, 16px)',
+                padding: '1.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.5rem',
+              }}
+            >
+              {/* Course Banner Header */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: '1rem',
+                  paddingBottom: '1.25rem',
+                  borderBottom: '1px solid var(--border-medium, #29334F)',
+                }}
+              >
                 <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="px-2.5 py-0.5 bg-cyan-950/80 border border-cyan-800/80 text-cyan-300 font-mono text-xs rounded-lg font-bold">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                    <span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.35)', color: '#38BDF8', fontFamily: 'var(--font-mono, monospace)', fontWeight: 800, fontSize: '0.78rem' }}>
                       {selectedCourse.code}
                     </span>
-                    <span className="text-xs text-slate-400">• {selectedCourse.department} • {selectedCourse.term}</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted, #77829E)' }}>
+                      • {selectedCourse.department} • {selectedCourse.term}
+                    </span>
                   </div>
-                  <h2 className="text-xl font-extrabold text-slate-100 mt-1.5">{selectedCourse.title}</h2>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', margin: 0 }}>
+                    {selectedCourse.title}
+                  </h2>
                   {selectedCourse.description && (
-                    <p className="text-xs text-slate-400 mt-1">{selectedCourse.description}</p>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary, #A0AEC0)', marginTop: '0.35rem', marginBottom: 0 }}>
+                      {selectedCourse.description}
+                    </p>
                   )}
-                  <p className="text-xs text-slate-500 mt-1">Instructor: {selectedCourse.instructor_name}</p>
+                  <p style={{ fontSize: '0.76rem', color: 'var(--text-muted, #77829E)', marginTop: '0.25rem', marginBottom: 0 }}>
+                    Instructor: <strong>{selectedCourse.instructor_name || 'Prof. Faculty'}</strong>
+                  </p>
                 </div>
 
-                <div className="flex space-x-3">
-                  <button
-                    onClick={() => setShowAddBookModal(true)}
-                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold rounded-xl border border-slate-700 transition"
-                  >
-                    + Add Book to Syllabus
-                  </button>
-                  <button
-                    onClick={() => setShowReserveModal(true)}
-                    className="px-3.5 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-semibold rounded-xl transition shadow"
-                  >
-                    🔒 Designate Course Reserve
-                  </button>
-                </div>
+                {canManage && (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddBookModal(true)}
+                      style={{
+                        padding: '0.55rem 0.95rem',
+                        borderRadius: '8px',
+                        border: '1px solid #06B6D4',
+                        background: 'rgba(6, 182, 212, 0.1)',
+                        color: '#38BDF8',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                      }}
+                    >
+                      <span>+</span> Add Book to Syllabus
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowReserveModal(true)}
+                      style={{
+                        padding: '0.55rem 0.95rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(245, 158, 11, 0.5)',
+                        background: 'rgba(245, 158, 11, 0.12)',
+                        color: '#FBBF24',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                      }}
+                    >
+                      <span>🔒</span> Designate Reserve
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Section 1: Syllabus Reading List */}
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-sm font-bold text-slate-200">Syllabus Reading List & Inventory Availability</h3>
-                  <span className="text-xs text-slate-400">{readingList.length} titles listed</span>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+                  <h3 style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', margin: 0 }}>
+                    Syllabus Reading List & Inventory Availability
+                  </h3>
+                  <span style={{ fontSize: '0.76rem', color: 'var(--text-muted, #77829E)' }}>
+                    {readingList.length} monograph{readingList.length === 1 ? '' : 's'} assigned
+                  </span>
                 </div>
 
                 {loadingDetails ? (
-                  <p className="text-xs text-slate-500">Loading syllabus items...</p>
+                  <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                    Loading syllabus items...
+                  </div>
                 ) : readingList.length === 0 ? (
-                  <div className="p-8 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl text-center space-y-2">
-                    <p className="text-xs text-slate-400">No books added to this course syllabus yet.</p>
-                    <button
-                      onClick={() => setShowAddBookModal(true)}
-                      className="text-xs text-cyan-400 hover:underline font-semibold"
-                    >
-                      Search catalogue to add required textbooks
-                    </button>
+                  <div
+                    style={{
+                      padding: '2rem',
+                      borderRadius: '12px',
+                      background: 'rgba(15, 23, 42, 0.4)',
+                      border: '1px dashed var(--border-medium, #29334F)',
+                      textAlign: 'center',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                    }}
+                  >
+                    <span style={{ fontSize: '1.5rem' }}>📖</span>
+                    <span style={{ color: 'var(--text-muted, #77829E)', fontSize: '0.82rem' }}>
+                      No monographs added to this course syllabus yet.
+                    </span>
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAddBookModal(true)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#38BDF8',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          padding: 0,
+                          textDecoration: 'underline',
+                        }}
+                      >
+                        Search catalogue to add required or recommended textbooks
+                      </button>
+                    )}
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-800/80 border border-slate-800 rounded-xl overflow-hidden bg-slate-950/30">
-                    {readingList.map((item) => (
-                      <div key={item.id} className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 hover:bg-slate-800/20 transition">
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                item.requirement_type === 'required'
-                                  ? 'bg-rose-950/80 text-rose-300 border border-rose-800/80'
-                                  : item.requirement_type === 'recommended'
-                                  ? 'bg-amber-950/80 text-amber-300 border border-amber-800/80'
-                                  : 'bg-slate-800 text-slate-300 border border-slate-700'
-                              }`}
-                            >
-                              {item.requirement_type}
-                            </span>
-                            <h4 className="text-xs font-bold text-slate-200">{item.book_title}</h4>
-                          </div>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            Author: {item.book_author || 'N/A'} {item.book_isbn && `• ISBN: ${item.book_isbn}`}
-                          </p>
-                          {item.notes && <p className="text-[11px] text-slate-500 italic mt-0.5">"{item.notes}"</p>}
-                        </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {readingList.map((item) => {
+                      const reqBadgeColor =
+                        item.requirement_type === 'required'
+                          ? { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.4)', text: '#FCA5A5' }
+                          : item.requirement_type === 'recommended'
+                          ? { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.4)', text: '#FCD34D' }
+                          : { bg: 'rgba(100, 116, 139, 0.15)', border: 'rgba(100, 116, 139, 0.4)', text: '#CBD5E1' };
 
-                        <div className="flex items-center space-x-4">
-                          <div className="text-right">
-                            <span
-                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                                item.available_copies_count > 0
-                                  ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/60'
-                                  : 'bg-red-950/60 text-red-300 border border-red-800/60'
-                              }`}
-                            >
-                              {item.available_copies_count} of {item.total_copies_count} on shelf
-                            </span>
+                      const isAvail = (item.available_copies_count ?? 0) > 0;
+
+                      return (
+                        <div
+                          key={item.id}
+                          style={{
+                            padding: '0.95rem 1.15rem',
+                            borderRadius: '10px',
+                            background: 'rgba(15, 23, 42, 0.5)',
+                            border: '1px solid var(--border-medium, #29334F)',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '0.85rem',
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                              <span
+                                style={{
+                                  padding: '0.15rem 0.45rem',
+                                  borderRadius: '4px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 800,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.04em',
+                                  background: reqBadgeColor.bg,
+                                  border: `1px solid ${reqBadgeColor.border}`,
+                                  color: reqBadgeColor.text,
+                                }}
+                              >
+                                {item.requirement_type}
+                              </span>
+                              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary, #F5F6FF)' }}>
+                                {item.book_title}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted, #77829E)' }}>
+                              Author: {item.book_author || 'N/A'} {item.book_isbn && `• ISBN: ${item.book_isbn}`}
+                            </div>
+                            {item.notes && (
+                              <div style={{ fontSize: '0.75rem', color: '#93C5FD', fontStyle: 'italic', marginTop: '0.15rem' }}>
+                                "{item.notes}"
+                              </div>
+                            )}
                           </div>
-                          {(currentUser?.role === 'teacher' || currentUser?.role === 'librarian') && (
-                            <button
-                              onClick={() => handleRemoveReadingListItem(item.id)}
-                              className="text-slate-500 hover:text-red-400 text-xs p-1"
-                              title="Remove from reading list"
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <span
+                              style={{
+                                padding: '0.35rem 0.75rem',
+                                borderRadius: '8px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                background: isAvail ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                                border: isAvail ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(239, 68, 68, 0.35)',
+                                color: isAvail ? '#6EE7B7' : '#FCA5A5',
+                              }}
                             >
-                              ✕
-                            </button>
-                          )}
+                              {item.available_copies_count ?? 0} of {item.total_copies_count ?? 0} on shelf
+                            </span>
+
+                            {canManage && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveReadingListItem(item.id)}
+                                title="Remove from reading list"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: 'var(--text-muted, #77829E)',
+                                  fontSize: '0.95rem',
+                                  cursor: 'pointer',
+                                  padding: '0.2rem 0.4rem',
+                                  borderRadius: '4px',
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')}
+                                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted, #77829E)')}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
               {/* Section 2: Active Course Reserves */}
-              <div className="space-y-4 pt-4 border-t border-slate-800">
-                <div className="flex justify-between items-center">
+              <div style={{ paddingTop: '1.25rem', borderTop: '1px solid var(--border-medium, #29334F)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-200">Active Course Reserves (CIRC-06)</h3>
-                    <p className="text-xs text-slate-400">High-demand copies restricted to short-term reserve shelf checkouts.</p>
+                    <h3 style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', margin: 0 }}>
+                      Active Course Reserves (CIRC-06)
+                    </h3>
+                    <p style={{ fontSize: '0.76rem', color: 'var(--text-muted, #77829E)', margin: '0.15rem 0 0 0' }}>
+                      Designated physical copies held at the circulation desk for short-term fair patron checkout.
+                    </p>
                   </div>
-                  <span className="text-xs text-slate-400">{reserves.length} reserve copies</span>
+                  <span style={{ fontSize: '0.76rem', color: 'var(--text-muted, #77829E)' }}>
+                    {reserves.length} reserve cop{reserves.length === 1 ? 'y' : 'ies'}
+                  </span>
                 </div>
 
                 {reserves.length === 0 ? (
-                  <div className="p-6 bg-slate-950/20 border border-slate-800/60 rounded-xl text-center text-xs text-slate-500">
+                  <div
+                    style={{
+                      padding: '1.5rem',
+                      borderRadius: '12px',
+                      background: 'rgba(15, 23, 42, 0.4)',
+                      border: '1px solid var(--border-medium, #29334F)',
+                      textAlign: 'center',
+                      color: 'var(--text-muted, #77829E)',
+                      fontSize: '0.82rem',
+                    }}
+                  >
                     No physical copies currently designated as high-demand course reserves for this class.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '0.85rem' }}>
                     {reserves.map((res) => (
-                      <div key={res.id} className="p-3.5 bg-slate-950/60 border border-amber-800/40 rounded-xl flex justify-between items-center">
+                      <div
+                        key={res.id}
+                        style={{
+                          padding: '0.95rem 1.15rem',
+                          borderRadius: '10px',
+                          background: 'rgba(15, 23, 42, 0.6)',
+                          border: '1px solid rgba(245, 158, 11, 0.35)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: '0.85rem',
+                        }}
+                      >
                         <div>
-                          <div className="flex items-center space-x-2">
-                            <span className="font-mono text-xs font-bold text-amber-400">{res.copy_code}</span>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-950/90 text-amber-300 border border-amber-800">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.2rem' }}>
+                            <span style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 800, fontSize: '0.78rem', color: '#FBBF24' }}>
+                              {res.copy_code}
+                            </span>
+                            <span style={{ padding: '0.15rem 0.45rem', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#FCD34D' }}>
                               {res.reserve_type.replace('_', ' ')} Limit
                             </span>
                           </div>
-                          <h4 className="text-xs font-semibold text-slate-200 mt-1 line-clamp-1">{res.book_title}</h4>
-                          {res.notes && <p className="text-[11px] text-slate-500 italic mt-0.5">"{res.notes}"</p>}
+                          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary, #F5F6FF)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>
+                            {res.book_title}
+                          </div>
+                          {res.notes && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted, #77829E)', fontStyle: 'italic', marginTop: '0.15rem' }}>
+                              "{res.notes}"
+                            </div>
+                          )}
                         </div>
 
-                        {(currentUser?.role === 'teacher' || currentUser?.role === 'librarian') && (
+                        {canManage && (
                           <button
+                            type="button"
                             onClick={() => handleRemoveReserve(res.id)}
-                            className="px-2 py-1 bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-300 text-xs rounded transition"
+                            style={{
+                              padding: '0.35rem 0.65rem',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-medium, #29334F)',
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              color: '#FCA5A5',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
                           >
                             Release
                           </button>
@@ -502,94 +690,154 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
               </div>
             </div>
           ) : (
-            <div className="p-12 bg-slate-900/40 border border-slate-800 rounded-2xl text-center text-xs text-slate-500">
-              Select or create a course to view syllabus resources and reserves.
+            <div
+              style={{
+                background: 'var(--bg-card, #131B2E)',
+                border: '1px solid var(--border-medium, #29334F)',
+                borderRadius: 'var(--radius-lg, 16px)',
+                padding: '3rem',
+                textAlign: 'center',
+                color: 'var(--text-muted, #77829E)',
+                fontSize: '0.85rem',
+              }}
+            >
+              Select or create an academic course on the left to manage syllabus monographs and short-term reserves.
             </div>
           )}
         </div>
       </div>
 
-      {/* Modal: Create Course */}
+      {/* Floating Modal: Create Course */}
       {showCourseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/50">
-              <h2 className="text-base font-bold text-slate-100">Create Academic Course</h2>
-              <button onClick={() => setShowCourseModal(false)} className="text-slate-400 hover:text-slate-200">✕</button>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(5, 7, 15, 0.82)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={() => setShowCourseModal(false)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-card, #131B2E)',
+              border: '1px solid var(--border-medium, #29334F)',
+              borderRadius: '16px',
+              maxWidth: '520px',
+              width: '100%',
+              overflow: 'hidden',
+              boxShadow: '0 20px 48px rgba(0,0,0,0.6)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.15rem 1.5rem', borderBottom: '1px solid var(--border-medium, #29334F)' }}>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', margin: 0 }}>
+                Create Academic Course
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowCourseModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted, #77829E)', fontSize: '1.1rem', cursor: 'pointer', padding: 0 }}
+              >
+                ✕
+              </button>
             </div>
-            <form onSubmit={handleCreateCourse} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+
+            <form onSubmit={handleCreateCourse} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Course Code *</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                    Course Code *
+                  </label>
                   <input
                     type="text"
                     required
                     value={newCode}
                     onChange={(e) => setNewCode(e.target.value)}
                     placeholder="e.g. CS-301"
-                    className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                    className="form-input"
+                    style={{ width: '100%' }}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Academic Term *</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                    Academic Term *
+                  </label>
                   <input
                     type="text"
                     required
                     value={newTerm}
                     onChange={(e) => setNewTerm(e.target.value)}
                     placeholder="e.g. Fall 2026"
-                    className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                    className="form-input"
+                    style={{ width: '100%' }}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Course Title *</label>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                  Course Title *
+                </label>
                 <input
                   type="text"
                   required
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="e.g. Quantum Algorithms and Cryptography"
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  placeholder="e.g. Distributed Systems Engineering"
+                  className="form-input"
+                  style={{ width: '100%' }}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Department *</label>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                  Department *
+                </label>
                 <input
                   type="text"
                   required
                   value={newDept}
                   onChange={(e) => setNewDept(e.target.value)}
                   placeholder="e.g. Computer Science"
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  className="form-input"
+                  style={{ width: '100%' }}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Syllabus Overview</label>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                  Syllabus Overview
+                </label>
                 <textarea
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="Brief course description..."
+                  placeholder="Brief course objectives and syllabus description..."
                   rows={2}
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  className="form-textarea"
+                  style={{ width: '100%' }}
                 />
               </div>
 
-              <div className="flex justify-end space-x-3 pt-2">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem', paddingTop: '0.5rem' }}>
                 <button
                   type="button"
                   onClick={() => setShowCourseModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition"
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.8rem' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingCourse}
-                  className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg transition shadow disabled:opacity-50"
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.8rem' }}
                 >
                   {savingCourse ? 'Creating...' : 'Create Course'}
                 </button>
@@ -599,137 +847,275 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
         </div>
       )}
 
-      {/* Modal: Search Catalogue to Add to Reading List */}
+      {/* Floating Modal: Add Book to Syllabus Reading List */}
       {showAddBookModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/50">
-              <h2 className="text-base font-bold text-slate-100">Add Book to Syllabus Reading List</h2>
-              <button onClick={() => setShowAddBookModal(false)} className="text-slate-400 hover:text-slate-200">✕</button>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(5, 7, 15, 0.82)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={() => setShowAddBookModal(false)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-card, #131B2E)',
+              border: '1px solid var(--border-medium, #29334F)',
+              borderRadius: '16px',
+              maxWidth: '560px',
+              width: '100%',
+              overflow: 'hidden',
+              boxShadow: '0 20px 48px rgba(0,0,0,0.6)',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '85vh',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.15rem 1.5rem', borderBottom: '1px solid var(--border-medium, #29334F)' }}>
+              <div>
+                <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', margin: 0 }}>
+                  Add Book to Syllabus Reading List
+                </h2>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #77829E)' }}>
+                  {selectedCourse?.code}: {selectedCourse?.title}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddBookModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted, #77829E)', fontSize: '1.1rem', cursor: 'pointer', padding: 0 }}
+              >
+                ✕
+              </button>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="flex space-x-2">
+
+            <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto' }}>
+              {/* Search Bar */}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearchCatalogue()}
-                  placeholder="Search catalogue by title, author, or keyword..."
-                  className="flex-1 bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  placeholder="Search catalogue by title, author, or category..."
+                  className="form-input"
+                  style={{ flex: 1 }}
+                  autoFocus
                 />
                 <button
                   type="button"
                   onClick={handleSearchCatalogue}
                   disabled={searching}
-                  className="px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg transition"
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                 >
-                  {searching ? '...' : 'Search'}
+                  {searching ? 'Searching...' : 'Search'}
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Requirement Type & Notes Configuration */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Requirement Type</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                    Requirement Type
+                  </label>
                   <select
                     value={reqType}
                     onChange={(e: any) => setReqType(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2 focus:outline-none"
+                    className="form-select"
+                    style={{ width: '100%' }}
                   >
-                    <option value="required">Required</option>
-                    <option value="recommended">Recommended</option>
-                    <option value="supplementary">Supplementary</option>
+                    <option value="required">🔴 Required Syllabus</option>
+                    <option value="recommended">🟡 Recommended Reading</option>
+                    <option value="supplementary">⚪ Supplementary Reference</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Syllabus Notes</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                    Syllabus Notes
+                  </label>
                   <input
                     type="text"
                     value={itemNotes}
                     onChange={(e) => setItemNotes(e.target.value)}
                     placeholder="e.g. Chapters 1-4 for Midterm"
-                    className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2 focus:outline-none"
+                    className="form-input"
+                    style={{ width: '100%' }}
                   />
                 </div>
               </div>
 
-              <div className="space-y-2 max-h-56 overflow-y-auto">
-                {searchResults.map((b) => (
-                  <div key={b.id} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl flex justify-between items-center text-xs">
-                    <div>
-                      <h4 className="font-bold text-slate-200">{b.title}</h4>
-                      <p className="text-[11px] text-slate-400">{b.author} • {b.category}</p>
-                    </div>
-                    <button
-                      onClick={() => handleAddReadingListItem(b.id)}
-                      className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs rounded-lg transition"
-                    >
-                      + Add
-                    </button>
+              {/* Search Results List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted, #77829E)' }}>
+                  Matching Holdings {searchResults.length > 0 && `(${searchResults.length})`}
+                </span>
+
+                {searching ? (
+                  <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                    Querying catalogue collection...
                   </div>
-                ))}
+                ) : searchResults.length === 0 ? (
+                  <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted, #77829E)', fontSize: '0.82rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '10px' }}>
+                    Enter keywords (e.g. "artificial intelligence", "algorithms") and click Search.
+                  </div>
+                ) : (
+                  searchResults.map((b) => (
+                    <div
+                      key={b.id}
+                      style={{
+                        padding: '0.85rem 1rem',
+                        borderRadius: '10px',
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: '1px solid var(--border-medium, #29334F)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary, #F5F6FF)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {b.title}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #77829E)', marginTop: '0.15rem' }}>
+                          {b.author} • <span style={{ color: '#38BDF8' }}>{b.category}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={addingBookId === b.id}
+                        onClick={() => handleAddReadingListItem(b.id)}
+                        className="btn btn-primary btn-sm"
+                        style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                      >
+                        {addingBookId === b.id ? 'Adding...' : '+ Add'}
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Designate Course Reserve */}
+      {/* Floating Modal: Designate Course Reserve */}
       {showReserveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/50">
-              <h2 className="text-base font-bold text-slate-100">Designate Course Reserve</h2>
-              <button onClick={() => setShowReserveModal(false)} className="text-slate-400 hover:text-slate-200">✕</button>
-            </div>
-            <form onSubmit={handleAddCourseReserve} className="p-6 space-y-4">
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(5, 7, 15, 0.82)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={() => setShowReserveModal(false)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-card, #131B2E)',
+              border: '1px solid var(--border-medium, #29334F)',
+              borderRadius: '16px',
+              maxWidth: '480px',
+              width: '100%',
+              overflow: 'hidden',
+              boxShadow: '0 20px 48px rgba(0,0,0,0.6)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.15rem 1.5rem', borderBottom: '1px solid var(--border-medium, #29334F)' }}>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Physical Copy ID *</label>
+                <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', margin: 0 }}>
+                  Designate Course Reserve
+                </h2>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #77829E)' }}>
+                  Restrict copy checkout to short-term desk loan
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReserveModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted, #77829E)', fontSize: '1.1rem', cursor: 'pointer', padding: 0 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCourseReserve} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                  Physical Copy ID or Barcode *
+                </label>
                 <input
                   type="number"
                   required
                   value={reserveCopyId}
                   onChange={(e) => setReserveCopyId(e.target.value)}
-                  placeholder="Enter Copy ID (e.g. 101)"
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  placeholder="Enter Copy ID (e.g. 1)"
+                  className="form-input"
+                  style={{ width: '100%' }}
                 />
-                <p className="text-[11px] text-slate-500 mt-1">Copy must currently have 'available' operational status.</p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted, #77829E)', marginTop: '0.35rem', marginBottom: 0 }}>
+                  Physical copy must have 'available' operational status on shelf.
+                </p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Reserve Duration Limit *</label>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                  Reserve Duration Limit *
+                </label>
                 <select
                   value={reserveType}
                   onChange={(e: any) => setReserveType(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  className="form-select"
+                  style={{ width: '100%' }}
                 >
-                  <option value="2_hour">2-Hour In-Library Reserve</option>
-                  <option value="24_hour">24-Hour Overnight Reserve</option>
+                  <option value="2_hour">⏱️ 2-Hour In-Library Desk Reserve</option>
+                  <option value="24_hour">🌙 24-Hour Overnight Desk Reserve</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Notes</label>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
+                  Instructor Reserve Notes
+                </label>
                 <input
                   type="text"
                   value={reserveNotes}
                   onChange={(e) => setReserveNotes(e.target.value)}
-                  placeholder="e.g. Dedicated for Exam Prep week"
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:outline-none"
+                  placeholder="e.g. Dedicated for Midterm Examination week"
+                  className="form-input"
+                  style={{ width: '100%' }}
                 />
               </div>
 
-              <div className="flex justify-end space-x-3 pt-2">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem', paddingTop: '0.5rem' }}>
                 <button
                   type="button"
                   onClick={() => setShowReserveModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition"
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.8rem' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingReserve}
-                  className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-lg transition shadow disabled:opacity-50"
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.8rem', background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)', borderColor: '#F59E0B' }}
                 >
                   {savingReserve ? 'Designating...' : 'Confirm Reserve'}
                 </button>
