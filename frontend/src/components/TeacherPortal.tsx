@@ -35,12 +35,32 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
   // Add reading list item search modal
   const [showAddBookModal, setShowAddBookModal] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All Categories');
   const [searchResults, setSearchResults] = useState<Book[]>([]);
+  const [searchPage, setSearchPage] = useState<number>(1);
+  const [totalSearchCount, setTotalSearchCount] = useState<number>(0);
+  const [totalSearchPages, setTotalSearchPages] = useState<number>(1);
   const [searching, setSearching] = useState<boolean>(false);
   const [hasSearched, setHasSearched] = useState<boolean>(false);
   const [reqType, setReqType] = useState<'required' | 'recommended' | 'supplementary'>('required');
   const [itemNotes, setItemNotes] = useState<string>('');
   const [addingBookId, setAddingBookId] = useState<number | null>(null);
+
+  const ACADEMIC_CATEGORIES = [
+    'All Categories',
+    'Artificial Intelligence',
+    'Computer Science',
+    'Algorithms & Complexity',
+    'Data Science',
+    'Cybersecurity & Cryptography',
+    'Distributed Systems',
+    'Software Engineering',
+    'Robotics',
+    'Mathematics',
+    'Physics',
+    'Information Systems',
+    'Philosophy of Technology',
+  ];
 
   // Course reserve modal state
   const [showReserveModal, setShowReserveModal] = useState<boolean>(false);
@@ -127,30 +147,43 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
     }
   };
 
-  const handleSearchCatalogue = async (overrideQuery?: string) => {
-    const q = (overrideQuery !== undefined ? overrideQuery : searchQuery).trim();
-    if (!q) return;
+  const handleSearchCatalogue = async (page: number = 1, overrideCat?: string, overrideQ?: string) => {
     try {
       setSearching(true);
       setHasSearched(true);
-      const data = await apiFetch<BookPaginationResponse>(
-        `/api/books?search=${encodeURIComponent(q)}&page_size=8`
-      );
+      const cat = overrideCat !== undefined ? overrideCat : selectedCategory;
+      const q = overrideQ !== undefined ? overrideQ : searchQuery;
+      const params = new URLSearchParams();
+      if (q.trim()) params.set('search', q.trim());
+      if (cat && cat !== 'All Categories') params.set('category', cat);
+      params.set('page', String(page));
+      params.set('page_size', '12');
+
+      const data = await apiFetch<BookPaginationResponse>(`/api/books?${params.toString()}`);
       setSearchResults(data.items || []);
+      setTotalSearchCount(data.total || 0);
+      setTotalSearchPages(data.total_pages || 1);
+      setSearchPage(page);
     } catch (err) {
       console.error('Search failed:', err);
       setSearchResults([]);
+      setTotalSearchCount(0);
+      setTotalSearchPages(1);
     } finally {
       setSearching(false);
     }
   };
 
   const openAddBookModal = () => {
-    const initialQ = selectedCourse?.title ? selectedCourse.title.split(' ')[0] : 'intelligence';
+    const initialQ = '';
+    const initialCat = selectedCourse?.department && ACADEMIC_CATEGORIES.includes(selectedCourse.department)
+      ? selectedCourse.department
+      : 'All Categories';
     setSearchQuery(initialQ);
+    setSelectedCategory(initialCat);
     setHasSearched(false);
     setShowAddBookModal(true);
-    handleSearchCatalogue(initialQ);
+    handleSearchCatalogue(1, initialCat, initialQ);
   };
 
   const handleAddReadingListItem = async (bookId: number) => {
@@ -879,19 +912,19 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
               background: 'var(--bg-card, #131B2E)',
               border: '1px solid var(--border-medium, #29334F)',
               borderRadius: '16px',
-              maxWidth: '560px',
+              maxWidth: '720px',
               width: '100%',
               overflow: 'hidden',
               boxShadow: '0 20px 48px rgba(0,0,0,0.6)',
               display: 'flex',
               flexDirection: 'column',
-              maxHeight: '85vh',
+              maxHeight: '88vh',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.15rem 1.5rem', borderBottom: '1px solid var(--border-medium, #29334F)' }}>
               <div>
-                <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', margin: 0 }}>
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary, #F5F6FF)', margin: 0 }}>
                   Add Book to Syllabus Reading List
                 </h2>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #77829E)' }}>
@@ -908,116 +941,183 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({ currentUser }) => 
             </div>
 
             <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto' }}>
-              {/* Search Bar Form */}
+              {/* Search & Academic Category Filter Bar */}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  handleSearchCatalogue();
+                  handleSearchCatalogue(1);
                 }}
-                style={{ display: 'flex', gap: '0.5rem' }}
+                style={{ display: 'grid', gridTemplateColumns: '1fr minmax(180px, 220px) auto', gap: '0.5rem' }}
               >
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search catalogue by title, author, or category..."
+                  placeholder="Search title, author, or keyword..."
                   className="form-input"
-                  style={{ flex: 1 }}
                   autoFocus
                 />
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => {
+                    const newCat = e.target.value;
+                    setSelectedCategory(newCat);
+                    handleSearchCatalogue(1, newCat, searchQuery);
+                  }}
+                  className="form-select"
+                >
+                  {ACADEMIC_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
                 <button
                   type="submit"
                   disabled={searching}
                   className="btn btn-primary"
                   style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                 >
-                  {searching ? 'Searching...' : 'Search'}
+                  {searching ? '...' : 'Search'}
                 </button>
               </form>
 
-              {/* Requirement Type & Notes Configuration */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
-                    Requirement Type
-                  </label>
-                  <select
-                    value={reqType}
-                    onChange={(e: any) => setReqType(e.target.value)}
-                    className="form-select"
-                    style={{ width: '100%' }}
-                  >
-                    <option value="required">🔴 Required Syllabus</option>
-                    <option value="recommended">🟡 Recommended Reading</option>
-                    <option value="supplementary">⚪ Supplementary Reference</option>
-                  </select>
+              {/* Requirement Tag & Notes: Clearly labeled as settings applied upon adding */}
+              <div
+                style={{
+                  padding: '0.75rem 1rem',
+                  borderRadius: '10px',
+                  background: 'rgba(15, 23, 42, 0.45)',
+                  border: '1px solid var(--border-medium, #29334F)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.45rem',
+                }}
+              >
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted, #77829E)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  📌 Syllabus Tag to Apply on Add:
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.35rem' }}>
-                    Syllabus Notes
-                  </label>
-                  <input
-                    type="text"
-                    value={itemNotes}
-                    onChange={(e) => setItemNotes(e.target.value)}
-                    placeholder="e.g. Chapters 1-4 for Midterm"
-                    className="form-input"
-                    style={{ width: '100%' }}
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 220px) 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.2rem' }}>
+                      Requirement Level
+                    </label>
+                    <select
+                      value={reqType}
+                      onChange={(e: any) => setReqType(e.target.value)}
+                      className="form-select"
+                      style={{ width: '100%' }}
+                    >
+                      <option value="required">🔴 Required Syllabus</option>
+                      <option value="recommended">🟡 Recommended Reading</option>
+                      <option value="supplementary">⚪ Supplementary Reference</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary, #A0AEC0)', marginBottom: '0.2rem' }}>
+                      Syllabus Notes (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={itemNotes}
+                      onChange={(e) => setItemNotes(e.target.value)}
+                      placeholder="e.g. Chapters 1-4 for Midterm Examination"
+                      className="form-input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
                 </div>
               </div>
 
               {/* Search Results List */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.25rem' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted, #77829E)' }}>
-                  Matching Holdings {searchResults.length > 0 && `(${searchResults.length})`}
-                </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted, #77829E)' }}>
+                    Catalogue Holdings {totalSearchCount > 0 && `(${totalSearchCount} total in ${selectedCategory})`}
+                  </span>
+                  {totalSearchPages > 1 && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted, #77829E)' }}>
+                      Page {searchPage} of {totalSearchPages}
+                    </span>
+                  )}
+                </div>
 
                 {searching ? (
-                  <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                     Querying catalogue collection...
                   </div>
                 ) : searchResults.length === 0 ? (
-                  <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted, #77829E)', fontSize: '0.82rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '10px' }}>
+                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted, #77829E)', fontSize: '0.82rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '10px' }}>
                     {hasSearched
-                      ? `No monographs found matching "${searchQuery}". Try different keywords (e.g. "linear", "robotics", "algorithms").`
-                      : 'Enter keywords (e.g. "artificial intelligence", "algorithms") and click Search.'}
+                      ? `No monographs found matching "${searchQuery}" in ${selectedCategory}. Try adjusting category or keywords.`
+                      : 'Choose an academic category or enter search terms above.'}
                   </div>
                 ) : (
-                  searchResults.map((b) => (
-                    <div
-                      key={b.id}
-                      style={{
-                        padding: '0.85rem 1rem',
-                        borderRadius: '10px',
-                        background: 'rgba(15, 23, 42, 0.6)',
-                        border: '1px solid var(--border-medium, #29334F)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: '0.75rem',
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary, #F5F6FF)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {b.title}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #77829E)', marginTop: '0.15rem' }}>
-                          {b.author} • <span style={{ color: '#38BDF8' }}>{b.category}</span>
-                        </div>
-                      </div>
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', maxHeight: '340px', overflowY: 'auto' }}>
+                      {searchResults.map((b) => (
+                        <div
+                          key={b.id}
+                          style={{
+                            padding: '0.75rem 0.95rem',
+                            borderRadius: '10px',
+                            background: 'rgba(15, 23, 42, 0.6)',
+                            border: '1px solid var(--border-medium, #29334F)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary, #F5F6FF)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {b.title}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted, #77829E)', marginTop: '0.15rem' }}>
+                              {b.author} • <span style={{ color: '#38BDF8', fontWeight: 600 }}>{b.category}</span>
+                            </div>
+                          </div>
 
-                      <button
-                        type="button"
-                        disabled={addingBookId === b.id}
-                        onClick={() => handleAddReadingListItem(b.id)}
-                        className="btn btn-primary btn-sm"
-                        style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
-                      >
-                        {addingBookId === b.id ? 'Adding...' : '+ Add'}
-                      </button>
+                          <button
+                            type="button"
+                            disabled={addingBookId === b.id}
+                            onClick={() => handleAddReadingListItem(b.id)}
+                            className="btn btn-primary btn-sm"
+                            style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                          >
+                            {addingBookId === b.id ? 'Adding...' : '+ Add to Syllabus'}
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))
+
+                    {/* Pagination Controls */}
+                    {totalSearchPages > 1 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border-medium, #29334F)' }}>
+                        <button
+                          type="button"
+                          disabled={searchPage <= 1 || searching}
+                          onClick={() => handleSearchCatalogue(searchPage - 1)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: '0.72rem' }}
+                        >
+                          ← Previous
+                        </button>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted, #77829E)' }}>
+                          Page {searchPage} of {totalSearchPages} ({totalSearchCount} monographs)
+                        </span>
+                        <button
+                          type="button"
+                          disabled={searchPage >= totalSearchPages || searching}
+                          onClick={() => handleSearchCatalogue(searchPage + 1)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: '0.72rem' }}
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
