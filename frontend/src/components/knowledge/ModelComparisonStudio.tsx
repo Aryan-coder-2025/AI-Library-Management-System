@@ -81,24 +81,24 @@ export const ModelComparisonStudio: React.FC = () => {
       {/* Studio Header & Configuration Form */}
       <div
         style={{
-          background: '#ffffff',
+          background: 'var(--card-bg)',
           padding: '1.25rem',
-          borderRadius: '8px',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          borderRadius: '12px',
+          border: '1px solid var(--card-border)',
+          boxShadow: 'var(--card-shadow)',
         }}
       >
-        <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.15rem', color: '#1e293b' }}>
+        <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.15rem', color: 'var(--text-primary)' }}>
           ⚖️ Modern AI Model Comparison Studio
         </h3>
-        <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: '#64748b' }}>
+        <p style={{ margin: '0 0 1rem 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
           Evaluate identical prompts across Google Gemini, OpenAI, and Local Deterministic planners.
           Compare latency, token usage, and factual grounding against library knowledge.
         </p>
 
         <form onSubmit={handleRunComparison} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
               Evaluation Prompt:
             </label>
             <textarea
@@ -108,9 +108,11 @@ export const ModelComparisonStudio: React.FC = () => {
               placeholder="Enter library prompt to compare..."
               style={{
                 width: '100%',
-                padding: '0.5rem 0.75rem',
-                borderRadius: '6px',
-                border: '1px solid #cbd5e1',
+                padding: '0.6rem 0.85rem',
+                borderRadius: '8px',
+                border: '1px solid var(--card-border)',
+                background: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
                 fontSize: '0.9rem',
                 fontFamily: 'inherit',
                 boxSizing: 'border-box',
@@ -119,7 +121,7 @@ export const ModelComparisonStudio: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={includeRag}
@@ -141,10 +143,10 @@ export const ModelComparisonStudio: React.FC = () => {
       {comparisonResult && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h4 style={{ margin: 0, fontSize: '1rem', color: '#334155' }}>
+            <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-primary)' }}>
               Evaluation Results ({comparisonResult.results.length} models)
             </h4>
-            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               Evaluated at: {new Date(comparisonResult.timestamp).toLocaleTimeString()}
             </span>
           </div>
@@ -153,14 +155,14 @@ export const ModelComparisonStudio: React.FC = () => {
           {hasSimulated && (
             <div
               style={{
-                background: '#fffbeb',
-                border: '1px solid #fde68a',
+                background: 'rgba(245, 158, 11, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
                 borderRadius: '8px',
                 padding: '0.75rem 1rem',
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: '0.65rem',
-                color: '#92400e',
+                color: '#f59e0b',
                 fontSize: '0.825rem',
                 lineHeight: '1.45',
               }}
@@ -186,21 +188,21 @@ export const ModelComparisonStudio: React.FC = () => {
                 <div
                   key={res.model_name}
                   style={{
-                    background: '#ffffff',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
+                    background: 'var(--card-bg)',
+                    borderRadius: '12px',
+                    border: '1px solid var(--card-border)',
                     padding: '1rem',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    boxShadow: 'var(--card-shadow)',
                   }}
                 >
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                       <div>
-                        <strong style={{ fontSize: '1rem', color: '#0f172a' }}>{res.model_name}</strong>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{res.provider}</div>
+                        <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>{res.model_name}</strong>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{res.provider}</div>
                         <span
                           style={{
                             display: 'inline-block',
@@ -219,12 +221,13 @@ export const ModelComparisonStudio: React.FC = () => {
                       </div>
                       <span
                         style={{
-                          background: '#f1f5f9',
+                          background: 'var(--bg-tertiary)',
                           padding: '2px 8px',
                           borderRadius: '12px',
                           fontSize: '0.75rem',
                           fontWeight: 600,
-                          color: '#334155',
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--card-border)',
                         }}
                       >
                         ⚡ {res.latency_ms} ms
@@ -237,10 +240,11 @@ export const ModelComparisonStudio: React.FC = () => {
                         display: 'flex',
                         gap: '0.75rem',
                         fontSize: '0.75rem',
-                        background: '#f8fafc',
+                        background: 'var(--bg-tertiary)',
                         padding: '0.4rem 0.6rem',
                         borderRadius: '6px',
                         marginBottom: '0.75rem',
+                        color: 'var(--text-secondary)',
                       }}
                     >
                       <span>
@@ -258,12 +262,12 @@ export const ModelComparisonStudio: React.FC = () => {
                     <div
                       style={{
                         fontSize: '0.85rem',
-                        color: '#334155',
+                        color: 'var(--text-primary)',
                         lineHeight: '1.45',
-                        background: '#fafafa',
+                        background: 'var(--bg-tertiary)',
                         padding: '0.75rem',
                         borderRadius: '6px',
-                        border: '1px solid #f1f5f9',
+                        border: '1px solid var(--card-border)',
                         minHeight: '100px',
                         whiteSpace: 'pre-wrap',
                       }}
@@ -276,7 +280,7 @@ export const ModelComparisonStudio: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ marginTop: '0.75rem', fontSize: '0.7rem', color: '#94a3b8' }}>
+                  <div style={{ marginTop: '0.75rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                     Audited factual grounding verified against library policy metadata.
                   </div>
                 </div>

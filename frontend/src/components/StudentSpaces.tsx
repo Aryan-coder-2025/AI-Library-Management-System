@@ -86,7 +86,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
   }, [activeSubTab, fetchReservations]);
 
   useEffect(() => {
-    getStudyZones().then(setZones).catch(() => {});
+    getStudyZones().then(setZones).catch(() => { });
   }, []);
 
   const handleShowQR = async (resId: number) => {

@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 import math
 from typing import Dict, List, Optional
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -166,6 +167,24 @@ def issue_loan_service(
         issued_at = datetime.utcnow()
         due_date = today + timedelta(days=duration_days)
 
+        # CIRC-06: Check course reserve duration override
+        from app.models import CourseReserve
+        course_res = db.execute(
+            select(CourseReserve).where(
+                CourseReserve.copy_id == copy.id,
+                CourseReserve.is_active == True,
+            )
+        ).scalar_one_or_none()
+        if course_res:
+            if course_res.reserve_type == "24_hour":
+                due_date = today + timedelta(days=1)
+            elif course_res.reserve_type == "2_hour":
+                due_date = today  # Same-day reserve loan
+
+        # Enforce hold reservation: reject if held by another patron; fulfill if held by this patron
+        from app.services.holds import fulfill_hold_on_loan_issue
+        fulfill_hold_on_loan_issue(db, student.id, copy)
+
         try:
             loan = crud_loans.create_loan(
                 db=db,
@@ -207,6 +226,12 @@ def return_loan_service(db: Session, loan_id: int) -> LoanResponse:
             )
 
         returned_loan = crud_loans.return_loan(db, loan, returned_at=datetime.utcnow())
+
+        # Allocate returned copy to the next waiting hold if present
+        from app.services.holds import advance_queue_for_copy
+        if returned_loan.copy and returned_loan.copy.book_id:
+            advance_queue_for_copy(db, returned_loan.copy.book_id, returned_loan.copy_id)
+
         return serialize_loan(returned_loan)
 
 

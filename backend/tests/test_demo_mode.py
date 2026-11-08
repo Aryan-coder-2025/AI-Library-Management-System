@@ -18,7 +18,7 @@ from app.main import app
 def test_demo_mode_disabled_by_default(monkeypatch):
     """Verifies that demo mode is False by default and targets standard development database."""
     monkeypatch.delenv("DEMO_MODE", raising=False)
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "")
     settings = Settings()
     assert settings.DEMO_MODE is False
     assert settings.DATABASE_URL == DEFAULT_DATABASE_URL
@@ -27,7 +27,7 @@ def test_demo_mode_disabled_by_default(monkeypatch):
 def test_demo_mode_enabled_selects_library_demo_db(monkeypatch):
     """Verifies that setting DEMO_MODE=True automatically targets backend/library_demo.db."""
     monkeypatch.setenv("DEMO_MODE", "true")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "")
     settings = Settings()
     assert settings.DEMO_MODE is True
     assert settings.DATABASE_URL == DEMO_DATABASE_URL
@@ -74,7 +74,7 @@ def test_validate_demo_database_fails_when_schema_unmigrated(tmp_path):
 def test_demo_mode_health_endpoint(monkeypatch):
     """Verifies that the health check endpoint accurately distinguishes demo mode."""
     monkeypatch.setenv("DEMO_MODE", "true")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "")
     from app.config import get_settings
     get_settings.cache_clear()
 

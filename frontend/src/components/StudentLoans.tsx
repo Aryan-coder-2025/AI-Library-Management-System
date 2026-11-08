@@ -1,13 +1,19 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { Loan, LoanPaginationResponse, UserProfile } from '../types/library';
+import type { BookHold, BookHoldListResponse, Loan, LoanPaginationResponse, UserProfile } from '../types/library';
+import { QRCollectionModal } from './QRCollectionModal';
 
 interface StudentLoansProps {
   currentUser?: UserProfile | null;
 }
 
 export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
+  const [activeTabSection, setActiveTabSection] = useState<'loans' | 'holds'>('loans');
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [holds, setHolds] = useState<BookHold[]>([]);
+  const [holdsLoading, setHoldsLoading] = useState(false);
+  const [cancellingHoldId, setCancellingHoldId] = useState<number | null>(null);
+  const [selectedHoldForQR, setSelectedHoldForQR] = useState<{ id: number; book_title: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -19,6 +25,33 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
 
   const isTeacher = currentUser?.role === 'teacher';
   const renewalDays = isTeacher ? 30 : 14;
+
+  const fetchMyHolds = useCallback(async () => {
+    setHoldsLoading(true);
+    try {
+      const data = await apiFetch<BookHoldListResponse>('/api/holds/me');
+      setHolds(data.items);
+    } catch (err: unknown) {
+      console.error('Failed to load holds', err);
+    } finally {
+      setHoldsLoading(false);
+    }
+  }, []);
+
+  const handleCancelHold = async (holdId: number) => {
+    setCancellingHoldId(holdId);
+    setError(null);
+    try {
+      await apiFetch(`/api/holds/${holdId}/cancel`, { method: 'POST' });
+      setSuccessMsg('Hold cancelled successfully.');
+      fetchMyHolds();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to cancel hold';
+      setError(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setCancellingHoldId(null);
+    }
+  };
 
   const fetchMyLoans = useCallback(async () => {
     setLoading(true);
@@ -47,6 +80,12 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
   useEffect(() => {
     fetchMyLoans();
   }, [fetchMyLoans]);
+
+  useEffect(() => {
+    if (activeTabSection === 'holds') {
+      fetchMyHolds();
+    }
+  }, [activeTabSection, fetchMyHolds]);
 
   const handleRenewLoan = async (loanId: number) => {
     setError(null);
@@ -130,7 +169,142 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
         </div>
       )}
 
-      {/* Status Filter Tabs */}
+      {/* Primary Section Switcher */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.75rem' }}>
+        <button
+          type="button"
+          className={`btn ${activeTabSection === 'loans' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+          onClick={() => setActiveTabSection('loans')}
+        >
+          📖 Active Loans & History ({totalCount})
+        </button>
+        <button
+          type="button"
+          className={`btn ${activeTabSection === 'holds' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+          onClick={() => setActiveTabSection('holds')}
+        >
+          🔖 My Book Waitlists & Holds
+        </button>
+      </div>
+
+      {activeTabSection === 'holds' ? (
+        <div>
+          {holdsLoading ? (
+            <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
+              Loading your book holds...
+            </div>
+          ) : holds.length === 0 ? (
+            <div
+              style={{
+                background: 'var(--card-bg)',
+                padding: '2.5rem',
+                borderRadius: '12px',
+                textAlign: 'center',
+                border: '1px solid var(--card-border)',
+                color: 'var(--text-muted)',
+              }}
+            >
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🔖</div>
+              <h4>No Active Book Holds</h4>
+              <p style={{ fontSize: '0.875rem' }}>
+                When all physical copies of a book are on loan, you can join the waitlist directly from the catalogue book details modal.
+              </p>
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Hold ID</th>
+                    <th>Book Monograph</th>
+                    <th>Status</th>
+                    <th>Queue Position</th>
+                    <th>Allocated Copy</th>
+                    <th>Pickup Deadline</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {holds.map((hold) => (
+                    <tr key={hold.id}>
+                      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>#{hold.id}</td>
+                      <td>
+                        <strong>{hold.book_title}</strong>
+                        {hold.book_author && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{hold.book_author}</div>}
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${
+                            hold.status === 'ready_for_pickup'
+                              ? 'badge-success'
+                              : hold.status === 'waiting'
+                              ? 'badge-warning'
+                              : hold.status === 'fulfilled'
+                              ? 'badge-neutral'
+                              : 'badge-danger'
+                          }`}
+                        >
+                          {hold.status === 'ready_for_pickup' ? '🎉 Ready for Pickup' : hold.status}
+                        </span>
+                      </td>
+                      <td>
+                        {hold.status === 'waiting' ? (
+                          <span style={{ fontWeight: 600, color: 'var(--brand-secondary)' }}>
+                            #{hold.queue_position || 1} in queue
+                          </span>
+                        ) : hold.status === 'ready_for_pickup' ? (
+                          <span style={{ color: '#10b981', fontWeight: 600 }}>First in line (Copy allocated)</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ fontFamily: 'var(--font-mono)' }}>
+                        {hold.copy_code || 'Awaiting return'}
+                      </td>
+                      <td>
+                        {hold.pickup_expires_at ? (
+                          <span style={{ color: '#f59e0b', fontSize: '0.85rem' }}>
+                            {new Date(hold.pickup_expires_at).toLocaleDateString()}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          {hold.status === 'ready_for_pickup' && (
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => setSelectedHoldForQR({ id: hold.id, book_title: hold.book_title })}
+                              style={{ whiteSpace: 'nowrap' }}
+                            >
+                              📱 Collection QR
+                            </button>
+                          )}
+                          {(hold.status === 'waiting' || hold.status === 'ready_for_pickup') && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              disabled={cancellingHoldId === hold.id}
+                              onClick={() => handleCancelHold(hold.id)}
+                              style={{ color: '#ef4444' }}
+                            >
+                              {cancellingHoldId === hold.id ? 'Cancelling...' : 'Cancel Hold'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Status Filter Tabs */}
       <div className="tab-group">
         <button
           type="button"
@@ -313,6 +487,19 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
           )}
         </>
       )}
-    </div>
-  );
+    </>
+  )}
+  {selectedHoldForQR && (
+    <QRCollectionModal
+      holdId={selectedHoldForQR.id}
+      bookTitle={selectedHoldForQR.book_title}
+      onClose={() => {
+        setSelectedHoldForQR(null);
+        fetchMyHolds();
+        fetchMyLoans();
+      }}
+    />
+  )}
+</div>
+);
 };

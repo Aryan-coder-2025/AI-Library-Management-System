@@ -114,11 +114,26 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
 
+    # Transactional Email & SMTP Configuration
+    EMAIL_ENABLED: bool = False
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_USE_TLS: bool = True
+    SMTP_FROM_EMAIL: str = "noreply@athenaeum.university.edu"
+    SMTP_FROM_NAME: str = "Athenaeum Library Intelligence"
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    RESET_TOKEN_EXPIRE_MINUTES: int = 30
+    SMTP_TIMEOUT_SECONDS: float = 10.0
+
     # AI Copilot & LLM Configuration
     LLM_PROVIDER: str = "auto"  # 'auto', 'gemini', 'openai_compatible', 'fallback'
     LLM_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = None
     LLM_API_URL: Optional[str] = None
-    LLM_MODEL_NAME: str = "gemini-1.5-flash"
+    LLM_MODEL_NAME: str = "gemini-3.1-flash-lite-preview"
     COPILOT_MAX_QUERY_LENGTH: int = 500
     COPILOT_TIMEOUT_SECONDS: float = 12.0
 
@@ -140,6 +155,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def resolve_mode_and_database(self) -> "Settings":
+        resolved_key = self.LLM_API_KEY or self.GEMINI_API_KEY or self.GOOGLE_API_KEY
+        if resolved_key:
+            self.LLM_API_KEY = resolved_key.strip()
+            self.GEMINI_API_KEY = resolved_key.strip()
+            self.GOOGLE_API_KEY = resolved_key.strip()
+
         if self.SPACES_QR_SECRET_KEY and self.JWT_SECRET_KEY:
             if self.SPACES_QR_SECRET_KEY.strip() == self.JWT_SECRET_KEY.strip():
                 raise ValueError("SPACES_QR_SECRET_KEY must be distinct from JWT_SECRET_KEY.")

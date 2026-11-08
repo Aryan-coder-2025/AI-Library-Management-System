@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { BookDetail, BookRecommendationResponse, BookRecommendationResult } from '../types/library';
+import type { BookDetail, BookHold, BookRecommendationResponse, BookRecommendationResult } from '../types/library';
 import { BookCover } from './BookCover';
 
 interface BookDetailModalProps {
@@ -23,6 +23,32 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [recsDisclaimer, setRecsDisclaimer] = useState<string>('');
   const [recsLoading, setRecsLoading] = useState<boolean>(false);
   const [recsError, setRecsError] = useState<string | null>(null);
+
+  // Hold / Waitlist state
+  const [placingHold, setPlacingHold] = useState(false);
+  const [holdMessage, setHoldMessage] = useState<string | null>(null);
+  const [holdError, setHoldError] = useState<string | null>(null);
+
+  const handlePlaceHold = async () => {
+    if (!detail) return;
+    setPlacingHold(true);
+    setHoldMessage(null);
+    setHoldError(null);
+    try {
+      const res = await apiFetch<BookHold>('/api/holds', {
+        method: 'POST',
+        body: JSON.stringify({ book_id: detail.id }),
+      });
+      setHoldMessage(
+        `Waitlist hold placed! You are #${res.queue_position || 1} in queue. You will be notified when a copy is returned.`
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to place hold';
+      setHoldError(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setPlacingHold(false);
+    }
+  };
 
   useEffect(() => {
     if (!bookId) return;
@@ -130,6 +156,48 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                   <p style={{ fontSize: '0.885rem', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
                     {detail.description || 'No extended summary provided in the catalogue entry.'}
                   </p>
+
+                  {detail.available_copies === 0 && !detail.is_archived && (
+                    <div
+                      style={{
+                        marginTop: '0.75rem',
+                        padding: '0.85rem',
+                        borderRadius: '8px',
+                        background: 'var(--bg-glass)',
+                        border: '1px solid var(--card-border)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div>
+                          <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>All copies currently on loan</strong>
+                          <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            Join the waitlist to reserve the next copy returned by another patron.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={handlePlaceHold}
+                          disabled={placingHold}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                        >
+                          <span>🔖</span>
+                          <span>{placingHold ? 'Joining Waitlist...' : 'Place Hold'}</span>
+                        </button>
+                      </div>
+
+                      {holdMessage && (
+                        <div className="alert alert-success" style={{ marginTop: '0.65rem', padding: '0.5rem', fontSize: '0.82rem' }}>
+                          <span>{holdMessage}</span>
+                        </div>
+                      )}
+                      {holdError && (
+                        <div className="alert alert-error" style={{ marginTop: '0.65rem', padding: '0.5rem', fontSize: '0.82rem' }}>
+                          <span>{holdError}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

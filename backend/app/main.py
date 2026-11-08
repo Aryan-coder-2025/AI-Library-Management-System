@@ -18,6 +18,11 @@ from app.routers.copilot import router as copilot_router
 from app.routers.spaces import router as spaces_router
 from app.routers.spatial import router as spatial_router
 from app.routers.knowledge import router as knowledge_router
+from app.routers.research import router as research_router
+from app.routers.holds import router as holds_router
+from app.routers.courses import router as courses_router
+from app.routers.circulation_ops import router as circulation_ops_router
+from app.routers.intelligence import router as intelligence_router
 
 settings = get_settings()
 
@@ -63,6 +68,11 @@ app.include_router(copilot_router)
 app.include_router(spaces_router)
 app.include_router(spatial_router)
 app.include_router(knowledge_router)
+app.include_router(research_router)
+app.include_router(holds_router)
+app.include_router(courses_router)
+app.include_router(circulation_ops_router)
+app.include_router(intelligence_router)
 
 
 @app.get("/api/health", response_model=HealthResponse, tags=["System"])

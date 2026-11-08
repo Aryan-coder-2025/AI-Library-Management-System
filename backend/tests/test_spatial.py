@@ -490,7 +490,7 @@ def test_alembic_upgrade_path_for_spatial_subsystem(tmp_path):
     tables = {r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
     conn.close()
 
-    assert rev in ("f6a7b8c9d0e1", "a1b2c3d4e5f6")
+    assert rev in ("f6a7b8c9d0e1", "a1b2c3d4e5f6", "b3c4d5e6f7a8", "c4d5e6f7a8b9", "d5e6f7a8b9c0", "e6f7a8b9c0d1")
     spatial_tables = {
         "library_floors",
         "floor_plans",

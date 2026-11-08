@@ -55,14 +55,13 @@ async def execute_local_deterministic_model(prompt: str, context: Optional[str])
     )
 
 
-async def execute_gemini_model(prompt: str, context: Optional[str], api_key: Optional[str]) -> ModelExecutionResult:
-    """Executes prompt via Google Gemini 1.5 Pro adapter with fallback handling."""
-    start = time.perf_counter()
+async def execute_gemini_model(prompt: str, context: Optional[str], api_key: Optional[str], model_name: Optional[str] = None) -> ModelExecutionResult:
+    """Executes prompt via Google Gemini adapter with fallback handling."""
     if not api_key:
-        # Graceful deterministic simulation when key is unconfigured
-        latency = max(0.5, (time.perf_counter() - start) * 1000.0) + 45.0
+        fallback_model = model_name or "gemini-1.5-pro"
+        latency = max(0.5, (time.perf_counter() - time.perf_counter()) * 1000.0) + 45.0
         return ModelExecutionResult(
-            model_name="gemini-1.5-pro",
+            model_name=fallback_model,
             provider="Google Gemini (Simulated / Unconfigured Key)",
             response_text=f"[Gemini 1.5 Pro Adapter] Processed library inquiry: '{prompt}'. Grounded in verified collection metadata.",
             latency_ms=round(latency, 2),
@@ -72,8 +71,11 @@ async def execute_gemini_model(prompt: str, context: Optional[str], api_key: Opt
             error=None,
         )
 
+    resolved_model = model_name if (model_name and model_name not in ("gemini", "gemini-1.5-pro")) else getattr(settings, "LLM_MODEL_NAME", "gemini-3.1-flash-lite-preview") or "gemini-3.1-flash-lite-preview"
+    start = time.perf_counter()
+
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{resolved_model}:generateContent?key={api_key}"
         payload = {
             "contents": [{"parts": [{"text": f"Context: {context}\n\nInquiry: {prompt}"}]}],
             "generationConfig": {"temperature": 0.2, "maxOutputTokens": 512},
@@ -85,7 +87,7 @@ async def execute_gemini_model(prompt: str, context: Optional[str], api_key: Opt
                 data = res.json()
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
                 return ModelExecutionResult(
-                    model_name="gemini-1.5-pro",
+                    model_name=resolved_model,
                     provider="Google Gemini Live API",
                     response_text=text,
                     latency_ms=round(latency, 2),
@@ -96,7 +98,7 @@ async def execute_gemini_model(prompt: str, context: Optional[str], api_key: Opt
                 )
             else:
                 return ModelExecutionResult(
-                    model_name="gemini-1.5-pro",
+                    model_name=resolved_model,
                     provider="Google Gemini API",
                     response_text="",
                     latency_ms=round(latency, 2),
@@ -108,7 +110,7 @@ async def execute_gemini_model(prompt: str, context: Optional[str], api_key: Opt
     except Exception as e:
         latency = max(0.5, (time.perf_counter() - start) * 1000.0)
         return ModelExecutionResult(
-            model_name="gemini-1.5-pro",
+            model_name=resolved_model,
             provider="Google Gemini API",
             response_text="",
             latency_ms=round(latency, 2),
@@ -193,14 +195,21 @@ async def compare_models_service(req: ModelComparisonRequest, context: Optional[
     """Executes side-by-side prompt evaluation across selected models."""
     results: List[ModelExecutionResult] = []
 
-    gemini_key = os.environ.get("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", None)
+    gemini_key = (
+        os.environ.get("GEMINI_API_KEY")
+        or getattr(settings, "GEMINI_API_KEY", None)
+        or getattr(settings, "LLM_API_KEY", None)
+        or os.environ.get("LLM_API_KEY")
+        or getattr(settings, "GOOGLE_API_KEY", None)
+        or os.environ.get("GOOGLE_API_KEY")
+    )
     openai_key = os.environ.get("OPENAI_API_KEY") or getattr(settings, "OPENAI_API_KEY", None)
 
     for m in req.models:
         if m in ("local-deterministic", "local", "ollama"):
             results.append(await execute_local_deterministic_model(req.prompt, context))
-        elif m in ("gemini-1.5-pro", "gemini"):
-            results.append(await execute_gemini_model(req.prompt, context, gemini_key))
+        elif m in ("gemini-1.5-pro", "gemini", "gemini-3.1-flash-lite-preview", "gemini-2.5-flash"):
+            results.append(await execute_gemini_model(req.prompt, context, gemini_key, model_name=m))
         elif m in ("gpt-4o", "openai", "gpt-4"):
             results.append(await execute_openai_model(req.prompt, context, openai_key))
 

@@ -17,7 +17,7 @@ from sqlalchemy import (
     event,
     JSON,
 )
-from sqlalchemy.orm import relationship, attributes
+from sqlalchemy.orm import relationship, attributes, deferred
 
 from app.database import Base
 
@@ -27,6 +27,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    username = deferred(Column(String(50), unique=True, index=True, nullable=True))
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
     role = Column(String(50), nullable=False)  # 'student', 'teacher', or 'librarian'
@@ -38,6 +39,8 @@ class User(Base):
     reservations = relationship("Reservation", back_populates="user")
     search_events = relationship("SearchEvent", back_populates="user")
     inventory_events = relationship("InventoryEvent", back_populates="auditor")
+    reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan", lazy="select")
+    holds = relationship("BookHold", back_populates="user", cascade="all, delete-orphan", lazy="select")
 
 
 class Book(Base):
@@ -59,6 +62,7 @@ class Book(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     copies = relationship("BookCopy", back_populates="book", cascade="all, delete-orphan", passive_deletes=True)
+    holds = relationship("BookHold", back_populates="book", cascade="all, delete-orphan", lazy="select")
 
 
 @event.listens_for(Book, "before_update")
@@ -726,4 +730,129 @@ class BookConcept(Base):
     __table_args__ = (
         UniqueConstraint("book_id", "concept_id", name="uq_book_concept"),
     )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_used = Column(Boolean, default=False, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="reset_tokens")
+
+
+class BookHold(Base):
+    __tablename__ = "book_holds"
+
+    id = Column(Integer, primary_key=True, index=True)
+    book_id = Column(Integer, ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    copy_id = Column(Integer, ForeignKey("book_copies.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(20), default="waiting", nullable=False, index=True)  # 'waiting', 'ready_for_pickup', 'fulfilled', 'cancelled', 'expired'
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    allocated_at = Column(DateTime, nullable=True)
+    pickup_expires_at = Column(DateTime, nullable=True, index=True)
+    fulfilled_at = Column(DateTime, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    cancellation_reason = Column(String(255), nullable=True)
+
+    book = relationship("Book", back_populates="holds")
+    user = relationship("User", back_populates="holds")
+    copy = relationship("BookCopy")
+
+
+# ── Stage 12.14 Models: Academic Reserves, QR Collection, and Acquisitions ──
+
+class Course(Base):
+    __tablename__ = "courses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)  # e.g., "CS-301"
+    title = Column(String(255), nullable=False)
+    department = Column(String(100), nullable=False, index=True)
+    term = Column(String(50), nullable=False)  # e.g., "Fall 2026"
+    instructor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    instructor = relationship("User", foreign_keys=[instructor_id])
+    reading_list_items = relationship("CourseReadingListItem", back_populates="course", cascade="all, delete-orphan", lazy="select")
+    reserves = relationship("CourseReserve", back_populates="course", cascade="all, delete-orphan", lazy="select")
+
+
+class CourseReadingListItem(Base):
+    __tablename__ = "course_reading_list_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True)
+    book_id = Column(Integer, ForeignKey("books.id", ondelete="CASCADE"), nullable=False, index=True)
+    added_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    requirement_type = Column(String(50), default="required", nullable=False)  # 'required', 'recommended', 'supplementary'
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    course = relationship("Course", back_populates="reading_list_items")
+    book = relationship("Book")
+    added_by = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("course_id", "book_id", name="uq_course_book_reading_list"),
+    )
+
+
+class CourseReserve(Base):
+    __tablename__ = "course_reserves"
+
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True)
+    copy_id = Column(Integer, ForeignKey("book_copies.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    reserve_type = Column(String(20), default="2_hour", nullable=False)  # '2_hour', '24_hour'
+    is_active = Column(Boolean, default=True, nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    course = relationship("Course", back_populates="reserves")
+    copy = relationship("BookCopy")
+
+
+class BookCollectionToken(Base):
+    __tablename__ = "book_collection_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    hold_id = Column(Integer, ForeignKey("book_holds.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_used = Column(Boolean, default=False, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+    hold = relationship("BookHold")
+    user = relationship("User")
+
+
+class AcquisitionRequest(Base):
+    __tablename__ = "acquisition_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    suggested_title = Column(String(255), nullable=False, index=True)
+    suggested_author = Column(String(255), nullable=True)
+    isbn = Column(String(20), nullable=True, index=True)
+    search_query_origin = Column(String(255), nullable=True)
+    frequency_score = Column(Integer, default=1, nullable=False)
+    status = Column(String(30), default="suggested", nullable=False, index=True)  # 'suggested', 'approved', 'rejected', 'ordered', 'received'
+    requested_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewer_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    requested_by = relationship("User", foreign_keys=[requested_by_id])
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
 

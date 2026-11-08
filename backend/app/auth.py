@@ -1,6 +1,8 @@
+import hashlib
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 import bcrypt
 from fastapi import Response
 from jose import JWTError, jwt
@@ -12,11 +14,33 @@ settings = get_settings()
 COOKIE_NAME = "access_token"
 CSRF_COOKIE_NAME = "csrf_token"
 
+USERNAME_REGEX = re.compile(r"^[a-zA-Z0-9._-]+$")
+
+
+def validate_username(username: str) -> str:
+    """
+    Validates and normalizes username according to Athenaeum policy:
+    - 3 to 20 characters
+    - Lowercase letters, numbers, periods (.), underscores (_), and hyphens (-)
+    - Rejects whitespace and unsupported characters
+    - Returns normalized lowercase string
+    """
+    if not username:
+        raise ValueError("Username cannot be empty.")
+    cleaned = username.strip().lower()
+    if len(cleaned) < 3 or len(cleaned) > 20:
+        raise ValueError("Username must be between 3 and 20 characters long.")
+    if not USERNAME_REGEX.match(cleaned):
+        raise ValueError(
+            "Username may only contain letters, numbers, periods (.), underscores (_), and hyphens (-)."
+        )
+    return cleaned
+
 
 def validate_password_policy(password: str) -> str:
-    """Centralized password policy: minimum 8 characters."""
-    if not password or len(password) < 8:
-        raise ValueError("Password must be at least 8 characters long.")
+    """Centralized password policy: minimum 12 characters."""
+    if not password or len(password) < 12:
+        raise ValueError("Password must be at least 12 characters long.")
     return password
 
 
@@ -35,6 +59,22 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return bcrypt.checkpw(pwd_bytes, hash_bytes)
     except Exception:
         return False
+
+
+def hash_reset_token(raw_token: str) -> str:
+    """Hashes a raw password reset token using SHA-256 for secure database storage."""
+    return hashlib.sha256(raw_token.strip().encode("utf-8")).hexdigest()
+
+
+def generate_password_reset_token() -> Tuple[str, str]:
+    """
+    Generates a cryptographically secure random token (256-bit entropy via secrets)
+    and its SHA-256 hash. Returns (raw_token, token_hash).
+    The raw token is dispatched to the user; only token_hash is stored in the database.
+    """
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hash_reset_token(raw_token)
+    return raw_token, token_hash
 
 
 def create_access_token(

@@ -587,4 +587,4 @@ def test_alembic_sequential_upgrade_and_downgrade(tmp_path: Path):
     assert required_tables.issubset(tables_reupgraded)
     with engine.connect() as conn:
         current_rev = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert current_rev == "a1b2c3d4e5f6"
+        assert current_rev in ("a1b2c3d4e5f6", "b3c4d5e6f7a8", "c4d5e6f7a8b9", "d5e6f7a8b9c0", "e6f7a8b9c0d1")

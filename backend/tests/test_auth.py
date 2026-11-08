@@ -462,9 +462,9 @@ def test_cli_bootstrap_initial_only_flag(db):
 
 def test_cli_bootstrap_rejects_short_password(db):
     """
-    Verifies that the bootstrap CLI validates password length (minimum 8 chars).
+    Verifies that the bootstrap CLI validates password length (minimum 12 chars).
     """
-    with pytest.raises(ValueError, match="at least 8 characters"):
+    with pytest.raises(ValueError, match="at least 12 characters"):
         create_librarian_account(
             email="short_pw@library.org",
             full_name="Short PW",
@@ -670,5 +670,258 @@ def test_cli_initial_only_safeguard_overrides_confirm_additional(db):
             confirm_additional=True,
             db_session=db,
         )
+
+
+# ── Stage 12.9: Username & Public Student Registration Tests ──────────────────
+
+from app.auth import validate_username, validate_password_policy
+
+
+def test_username_policy_boundaries_and_normalization():
+    """Verifies username validation rules: 3-20 characters, alphanumeric, periods, underscores, hyphens."""
+    # Valid usernames
+    assert validate_username("abc") == "abc"  # 3 chars lower boundary
+    assert validate_username("a" * 20) == "a" * 20  # 20 chars upper boundary
+    assert validate_username("User.Name_99-ok") == "user.name_99-ok"  # Mixed case normalizes to lowercase
+
+    # Invalid usernames
+    with pytest.raises(ValueError, match="between 3 and 20 characters"):
+        validate_username("ab")  # 2 chars (too short)
+    with pytest.raises(ValueError, match="between 3 and 20 characters"):
+        validate_username("a" * 21)  # 21 chars (too long)
+    with pytest.raises(ValueError, match="Username may only contain"):
+        validate_username("user name")  # Whitespace
+    with pytest.raises(ValueError, match="Username may only contain"):
+        validate_username("user@name")  # Disallowed character
+    with pytest.raises(ValueError, match="Username may only contain"):
+        validate_username("user!name")  # Disallowed character
+    with pytest.raises(ValueError, match="cannot be empty"):
+        validate_username("")
+
+
+def test_password_policy_12_character_baseline():
+    """Verifies the centralized password policy enforces minimum 12 characters."""
+    assert validate_password_policy("123456789012") == "123456789012"
+    assert validate_password_policy("AValidLongPassphrase123!") == "AValidLongPassphrase123!"
+
+    with pytest.raises(ValueError, match="at least 12 characters long"):
+        validate_password_policy("shortpass12")  # 11 characters
+    with pytest.raises(ValueError, match="at least 12 characters long"):
+        validate_password_policy("EightCh1")  # 8 characters
+
+
+def test_public_student_registration_success(client, db):
+    """Verifies that a student can register with full_name, email, username, and password >= 12 chars."""
+    res = client.post(
+        "/api/auth/register",
+        json={
+            "full_name": "New Student Scholar",
+            "email": "new.student@university.edu",
+            "username": "scholar.new",
+            "password": "SecureStudentPass123!",
+            "confirm_password": "SecureStudentPass123!",
+        },
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["email"] == "new.student@university.edu"
+    assert data["username"] == "scholar.new"
+    assert data["full_name"] == "New Student Scholar"
+    assert data["role"] == "student"  # Strictly assigned student role
+    assert "access_token" in res.cookies
+    assert "csrf_token" in res.cookies
+
+
+def test_registration_rejects_privilege_escalation(client):
+    """Verifies that public registration rejects attempts to pass a custom role."""
+    res = client.post(
+        "/api/auth/register",
+        json={
+            "full_name": "Hacker Attempt",
+            "email": "hacker@university.edu",
+            "username": "hacker_user",
+            "password": "SecureStudentPass123!",
+            "confirm_password": "SecureStudentPass123!",
+            "role": "librarian",  # Forbidden extra field
+        },
+    )
+    assert res.status_code == 422  # pydantic extra='forbid' rejects payload
+
+
+def test_registration_rejects_duplicate_email(client):
+    """Verifies that registration rejects duplicate email addresses."""
+    # First registration
+    client.post(
+        "/api/auth/register",
+        json={
+            "full_name": "Original User",
+            "email": "duplicate.test@university.edu",
+            "username": "original_uname",
+            "password": "SecureStudentPass123!",
+            "confirm_password": "SecureStudentPass123!",
+        },
+    )
+
+    # Second registration with same email
+    res = client.post(
+        "/api/auth/register",
+        json={
+            "full_name": "Duplicate User",
+            "email": "duplicate.test@university.edu",
+            "username": "different_uname",
+            "password": "SecureStudentPass123!",
+            "confirm_password": "SecureStudentPass123!",
+        },
+    )
+    assert res.status_code == 400
+    assert "already exists" in res.json()["detail"]
+
+
+def test_registration_rejects_duplicate_username_case_insensitively(client):
+    """Verifies that registration rejects duplicate usernames regardless of case."""
+    client.post(
+        "/api/auth/register",
+        json={
+            "full_name": "User Alpha",
+            "email": "alpha@university.edu",
+            "username": "case.sensitive.user",
+            "password": "SecureStudentPass123!",
+            "confirm_password": "SecureStudentPass123!",
+        },
+    )
+
+    # Attempt with uppercase variant
+    res = client.post(
+        "/api/auth/register",
+        json={
+            "full_name": "User Beta",
+            "email": "beta@university.edu",
+            "username": "CASE.SENSITIVE.USER",
+            "password": "SecureStudentPass123!",
+            "confirm_password": "SecureStudentPass123!",
+        },
+    )
+    assert res.status_code == 400
+    assert "already taken" in res.json()["detail"]
+
+
+def test_registration_validates_password_confirmation_and_length(client):
+    """Verifies that registration enforces password confirmation match and min 12 chars."""
+    # Confirmation mismatch
+    res_mismatch = client.post(
+        "/api/auth/register",
+        json={
+            "full_name": "Test Mismatch",
+            "email": "mismatch@university.edu",
+            "username": "mismatch_user",
+            "password": "SecurePass12345!",
+            "confirm_password": "DifferentPassword123!",
+        },
+    )
+    assert res_mismatch.status_code == 422
+
+    # Password < 12 characters
+    res_short = client.post(
+        "/api/auth/register",
+        json={
+            "full_name": "Test Short",
+            "email": "short@university.edu",
+            "username": "short_user",
+            "password": "Short123!",
+            "confirm_password": "Short123!",
+        },
+    )
+    assert res_short.status_code == 422
+
+
+def test_login_supports_username_and_case_insensitivity(client):
+    """Verifies that users can log in using their username instead of email."""
+    # Register student
+    client.post(
+        "/api/auth/register",
+        json={
+            "full_name": "Username Login Scholar",
+            "email": "uname.login@university.edu",
+            "username": "scholastic_patron",
+            "password": "SecureLoginPassphrase123!",
+            "confirm_password": "SecureLoginPassphrase123!",
+        },
+    )
+
+    # Login with exact username
+    res_exact = client.post(
+        "/api/auth/login",
+        json={"email": "scholastic_patron", "password": "SecureLoginPassphrase123!"},
+    )
+    assert res_exact.status_code == 200
+    assert res_exact.json()["username"] == "scholastic_patron"
+
+    # Login with uppercase username
+    res_upper = client.post(
+        "/api/auth/login",
+        json={"username": "SCHOLASTIC_PATRON", "password": "SecureLoginPassphrase123!"},
+    )
+    assert res_upper.status_code == 200
+    assert res_upper.json()["username"] == "scholastic_patron"
+
+    # Login with identifier field
+    res_id = client.post(
+        "/api/auth/login",
+        json={"identifier": "scholastic_patron", "password": "SecureLoginPassphrase123!"},
+    )
+    assert res_id.status_code == 200
+
+
+def test_existing_email_only_accounts_compatibility(client, db):
+    """Verifies that existing users without a username (username=None) can log in via email."""
+    from app.models import User
+    from app.auth import hash_password
+
+    legacy_user = User(
+        email="legacy.patron@library.org",
+        username=None,  # No username configured
+        full_name="Legacy Patron",
+        hashed_password=hash_password("LegacyPassphrase123!"),
+        role="student",
+        is_active=True,
+    )
+    db.add(legacy_user)
+    db.commit()
+
+    res = client.post(
+        "/api/auth/login",
+        json={"email": "legacy.patron@library.org", "password": "LegacyPassphrase123!"},
+    )
+    assert res.status_code == 200
+    assert res.json()["email"] == "legacy.patron@library.org"
+    assert res.json()["username"] is None
+
+
+def test_patron_profile_username_claim_and_update(client, test_users):
+    """Verifies that an authenticated patron can claim or update their username in profile settings."""
+    # Login as student
+    login_res = client.post(
+        "/api/auth/login",
+        json={"email": "active_student@university.edu", "password": "StudentPass123!"},
+    )
+    assert login_res.status_code == 200
+    csrf = login_res.cookies["csrf_token"]
+
+    # Update profile to set username
+    res = client.patch(
+        "/api/auth/me",
+        json={"username": "my_new_handle"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert res.status_code == 200
+    assert res.json()["username"] == "my_new_handle"
+
+    # Now login with the newly set username
+    res_uname_login = client.post(
+        "/api/auth/login",
+        json={"username": "my_new_handle", "password": "StudentPass123!"},
+    )
+    assert res_uname_login.status_code == 200
+
 
 

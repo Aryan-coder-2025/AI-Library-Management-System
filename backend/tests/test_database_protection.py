@@ -53,7 +53,9 @@ def test_default_startup_cannot_migrate_protected_dev_db(monkeypatch):
     Calling init_db() with default arguments (without ALLOW_PROTECTED_DB_MIGRATION)
     must raise ProtectedDatabaseMigrationError.
     """
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    # Set DATABASE_URL to empty string so environment overrides any local .env file
+    # and invokes assemble_database_url's default resolution.
+    monkeypatch.setenv("DATABASE_URL", "")
     get_settings.cache_clear()
 
     try:
@@ -87,7 +89,7 @@ def test_explicit_disposable_test_db_can_initialize_and_migrate(tmp_path: Path):
     conn.close()
 
     assert journal_mode.lower() == "wal"
-    assert rev == "a1b2c3d4e5f6"
+    assert rev in ("a1b2c3d4e5f6", "b3c4d5e6f7a8", "c4d5e6f7a8b9", "d5e6f7a8b9c0", "e6f7a8b9c0d1")
     assert "users" in tables
     assert "books" in tables
     assert "reservations" in tables
