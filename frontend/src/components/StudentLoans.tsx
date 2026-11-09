@@ -183,7 +183,7 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
           className={`btn ${activeTabSection === 'holds' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
           onClick={() => setActiveTabSection('holds')}
         >
-          🔖 My Book Waitlists & Holds
+          🔖 My Online Reservations & Waitlists
         </button>
       </div>
 
@@ -191,7 +191,7 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
         <div>
           {holdsLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-muted)' }}>
-              Loading your book holds...
+              Loading your book reservations...
             </div>
           ) : holds.length === 0 ? (
             <div
@@ -204,10 +204,10 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
                 color: 'var(--text-muted)',
               }}
             >
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🔖</div>
-              <h4>No Active Book Holds</h4>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📚</div>
+              <h4>No Active Reservations or Holds</h4>
               <p style={{ fontSize: '0.875rem' }}>
-                When all physical copies of a book are on loan, you can join the waitlist directly from the catalogue book details modal.
+                You have not booked any monograph reservations. Browse the catalogue and click <strong>Book Loan Online</strong> on any available monograph to reserve a copy for desk collection with a QR pass.
               </p>
             </div>
           ) : (

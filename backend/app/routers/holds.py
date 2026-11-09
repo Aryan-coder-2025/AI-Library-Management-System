@@ -22,15 +22,15 @@ from app.services.holds import (
 router = APIRouter(prefix="/api/holds", tags=["Book Holds & Waitlists"])
 
 
-@router.post("", response_model=BookHoldResponse, status_code=status.HTTP_201_CREATED, summary="Place a hold on a checked-out book")
+@router.post("", response_model=BookHoldResponse, status_code=status.HTTP_201_CREATED, summary="Book a loan reservation or join waitlist")
 def place_hold(
     hold_in: BookHoldCreateRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_write_db),
 ):
     """
-    Places an authenticated student or teacher patron on the waitlist for a monograph.
-    Permitted only when no available copies are on library shelves.
+    Books an online loan reservation for an available shelf monograph,
+    or places the patron in the waitlist queue if all copies are currently on loan.
     """
     return place_hold_service(db, current_user, hold_in.book_id)
 

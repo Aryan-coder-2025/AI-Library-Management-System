@@ -322,7 +322,7 @@ def test_research_providers_endpoint(client: TestClient):
 
 # ── 2. Book Waitlists & Holds Lifecycle (CIRC-02) ───────────────────────────
 
-def test_place_hold_rejected_when_copies_available_on_shelf(
+def test_place_hold_reserves_available_copy_immediately(
     client: TestClient,
     patron_student_1: User,
     sample_monograph: Book,
@@ -343,8 +343,12 @@ def test_place_hold_rejected_when_copies_available_on_shelf(
         json={"book_id": sample_monograph.id},
         headers=headers,
     )
-    assert resp.status_code == 400
-    assert "available on library shelves" in resp.json()["detail"].lower()
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["status"] == "ready_for_pickup"
+    assert data["copy_id"] == copy.id
+    assert data["copy_code"] == "QUANTUM-001"
+    assert data["pickup_expires_at"] is not None
 
 
 def test_place_hold_success_when_all_copies_on_loan(

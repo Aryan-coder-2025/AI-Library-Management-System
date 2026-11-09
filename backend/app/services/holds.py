@@ -66,13 +66,14 @@ def compute_queue_position(db: Session, hold: BookHold) -> Optional[int]:
 
 def place_hold_service(db: Session, user: User, book_id: int) -> BookHoldResponse:
     """
-    Places a patron on the waitlist for a monograph when all copies are unavailable.
+    Places an online loan booking or waitlist reservation for a monograph.
     Safeguards:
     - User must be active with student or teacher role.
     - Book exists and is not archived.
-    - Book must have zero eligible available copies on shelves.
     - User cannot place duplicate active holds for the same book.
     - User cannot hold a book they currently have on loan.
+    - If copies are available on the shelf, immediately reserves an available physical copy in 'ready_for_pickup' status.
+    - If all copies are on loan or unavailable, places the patron in the FIFO waitlist queue ('waiting').
     """
     if user.role not in ("student", "teacher"):
         raise HTTPException(
@@ -126,7 +127,7 @@ def place_hold_service(db: Session, user: User, book_id: int) -> BookHoldRespons
                 detail="You currently have an active loan for a copy of this book.",
             )
 
-        # 3. Check shelf availability: holds are only permitted when NO unallocated available copies exist
+        # 3. Check shelf availability: find first available unallocated copy
         loaned_copy_ids = select(Loan.copy_id).where(
             Loan.returned_at.is_(None)
         )
@@ -135,36 +136,66 @@ def place_hold_service(db: Session, user: User, book_id: int) -> BookHoldRespons
             BookHold.status == "ready_for_pickup",
             BookHold.copy_id.isnot(None),
         )
-        available_shelf_count = db.execute(
-            select(func.count(BookCopy.id)).where(
+
+        available_copy = db.execute(
+            select(BookCopy).where(
                 BookCopy.book_id == book_id,
                 BookCopy.operational_status == "available",
                 BookCopy.id.not_in(loaned_copy_ids),
                 BookCopy.id.not_in(allocated_copy_ids),
-            )
-        ).scalar() or 0
+            ).order_by(BookCopy.id.asc())
+        ).scalars().first()
 
-        if available_shelf_count > 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Copies of this monograph are currently available on library shelves. Please borrow directly.",
-            )
-
-        # 4. Create new hold in 'waiting' status
         now = datetime.utcnow()
-        new_hold = BookHold(
-            book_id=book_id,
-            user_id=user.id,
-            copy_id=None,
-            status="waiting",
-            created_at=now,
-        )
-        db.add(new_hold)
-        db.flush()
-        db.refresh(new_hold)
 
-        queue_pos = compute_queue_position(db, new_hold)
-        return serialize_hold(new_hold, queue_position=queue_pos)
+        if available_copy:
+            # Immediate online reservation for available physical copy
+            deadline = now + timedelta(days=DEFAULT_PICKUP_WINDOW_DAYS)
+            new_hold = BookHold(
+                book_id=book_id,
+                user_id=user.id,
+                copy_id=available_copy.id,
+                status="ready_for_pickup",
+                allocated_at=now,
+                pickup_expires_at=deadline,
+                created_at=now,
+            )
+            db.add(new_hold)
+            db.flush()
+            db.refresh(new_hold)
+
+            # Create in-app notification confirming reservation
+            book_title = book.title if book else "Monograph"
+            notification = Notification(
+                user_id=user.id,
+                notification_type="hold_ready",
+                title="Online Loan Reservation Confirmed",
+                message=(
+                    f"Your online loan booking for '{book_title}' is confirmed! Copy {available_copy.copy_code} is reserved at the circulation desk. "
+                    f"Please collect it before {deadline.strftime('%b %d, %Y')} using your Collection QR pass."
+                ),
+                created_at=now,
+                dedup_key=f"online_reserve:{new_hold.id}:{int(now.timestamp())}",
+            )
+            db.add(notification)
+            logger.info("Online loan reservation created: allocated copy %s to user %s (hold %s)", available_copy.id, user.id, new_hold.id)
+            return serialize_hold(new_hold, queue_position=1)
+        else:
+            # 4. Monograph currently out of stock: queue patron into FIFO waitlist
+            new_hold = BookHold(
+                book_id=book_id,
+                user_id=user.id,
+                copy_id=None,
+                status="waiting",
+                created_at=now,
+            )
+            db.add(new_hold)
+            db.flush()
+            db.refresh(new_hold)
+
+            queue_pos = compute_queue_position(db, new_hold)
+            logger.info("Placed user %s on waitlist queue position %s for monograph %s", user.id, queue_pos, book_id)
+            return serialize_hold(new_hold, queue_position=queue_pos)
 
 
 def get_my_holds_service(db: Session, user_id: int) -> BookHoldListResponse:

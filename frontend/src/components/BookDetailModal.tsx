@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../services/apiClient';
 import type { BookDetail, BookHold, BookRecommendationResponse, BookRecommendationResult } from '../types/library';
 import { BookCover } from './BookCover';
+import { QRCollectionModal } from './QRCollectionModal';
 
 interface BookDetailModalProps {
   bookId: number | null;
@@ -24,8 +25,10 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [recsLoading, setRecsLoading] = useState<boolean>(false);
   const [recsError, setRecsError] = useState<string | null>(null);
 
-  // Hold / Waitlist state
+  // Hold / Online Booking state
   const [placingHold, setPlacingHold] = useState(false);
+  const [createdHold, setCreatedHold] = useState<BookHold | null>(null);
+  const [showQRPassModal, setShowQRPassModal] = useState<boolean>(false);
   const [holdMessage, setHoldMessage] = useState<string | null>(null);
   const [holdError, setHoldError] = useState<string | null>(null);
 
@@ -39,11 +42,21 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
         method: 'POST',
         body: JSON.stringify({ book_id: detail.id }),
       });
-      setHoldMessage(
-        `Waitlist hold placed! You are #${res.queue_position || 1} in queue. You will be notified when a copy is returned.`
-      );
+      setCreatedHold(res);
+      if (res.status === 'ready_for_pickup') {
+        const deadlineStr = res.pickup_expires_at
+          ? new Date(res.pickup_expires_at).toLocaleDateString()
+          : '7 days';
+        setHoldMessage(
+          `🎉 Online Reservation Confirmed! Copy ${res.copy_code ? `(#${res.copy_code})` : ''} is locked and reserved for you at the front desk. Collection pass valid until ${deadlineStr}.`
+        );
+      } else {
+        setHoldMessage(
+          `Waitlist hold placed! You are #${res.queue_position || 1} in queue. You will be notified automatically when a copy is returned.`
+        );
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to place hold';
+      const msg = err instanceof Error ? err.message : 'Failed to book loan reservation';
       setHoldError(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setPlacingHold(false);
@@ -157,42 +170,88 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                     {detail.description || 'No extended summary provided in the catalogue entry.'}
                   </p>
 
-                  {detail.available_copies === 0 && !detail.is_archived && (
+                  {!detail.is_archived && (
                     <div
                       style={{
-                        marginTop: '0.75rem',
-                        padding: '0.85rem',
-                        borderRadius: '8px',
-                        background: 'var(--bg-glass)',
-                        border: '1px solid var(--card-border)',
+                        marginTop: '0.85rem',
+                        padding: '1rem 1.15rem',
+                        borderRadius: '10px',
+                        background: detail.available_copies > 0 ? 'rgba(37, 99, 235, 0.08)' : 'rgba(234, 179, 8, 0.08)',
+                        border: `1px solid ${detail.available_copies > 0 ? 'rgba(37, 99, 235, 0.32)' : 'rgba(234, 179, 8, 0.28)'}`,
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
                         <div>
-                          <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>All copies currently on loan</strong>
-                          <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                            Join the waitlist to reserve the next copy returned by another patron.
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                              {detail.available_copies > 0
+                                ? '📚 Online Loan Booking & Shelf Reservation'
+                                : '🔖 Reserve Monograph (Waitlist Queue)'}
+                            </strong>
+                            <span
+                              className={`badge ${detail.available_copies > 0 ? 'badge-success' : 'badge-warning'}`}
+                              style={{ fontSize: '0.7rem' }}
+                            >
+                              {detail.available_copies > 0 ? 'Available for Collection' : 'All Copies on Loan'}
+                            </span>
+                          </div>
+                          <p style={{ margin: '0.25rem 0 0', fontSize: '0.825rem', color: 'var(--text-secondary)', maxWidth: '460px' }}>
+                            {detail.available_copies > 0
+                              ? 'Book a physical copy online now. It will be immediately set aside at the library front desk with a 7-day pickup window and Collection QR pass.'
+                              : 'All copies are currently borrowed. Place an online reservation to claim the next copy returned by another student.'}
                           </p>
                         </div>
+
                         <button
                           type="button"
-                          className="btn btn-primary btn-sm"
+                          className="btn btn-primary"
                           onClick={handlePlaceHold}
-                          disabled={placingHold}
-                          style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                          disabled={placingHold || !!createdHold}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1.15rem', whiteSpace: 'nowrap' }}
                         >
-                          <span>🔖</span>
-                          <span>{placingHold ? 'Joining Waitlist...' : 'Place Hold'}</span>
+                          <span>{detail.available_copies > 0 ? '⚡' : '🔖'}</span>
+                          <span>
+                            {placingHold
+                              ? 'Processing...'
+                              : createdHold
+                              ? 'Reserved ✓'
+                              : detail.available_copies > 0
+                              ? 'Book Loan Online'
+                              : 'Join Waitlist Queue'}
+                          </span>
                         </button>
                       </div>
 
                       {holdMessage && (
-                        <div className="alert alert-success" style={{ marginTop: '0.65rem', padding: '0.5rem', fontSize: '0.82rem' }}>
+                        <div
+                          className="alert alert-success"
+                          style={{
+                            marginTop: '0.75rem',
+                            padding: '0.65rem 0.85rem',
+                            fontSize: '0.835rem',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '0.5rem',
+                          }}
+                        >
                           <span>{holdMessage}</span>
+                          {createdHold?.status === 'ready_for_pickup' && (
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => setShowQRPassModal(true)}
+                              style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                            >
+                              📱 Show Collection QR Pass
+                            </button>
+                          )}
                         </div>
                       )}
+
                       {holdError && (
-                        <div className="alert alert-error" style={{ marginTop: '0.65rem', padding: '0.5rem', fontSize: '0.82rem' }}>
+                        <div className="alert alert-error" style={{ marginTop: '0.75rem', padding: '0.65rem 0.85rem', fontSize: '0.835rem' }}>
                           <span>{holdError}</span>
                         </div>
                       )}
@@ -396,6 +455,14 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
           </button>
         </div>
       </div>
+
+      {showQRPassModal && createdHold && (
+        <QRCollectionModal
+          holdId={createdHold.id}
+          bookTitle={detail?.title || 'Monograph Collection'}
+          onClose={() => setShowQRPassModal(false)}
+        />
+      )}
     </div>
   );
 };
