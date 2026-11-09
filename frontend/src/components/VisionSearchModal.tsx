@@ -26,7 +26,16 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const recordTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const triggerFilePicker = (acceptType?: string) => {
+    if (fileInputRef.current) {
+      if (acceptType) {
+        fileInputRef.current.accept = acceptType;
+      } else {
+        fileInputRef.current.accept = 'image/png,image/jpeg,image/webp,audio/*,application/pdf,.docx,.pptx';
+      }
+      fileInputRef.current.click();
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -361,10 +370,20 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                       </div>
                     )}
 
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+                    <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', marginTop: '0.25rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '0.85rem', color: '#f8fafc', fontWeight: 600 }}>
                         {selectedFile.name} ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
                       </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerFilePicker();
+                        }}
+                        className="btn btn-secondary btn-xs"
+                      >
+                        📁 Choose Different File
+                      </button>
                       <button
                         type="button"
                         onClick={(e) => {
@@ -372,38 +391,110 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                           clearSelection();
                         }}
                         className="btn btn-secondary btn-xs"
+                        style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.4)' }}
                       >
-                        Change Media
+                        ✕ Remove
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', gap: '1rem', fontSize: '2rem', marginBottom: '0.25rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.65rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', fontSize: '2.2rem', marginBottom: '0.2rem' }}>
                       <span title="Images & Diagrams">📸</span>
                       <span title="Lecture Voice Notes">🎙️</span>
                       <span title="PDF Research Papers">📄</span>
-                      <span title="Lecture Slide Decks">📊</span>
-                    </div>
-                    <div style={{ color: '#f1f5f9', fontWeight: 600, fontSize: '0.98rem' }}>
-                      Drag & Drop Media, Click to Browse, or Paste Screenshot (<kbd style={{ background: '#1e293b', padding: '2px 5px', borderRadius: '4px' }}>Ctrl+V</kbd>)
-                    </div>
-                    <div style={{ color: '#64748b', fontSize: '0.8rem', maxWidth: '520px' }}>
-                      Supports Images (PNG, JPG, WEBP), Audio Clips (WAV, MP3, M4A, WEBM), Research Papers (PDF), Word (.docx), and Slides (.pptx) up to 25MB
+                      <span title="PowerPoint Slides & Word">📊</span>
                     </div>
 
-                    {/* Microphone Record Trigger Button */}
-                    <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.75rem' }}>
+                    <div style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '1.05rem' }}>
+                      Choose Files from your Laptop, Drop Here, or Paste (<kbd style={{ background: '#1e293b', padding: '2px 5px', borderRadius: '4px' }}>Ctrl+V</kbd>)
+                    </div>
+
+                    <div style={{ color: '#94a3b8', fontSize: '0.82rem', maxWidth: '560px', lineHeight: 1.4 }}>
+                      Select any academic file from your computer: Images (PNG, JPG, WEBP), Audio Clips (MP3, WAV, M4A, WEBM), Research Papers (PDF), Word (.docx), or Slides (.pptx) up to 25MB
+                    </div>
+
+                    {/* Prominent Action Buttons */}
+                    <div style={{ marginTop: '0.85rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerFilePicker();
+                        }}
+                        className="btn btn-primary"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.65rem 1.35rem',
+                          fontSize: '0.92rem',
+                          fontWeight: 700,
+                          background: 'linear-gradient(135deg, #2563eb, #0284c7)',
+                          boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
+                        }}
+                      >
+                        <span>📁</span>
+                        <span>Browse Files on Laptop / Device</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           startVoiceRecording();
                         }}
-                        className="btn btn-secondary btn-sm"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#38bdf8', borderColor: '#0284c7' }}
+                        className="btn btn-secondary"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.45rem',
+                          padding: '0.65rem 1.15rem',
+                          fontSize: '0.9rem',
+                          color: '#38bdf8',
+                          borderColor: 'rgba(56, 189, 248, 0.4)',
+                        }}
                       >
-                        <span>🎙️</span> Record Voice / Lecture Note
+                        <span>🎙️</span>
+                        <span>Record Voice / Lecture</span>
+                      </button>
+                    </div>
+
+                    {/* Quick Category Filters */}
+                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', alignSelf: 'center', marginRight: '0.2rem' }}>Quick select:</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerFilePicker('image/*');
+                        }}
+                        className="btn btn-secondary btn-xs"
+                        style={{ color: '#cbd5e1' }}
+                      >
+                        📸 Photos & Diagrams
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerFilePicker('application/pdf,.docx,.pptx');
+                        }}
+                        className="btn btn-secondary btn-xs"
+                        style={{ color: '#cbd5e1' }}
+                      >
+                        📄 PDFs & Slides
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerFilePicker('audio/*');
+                        }}
+                        className="btn btn-secondary btn-xs"
+                        style={{ color: '#cbd5e1' }}
+                      >
+                        🎵 Audio Files
                       </button>
                     </div>
                   </div>
