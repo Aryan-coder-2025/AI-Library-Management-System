@@ -138,11 +138,44 @@ export const LibrarianSpaces: React.FC = () => {
   };
 
   return (
-    <div className="container" style={{ padding: '1.5rem 0' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+    <div style={{ maxWidth: '1360px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '3rem' }}>
+      {/* Header */}
+      <div
+        style={{
+          background: 'var(--card-bg, #0E1626)',
+          border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+          borderRadius: '14px',
+          padding: '1.5rem 1.75rem',
+          boxShadow: 'var(--card-shadow)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
+        }}
+      >
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700 }}>Study Space Circulation Desk</h2>
-          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontSize: '1.75rem' }}>🏛️</span>
+            <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary, #F8FAFC)', letterSpacing: '-0.02em' }}>
+              Study Space Circulation Desk
+            </h2>
+            <span
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                background: 'rgba(56, 189, 248, 0.12)',
+                color: 'var(--brand-secondary, #38BDF8)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+              }}
+            >
+              SPATIAL OPS
+            </span>
+          </div>
+          <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary, #94A3B8)', maxWidth: '780px', lineHeight: 1.5 }}>
             Staff management for study seats, discussion rooms, QR verification, and automated lifecycle sweeps.
           </p>
         </div>
@@ -153,35 +186,59 @@ export const LibrarianSpaces: React.FC = () => {
           className="btn btn-secondary"
           onClick={handleTriggerSweep}
           disabled={isSweeping}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.6rem 1.15rem',
+            fontSize: '0.825rem',
+            fontWeight: 600,
+          }}
         >
-          {isSweeping ? 'Sweeping...' : '🧹 Run Lifecycle Sweep'}
+          <span>🧹</span>
+          <span>{isSweeping ? 'Sweeping...' : 'Run Lifecycle Sweep'}</span>
         </button>
       </div>
 
       {/* Sub-Tab Navigation */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem', flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          className={`btn ${deskSubTab === 'reservations' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setDeskSubTab('reservations')}
-        >
-          Study Space Reservations Desk
-        </button>
-        <button
-          type="button"
-          className={`btn ${deskSubTab === 'occupancy' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setDeskSubTab('occupancy')}
-        >
-          📊 Occupancy & Telemetry Analytics
-        </button>
-        <button
-          type="button"
-          className={`btn ${deskSubTab === 'spatial' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setDeskSubTab('spatial')}
-        >
-          🗺️ Floor Plans & Spatial Manager
-        </button>
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          borderBottom: '1px solid var(--border-medium, rgba(148, 163, 184, 0.2))',
+          paddingBottom: '0.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        {[
+          { key: 'reservations', label: '🪑 Study Space Reservations Desk' },
+          { key: 'occupancy', label: '📊 Occupancy & Telemetry Analytics' },
+          { key: 'spatial', label: '🗺️ Floor Plans & Spatial Manager' },
+        ].map((tab) => {
+          const isActive = deskSubTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setDeskSubTab(tab.key as any)}
+              style={{
+                padding: '0.6rem 1.15rem',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                border: isActive
+                  ? '1px solid var(--brand-secondary, #38BDF8)'
+                  : '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+                background: isActive ? 'var(--nav-item-active-bg, rgba(56, 189, 248, 0.14))' : 'var(--bg-surface, #0E1626)',
+                color: isActive ? 'var(--brand-secondary, #38BDF8)' : 'var(--text-secondary, #94A3B8)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {deskSubTab === 'spatial' ? (
@@ -191,224 +248,393 @@ export const LibrarianSpaces: React.FC = () => {
       ) : (
         <>
           {actionSuccess && (
-            <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
+            <div className="alert alert-success" style={{ margin: 0 }}>
               ✓ {actionSuccess}
             </div>
           )}
           {error && (
-            <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>
+            <div className="alert alert-danger" style={{ margin: 0 }}>
               ✕ {error}
             </div>
           )}
 
-      {/* Sweep Report Box */}
-      {sweepReport && (
-        <div className="card" style={{ padding: '1rem 1.25rem', marginBottom: '1.5rem', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Last Sweep Execution Report</h4>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{sweepReport.timestamp}</span>
-          </div>
-          <div style={{ display: 'flex', gap: '2rem', marginTop: '0.5rem', fontSize: '0.875rem' }}>
-            <div><strong>Processed:</strong> {sweepReport.processed_count}</div>
-            <div style={{ color: 'var(--danger-color)' }}><strong>Marked No-Show:</strong> {sweepReport.no_show_count}</div>
-            <div style={{ color: 'var(--success-color)' }}><strong>Marked Completed:</strong> {sweepReport.completed_count}</div>
-          </div>
-        </div>
-      )}
+          {/* Sweep Report Box */}
+          {sweepReport && (
+            <div
+              style={{
+                background: 'var(--card-bg, #0E1626)',
+                border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                borderRadius: '12px',
+                padding: '1.25rem 1.5rem',
+                boxShadow: 'var(--card-shadow)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary, #F8FAFC)' }}>
+                  🧹 Last Sweep Execution Report
+                </h4>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748B)', fontFamily: 'monospace' }}>
+                  {sweepReport.timestamp}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '2rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+                <div>
+                  <span style={{ color: 'var(--text-secondary, #94A3B8)' }}>Processed: </span>
+                  <strong style={{ color: 'var(--text-primary, #F8FAFC)' }}>{sweepReport.processed_count}</strong>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-secondary, #94A3B8)' }}>Marked No-Show: </span>
+                  <strong style={{ color: '#FB7185' }}>{sweepReport.no_show_count}</strong>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-secondary, #94A3B8)' }}>Marked Completed: </span>
+                  <strong style={{ color: '#34D399' }}>{sweepReport.completed_count}</strong>
+                </div>
+              </div>
+            </div>
+          )}
 
-      {/* Quick QR Scanner Form */}
-      <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
-        <h3 style={{ margin: '0 0 0.75rem', fontSize: '1.1rem', fontWeight: 600 }}>Kiosk / Desk Check-In by Token</h3>
-        <form onSubmit={handleScanTokenSubmit} style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ flex: 3, minWidth: '240px' }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-              Scanned / Pasted Token:
-            </label>
-            <input
-              type="text"
-              className="form-control"
-              placeholder="Paste or scan QR check-in token here..."
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              required
-            />
-          </div>
-          <div style={{ width: '130px' }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-              Attendees:
-            </label>
-            <input
-              type="number"
-              className="form-control"
-              min={1}
-              max={12}
-              value={tokenAttendees}
-              onChange={(e) => setTokenAttendees(Number(e.target.value))}
-            />
-          </div>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={isTokenCheckingIn || !tokenInput.trim()}
+          {/* Quick QR Scanner Form */}
+          <div
+            style={{
+              background: 'var(--card-bg, #0E1626)',
+              border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+              borderRadius: '14px',
+              padding: '1.5rem',
+              boxShadow: 'var(--card-shadow)',
+            }}
           >
-            {isTokenCheckingIn ? 'Validating...' : 'Validate & Check In'}
-          </button>
-        </form>
-      </div>
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary, #F8FAFC)' }}>
+              🎟️ Kiosk / Desk Check-In by Token
+            </h3>
+            <form onSubmit={handleScanTokenSubmit} style={{ display: 'flex', gap: '0.85rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ flex: 3, minWidth: '260px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary, #94A3B8)', marginBottom: '0.35rem' }}>
+                  Scanned / Pasted Token:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Paste or scan QR check-in token here..."
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                    background: 'var(--bg-tertiary, #141F36)',
+                    color: 'var(--text-primary, #F8FAFC)',
+                    fontSize: '0.875rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
 
-      {/* Reservation Management Table */}
-      <div className="card" style={{ padding: '1.25rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600 }}>All Reservations</h3>
+              <div style={{ width: '130px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary, #94A3B8)', marginBottom: '0.35rem' }}>
+                  Attendees:
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={tokenAttendees}
+                  onChange={(e) => setTokenAttendees(Number(e.target.value))}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                    background: 'var(--bg-tertiary, #141F36)',
+                    color: 'var(--text-primary, #F8FAFC)',
+                    fontSize: '0.875rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {/* Status Filter */}
-            <select
-              className="form-control"
-              style={{ width: 'auto', fontSize: '0.85rem' }}
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="all">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="no_show">No-Show</option>
-            </select>
-
-            {/* Resource Type Filter */}
-            <select
-              className="form-control"
-              style={{ width: 'auto', fontSize: '0.85rem' }}
-              value={resourceTypeFilter}
-              onChange={(e) => {
-                setResourceTypeFilter(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="all">All Resources</option>
-              <option value="seat">Seats Only</option>
-              <option value="room">Rooms Only</option>
-            </select>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isTokenCheckingIn || !tokenInput.trim()}
+                style={{
+                  padding: '0.65rem 1.35rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: isTokenCheckingIn || !tokenInput.trim() ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isTokenCheckingIn ? 'Validating...' : 'Validate & Check In'}
+              </button>
+            </form>
           </div>
-        </div>
 
-        {loading && reservations.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Loading records...</div>
-        ) : reservations.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No reservations found.</div>
-        ) : (
-          <div className="table-responsive">
-            <table className="table" style={{ width: '100%', fontSize: '0.875rem' }}>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Patron</th>
-                  <th>Resource</th>
-                  <th>Time Window</th>
-                  <th>Status</th>
-                  <th>Checked In</th>
-                  <th>Staff Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reservations.map((r) => {
-                  const canOverrideCheckIn = r.status === 'active' && !r.checked_in_at;
-                  const canCancel = r.status === 'active';
+          {/* Reservation Management Table */}
+          <div
+            style={{
+              background: 'var(--card-bg, #0E1626)',
+              border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+              borderRadius: '14px',
+              padding: '1.5rem',
+              boxShadow: 'var(--card-shadow)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #F8FAFC)' }}>
+                  All Study Space Reservations
+                </h3>
+                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted, #64748B)' }}>
+                  Real-time patron reservations across seats and study rooms.
+                </p>
+              </div>
 
-                  return (
-                    <tr key={r.id}>
-                      <td>#{r.id}</td>
-                      <td>
-                        <strong>{r.user_id}</strong>
-                      </td>
-                      <td>
-                        {r.resource_type === 'seat'
-                          ? r.seat?.seat_code ? `Seat ${r.seat.seat_code}` : `Seat #${r.seat_id}`
-                          : r.room?.name ? `Room ${r.room.name}` : `Room #${r.room_id}`}
-                      </td>
-                      <td>
-                        {formatDateTime(r.start_time)} – {formatDateTime(r.end_time)}
-                      </td>
-                      <td>
-                        {r.status === 'active' && !r.checked_in_at && <span className="badge badge-primary">Active</span>}
-                        {r.status === 'active' && r.checked_in_at && <span className="badge badge-success">Checked In</span>}
-                        {r.status === 'completed' && <span className="badge badge-secondary">Completed</span>}
-                        {r.status === 'cancelled' && <span className="badge" style={{ background: '#94a3b8', color: '#fff' }}>Cancelled</span>}
-                        {r.status === 'no_show' && <span className="badge badge-danger">No-Show</span>}
-                      </td>
-                      <td>
-                        {r.checked_in_at ? formatDateTime(r.checked_in_at) : '—'}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.35rem' }}>
-                          {canOverrideCheckIn && (
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              onClick={() => handleStaffOverrideCheckIn(r.id)}
-                              title="Override check-in within reservation duration"
-                            >
-                              Check In
-                            </button>
-                          )}
-                          {r.status === 'active' && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => handleViewQR(r.id)}
-                            >
-                              QR
-                            </button>
-                          )}
-                          {canCancel && (
-                            <button
-                              type="button"
-                              className="btn btn-danger btn-sm"
-                              onClick={() => handleStaffCancel(r.id)}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
-                      </td>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {/* Status Filter */}
+                <select
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                    background: 'var(--bg-tertiary, #141F36)',
+                    color: 'var(--text-primary, #F8FAFC)',
+                    fontSize: '0.825rem',
+                    outline: 'none',
+                    cursor: 'pointer',
+                  }}
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="no_show">No-Show</option>
+                </select>
+
+                {/* Resource Type Filter */}
+                <select
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                    background: 'var(--bg-tertiary, #141F36)',
+                    color: 'var(--text-primary, #F8FAFC)',
+                    fontSize: '0.825rem',
+                    outline: 'none',
+                    cursor: 'pointer',
+                  }}
+                  value={resourceTypeFilter}
+                  onChange={(e) => {
+                    setResourceTypeFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="all">All Resources</option>
+                  <option value="seat">Seats Only</option>
+                  <option value="room">Rooms Only</option>
+                </select>
+              </div>
+            </div>
+
+            {loading && reservations.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted, #64748B)' }}>
+                Loading reservation records...
+              </div>
+            ) : reservations.length === 0 ? (
+              <div
+                style={{
+                  textAlign: 'center',
+                  padding: '3rem 1rem',
+                  background: 'var(--bg-tertiary, #141F36)',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.12))',
+                  color: 'var(--text-secondary, #94A3B8)',
+                }}
+              >
+                No reservations found matching the selected filter criteria.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-subtle, #1C2B4A)', borderBottom: '1px solid var(--border-medium, rgba(148, 163, 184, 0.2))' }}>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted, #64748B)', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em' }}>ID</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted, #64748B)', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em' }}>Patron</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted, #64748B)', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em' }}>Resource</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted, #64748B)', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em' }}>Time Window</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted, #64748B)', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em' }}>Status</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted, #64748B)', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em' }}>Checked In</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted, #64748B)', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.05em' }}>Staff Actions</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  </thead>
+                  <tbody>
+                    {reservations.map((r) => {
+                      const canOverrideCheckIn = r.status === 'active' && !r.checked_in_at;
+                      const canCancel = r.status === 'active';
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1.25rem' }}>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              disabled={page <= 1 || loading}
-            >
-              Previous
-            </button>
-            <span style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem' }}>
-              Page {page} of {totalPages}
-            </span>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-              disabled={page >= totalPages || loading}
-            >
-              Next
-            </button>
+                      const patronDisplayName = r.patron_name || `Patron #${r.user_id}`;
+                      const patronDisplaySub = r.patron_email || `User ID: ${r.user_id}`;
+
+                      return (
+                        <tr
+                          key={r.id}
+                          style={{
+                            borderBottom: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.12))',
+                            transition: 'background 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(56, 189, 248, 0.04)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', color: 'var(--accent-cyan, #38BDF8)', fontWeight: 700 }}>
+                            #{r.id}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary, #F8FAFC)' }}>
+                              {patronDisplayName}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748B)' }}>
+                              {patronDisplaySub}
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem' }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '0.78rem',
+                                fontWeight: 600,
+                                background: r.resource_type === 'room' ? 'rgba(129, 140, 248, 0.14)' : 'rgba(56, 189, 248, 0.12)',
+                                color: r.resource_type === 'room' ? '#818CF8' : 'var(--brand-secondary, #38BDF8)',
+                                border: `1px solid ${r.resource_type === 'room' ? 'rgba(129, 140, 248, 0.3)' : 'rgba(56, 189, 248, 0.25)'}`,
+                              }}
+                            >
+                              {r.resource_type === 'room' ? '🚪' : '🪑'}
+                              {r.resource_type === 'seat'
+                                ? r.seat?.seat_code ? `Seat ${r.seat.seat_code}` : `Seat #${r.seat_id}`
+                                : r.room?.name ? `Room ${r.room.name}` : `Room #${r.room_id}`}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', color: 'var(--text-secondary, #94A3B8)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                            {formatDateTime(r.start_time)} – {formatDateTime(r.end_time)}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem' }}>
+                            {r.status === 'active' && !r.checked_in_at && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: '4px', background: 'rgba(56, 189, 248, 0.15)', color: '#38BDF8', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                                Active (Pending)
+                              </span>
+                            )}
+                            {r.status === 'active' && r.checked_in_at && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: '4px', background: 'rgba(52, 211, 153, 0.15)', color: '#34D399', border: '1px solid rgba(52, 211, 153, 0.3)' }}>
+                                Checked In
+                              </span>
+                            )}
+                            {r.status === 'completed' && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: '4px', background: 'rgba(129, 140, 248, 0.15)', color: '#818CF8', border: '1px solid rgba(129, 140, 248, 0.3)' }}>
+                                Completed
+                              </span>
+                            )}
+                            {r.status === 'cancelled' && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: '4px', background: 'rgba(100, 116, 139, 0.18)', color: '#94A3B8', border: '1px solid rgba(100, 116, 139, 0.3)' }}>
+                                Cancelled
+                              </span>
+                            )}
+                            {r.status === 'no_show' && (
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.15)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                                No-Show
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', color: 'var(--text-secondary, #94A3B8)', fontSize: '0.8rem' }}>
+                            {r.checked_in_at ? formatDateTime(r.checked_in_at) : '—'}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                              {canOverrideCheckIn && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => handleStaffOverrideCheckIn(r.id)}
+                                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
+                                  title="Override check-in within reservation duration"
+                                >
+                                  Check In
+                                </button>
+                              )}
+                              {r.status === 'active' && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => handleViewQR(r.id)}
+                                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
+                                >
+                                  QR Pass
+                                </button>
+                              )}
+                              {canCancel && (
+                                <button
+                                  type="button"
+                                  className="btn btn-danger btn-sm"
+                                  onClick={() => handleStaffCancel(r.id)}
+                                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem', background: '#DC2626', color: '#fff', border: 'none' }}
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                              {!canOverrideCheckIn && r.status !== 'active' && (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748B)' }}>
+                                  Archived
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1.25rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                  disabled={page <= 1 || loading}
+                >
+                  ← Previous
+                </button>
+                <span style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+                  disabled={page >= totalPages || loading}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      </>
+        </>
       )}
 
       {/* QR Modal */}
@@ -421,4 +647,4 @@ export const LibrarianSpaces: React.FC = () => {
     </div>
   );
 };
-
+export default LibrarianSpaces;

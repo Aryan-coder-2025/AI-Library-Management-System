@@ -954,11 +954,15 @@ class ReservationResponse(ReservationBase):
 
     id: int
     user_id: int
+    patron_name: Optional[str] = None
+    patron_email: Optional[str] = None
     status: str
     checked_in_at: Optional[datetime] = None
     expected_attendees: int
     actual_attendees: Optional[int] = None
     created_at: datetime
+    seat: Optional[StudySeatResponse] = None
+    room: Optional[StudyRoomResponse] = None
 
 
 class ReservationPaginationResponse(BaseModel):

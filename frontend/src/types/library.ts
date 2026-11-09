@@ -287,6 +287,8 @@ export interface StudyRoom {
 export interface StudySpaceReservation {
   id: number;
   user_id: number;
+  patron_name?: string | null;
+  patron_email?: string | null;
   resource_type: 'seat' | 'room';
   seat_id: number | null;
   room_id: number | null;

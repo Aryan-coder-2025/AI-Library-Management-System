@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import (
     Column,
     Integer,
@@ -206,6 +207,14 @@ class Reservation(Base):
     user = relationship("User", back_populates="reservations")
     seat = relationship("StudySeat", back_populates="reservations")
     room = relationship("StudyRoom", back_populates="reservations")
+
+    @property
+    def patron_name(self) -> Optional[str]:
+        return self.user.full_name if self.user else None
+
+    @property
+    def patron_email(self) -> Optional[str]:
+        return self.user.email if self.user else None
 
     __table_args__ = (
         CheckConstraint("end_time > start_time", name="ck_reservations_time_order"),
