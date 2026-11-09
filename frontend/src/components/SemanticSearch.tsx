@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { apiFetch } from '../services/apiClient';
 import type { SemanticBookResult, SemanticSearchResponse } from '../types/library';
 import { BookCover } from './BookCover';
+import { VisionSearchModal } from './VisionSearchModal';
 
 interface SemanticSearchProps {
   onSelectBook: (id: number) => void;
@@ -27,6 +28,7 @@ export const SemanticSearch: React.FC<SemanticSearchProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelUnavailable, setModelUnavailable] = useState(false);
+  const [showVisionModal, setShowVisionModal] = useState(false);
 
   const executeSearch = async (searchQuery: string) => {
     const cleanQuery = searchQuery.trim();
@@ -153,6 +155,25 @@ export const SemanticSearch: React.FC<SemanticSearchProps> = ({
               <span>⚡ Vector Search</span>
             </>
           )}
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => setShowVisionModal(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            borderColor: 'rgba(56, 189, 248, 0.4)',
+            color: '#38bdf8',
+            whiteSpace: 'nowrap',
+            padding: '0.6rem 1.1rem',
+          }}
+          title="Search by uploading or pasting a photo of a diagram, equation, or textbook snippet"
+        >
+          <span>📸</span>
+          <span>Vision Search</span>
         </button>
       </form>
 
@@ -305,6 +326,13 @@ export const SemanticSearch: React.FC<SemanticSearchProps> = ({
             );
           })}
         </div>
+      )}
+
+      {showVisionModal && (
+        <VisionSearchModal
+          onClose={() => setShowVisionModal(false)}
+          onSelectBook={onSelectBook}
+        />
       )}
     </div>
   );

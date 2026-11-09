@@ -1854,6 +1854,46 @@ class AcquisitionRequestListResponse(BaseModel):
     total: int
 
 
+# ── Vision Multimodal Research Schemas ────────────────────────────────────────
+
+class VisionResearchAnalysis(BaseModel):
+    summary: str
+    detected_type: str = "diagram"  # diagram, equation, textbook_page, paper_abstract, book_cover, notes
+    academic_field: str = "General Academic"
+    extracted_latex: List[str] = Field(default_factory=list)
+    key_concepts: List[str] = Field(default_factory=list)
+    suggested_catalogue_search: str = ""
+    suggested_scholarly_search: str = ""
+
+
+class VisionCatalogueMatch(BaseModel):
+    id: int
+    title: str
+    author: str
+    isbn: str
+    category: str
+    available_copies: int = 0
+    total_copies: int = 0
+
+
+class VisionPaperMatch(BaseModel):
+    paper_id: str
+    title: str
+    authors: List[str] = Field(default_factory=list)
+    year: Optional[int] = None
+    venue: Optional[str] = None
+    doi: Optional[str] = None
+    is_open_access: bool = False
+    open_access_pdf_url: Optional[str] = None
+    provider: str = "scholarly"
+
+
+class VisionResearchResponse(BaseModel):
+    analysis: VisionResearchAnalysis
+    catalogue_matches: List[VisionCatalogueMatch] = Field(default_factory=list)
+    scholarly_papers: List[VisionPaperMatch] = Field(default_factory=list)
+
+
 
 
 

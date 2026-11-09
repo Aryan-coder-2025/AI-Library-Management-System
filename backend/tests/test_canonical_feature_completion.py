@@ -696,3 +696,35 @@ async def test_external_llm_adapter_interfaces():
     )
     assert res_gemini.model_name == "gemini-1.5-pro"
     assert res_gemini.error is not None or "[Gemini" in res_gemini.response_text
+
+
+def test_multimodal_vision_research_endpoint(client: TestClient, student_user: User):
+    """
+    Verifies that POST /api/research/vision-search accepts an academic image,
+    analyzes concepts with Gemini Vision, and cross-references both local catalogue
+    monographs and global arXiv/OpenAlex research papers.
+    """
+    token = create_access_token(user_id=student_user.id, role=student_user.role)
+    client.cookies.set("access_token", token)
+    client.cookies.set("csrf_token", "testcsrf")
+
+    # 1x1 test PNG image bytes
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\xcf\xc0"
+        b"\x00\x00\x03\x01\x01\x00\x18\xdd\x8d\xb0\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+    resp = client.post(
+        "/api/research/vision-search",
+        files={"file": ("diagram.png", png_bytes, "image/png")},
+        data={"query": "Explain distributed systems architecture"},
+        headers={"X-CSRF-Token": "testcsrf"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "analysis" in data
+    assert "summary" in data["analysis"]
+    assert "detected_type" in data["analysis"]
+    assert "catalogue_matches" in data
+    assert "scholarly_papers" in data

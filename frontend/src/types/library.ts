@@ -773,3 +773,41 @@ export interface CirculationClearanceStatus {
   }>;
 }
 
+export interface VisionResearchAnalysis {
+  summary: string;
+  detected_type: string;
+  academic_field: string;
+  extracted_latex: string[];
+  key_concepts: string[];
+  suggested_catalogue_search: string;
+  suggested_scholarly_search: string;
+}
+
+export interface VisionCatalogueMatch {
+  id: number;
+  title: string;
+  author: string;
+  isbn: string;
+  category: string;
+  available_copies: number;
+  total_copies: number;
+}
+
+export interface VisionPaperMatch {
+  paper_id: string;
+  title: string;
+  authors: string[];
+  year?: number | null;
+  venue?: string | null;
+  doi?: string | null;
+  is_open_access: boolean;
+  open_access_pdf_url?: string | null;
+  provider: string;
+}
+
+export interface VisionResearchResponse {
+  analysis: VisionResearchAnalysis;
+  catalogue_matches: VisionCatalogueMatch[];
+  scholarly_papers: VisionPaperMatch[];
+}
+

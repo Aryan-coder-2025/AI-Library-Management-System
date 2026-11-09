@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../services/apiClient';
 import type { CopilotMessage, CopilotSource, UserProfile } from '../types/library';
+import { VisionSearchModal } from './VisionSearchModal';
 
 interface AICopilotDrawerProps {
   currentUser: UserProfile;
@@ -143,6 +144,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   const [lastProvider, setLastProvider] = useState<string>('auto');
   const [lastIsFallback, setLastIsFallback] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showVisionModal, setShowVisionModal] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -516,6 +518,16 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
             </div>
 
             <button
+              type="button"
+              className="btn btn-secondary copilot-vision-btn"
+              onClick={() => setShowVisionModal(true)}
+              title="Upload photo or paste screenshot (Ctrl+V) for Multimodal Vision Research"
+              style={{ padding: '0 0.65rem', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              📷
+            </button>
+
+            <button
               type="submit"
               className="btn btn-primary copilot-send-btn"
               disabled={isLoading || !inputMessage.trim()}
@@ -532,6 +544,13 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
             </button>
           </form>
         </aside>
+      )}
+
+      {showVisionModal && (
+        <VisionSearchModal
+          onClose={() => setShowVisionModal(false)}
+          onSelectBook={onSelectBook}
+        />
       )}
     </>
   );

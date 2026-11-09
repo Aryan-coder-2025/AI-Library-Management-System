@@ -3,10 +3,15 @@ Academic Research Discovery Router.
 Serves external scholarly research querying across OpenAlex, arXiv, and Crossref.
 """
 from typing import List, Optional
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from sqlalchemy.orm import Session
 
-from app.schemas import AcademicSearchResponse
+from app.database import get_db
+from app.dependencies import get_current_active_user
+from app.models import User
+from app.schemas import AcademicSearchResponse, VisionResearchResponse
 from app.services.research.aggregator import academic_research_service
+from app.services.vision_research import analyze_academic_image_service
 
 router = APIRouter(prefix="/api/research", tags=["Academic Research Discovery"])
 
@@ -66,4 +71,41 @@ def list_research_providers():
             },
         ]
     }
+
+
+@router.post(
+    "/vision-search",
+    response_model=VisionResearchResponse,
+    summary="Multimodal Vision Research & Discovery",
+)
+async def vision_research_search(
+    file: UploadFile = File(...),
+    query: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Analyzes an academic image (diagram, equation, textbook snippet, paper abstract)
+    using Gemini Multimodal Vision, then retrieves matching library monographs
+    and arXiv/OpenAlex research papers.
+    """
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file must be a valid image (PNG, JPEG, WEBP).",
+        )
+
+    image_bytes = await file.read()
+    if len(image_bytes) > 10 * 1024 * 1024:  # 10MB limit
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image size exceeds 10MB limit.",
+        )
+
+    return analyze_academic_image_service(
+        db=db,
+        image_bytes=image_bytes,
+        mime_type=file.content_type,
+        user_prompt=query,
+    )
 
