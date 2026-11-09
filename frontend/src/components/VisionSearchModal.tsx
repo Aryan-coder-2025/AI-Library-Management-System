@@ -26,6 +26,8 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const recordTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const triggerFilePicker = (acceptType?: string) => {
     if (fileInputRef.current) {
       if (acceptType) {
