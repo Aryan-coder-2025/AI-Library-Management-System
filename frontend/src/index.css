@@ -31,6 +31,11 @@
   --accent-cyan: #38BDF8;
   --nav-item-active-bg: rgba(56, 189, 248, 0.12);
 
+  --card-bg: #0E1626;
+  --card-border: rgba(148, 163, 184, 0.16);
+  --card-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.5), 0 0 10px rgba(37, 99, 235, 0.08);
+  --bg-tertiary: #141F36;
+
   /* Structural Borders */
   --border-subtle: rgba(148, 163, 184, 0.14);
   --border-medium: rgba(148, 163, 184, 0.24);
@@ -102,6 +107,11 @@
   --brand-secondary-hover: #0369a1;
   --accent-cyan: #0284c7;
   --nav-item-active-bg: rgba(2, 132, 199, 0.1);
+
+  --card-bg: #ffffff;
+  --card-border: rgba(203, 213, 225, 0.85);
+  --card-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.08), 0 0 1px rgba(15, 23, 42, 0.1);
+  --bg-tertiary: #f1f5f9;
 
   --border-subtle: rgba(226, 232, 240, 0.9);
   --border-medium: rgba(203, 213, 225, 0.85);

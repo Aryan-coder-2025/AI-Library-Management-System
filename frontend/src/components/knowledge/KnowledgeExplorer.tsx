@@ -10,6 +10,9 @@ export const KnowledgeExplorer: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>([]);
   const [searching, setSearching] = useState<boolean>(false);
+  const [hasSearched, setHasSearched] = useState<boolean>(false);
+  const [lastSearchedQuery, setLastSearchedQuery] = useState<string>('');
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<SubjectTree | null>(null);
 
   useEffect(() => {
@@ -29,19 +32,44 @@ export const KnowledgeExplorer: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) {
+    const q = searchQuery.trim();
+    if (!q) {
       setSearchResults([]);
+      setHasSearched(false);
       return;
     }
     setSearching(true);
+    setSearchError(null);
     try {
-      const res = await searchKnowledge(searchQuery);
-      setSearchResults(res.results);
-    } catch (err) {
-      console.error('Knowledge search failed', err);
+      const res = await searchKnowledge(q);
+      setSearchResults(res.results || []);
+      setHasSearched(true);
+      setLastSearchedQuery(q);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Knowledge search failed';
+      setSearchError(msg.replace(/^\d+:\s*/, ''));
+      setHasSearched(true);
+      setLastSearchedQuery(q);
     } finally {
       setSearching(false);
     }
+  };
+
+  const handleSelectResult = (item: KnowledgeSearchResult) => {
+    // Navigate and highlight the matching subject in the taxonomy tree
+    const matchingSubject = subjects.find(
+      (s) => item.context_path.toLowerCase().includes(s.name.toLowerCase()) || s.id === item.id
+    );
+    if (matchingSubject) {
+      setSelectedSubject(matchingSubject);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchResults([]);
+    setHasSearched(false);
+    setSearchQuery('');
+    setSearchError(null);
   };
 
   return (
@@ -89,78 +117,231 @@ export const KnowledgeExplorer: React.FC = () => {
           Explore structured subject taxonomies, topics, and underlying concepts linked to the library collection.
         </p>
 
-        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '0.5rem' }}>
-          <input
-            type="text"
-            placeholder="Search concepts, topics, or disciplines (e.g. 'neural', 'dijkstra', 'algebra')..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '240px', position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="Search concepts, topics, or disciplines (e.g. 'dijkstra', 'neural networks', 'algebra')..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.65rem 2.2rem 0.65rem 0.85rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                background: 'var(--bg-tertiary, #141F36)',
+                color: 'var(--text-primary, #F8FAFC)',
+                fontSize: '0.9rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = 'var(--accent-cyan, #38BDF8)';
+                e.currentTarget.style.boxShadow = '0 0 0 2px rgba(56, 189, 248, 0.2)';
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border-medium, rgba(148, 163, 184, 0.25))';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: '0.6rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted, #94A3B8)',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  padding: '2px 4px',
+                }}
+                title="Clear input"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={searching}
             style={{
-              flex: 1,
-              padding: '0.6rem 0.85rem',
-              borderRadius: '8px',
-              border: '1px solid var(--card-border)',
-              background: 'var(--bg-tertiary)',
-              color: 'var(--text-primary)',
-              fontSize: '0.9rem',
+              padding: '0.65rem 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              fontWeight: 600,
+              cursor: searching ? 'not-allowed' : 'pointer',
             }}
-          />
-          <button type="submit" className="btn btn-primary" disabled={searching}>
-            {searching ? 'Searching...' : '🔍 Search Knowledge'}
+          >
+            {searching ? '⏳ Searching...' : '🔍 Search Knowledge'}
           </button>
         </form>
+
+        {/* Quick query recommendation chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748B)' }}>Popular queries:</span>
+          {[
+            "dijkstras algorithm",
+            "neural networks",
+            "relational database",
+            "linear algebra",
+            "microservices",
+          ].map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => {
+                setSearchQuery(tag);
+                // Trigger search immediately
+                setSearching(true);
+                setSearchError(null);
+                searchKnowledge(tag)
+                  .then((res) => {
+                    setSearchResults(res.results || []);
+                    setHasSearched(true);
+                    setLastSearchedQuery(tag);
+                  })
+                  .catch((err) => {
+                    const msg = err instanceof Error ? err.message : 'Knowledge search failed';
+                    setSearchError(msg.replace(/^\d+:\s*/, ''));
+                    setHasSearched(true);
+                    setLastSearchedQuery(tag);
+                  })
+                  .finally(() => setSearching(false));
+              }}
+              style={{
+                fontSize: '0.75rem',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                background: 'rgba(56, 189, 248, 0.1)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                color: 'var(--brand-secondary, #38BDF8)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)';
+                e.currentTarget.style.borderColor = 'var(--brand-secondary, #38BDF8)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)';
+                e.currentTarget.style.borderColor = 'rgba(56, 189, 248, 0.25)';
+              }}
+            >
+              + {tag}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* Search Error Display */}
+      {searchError && (
+        <div
+          style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            padding: '1rem',
+            borderRadius: '12px',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#ef4444',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span>⚠️ {searchError}</span>
+          <button
+            type="button"
+            onClick={() => setSearchError(null)}
+            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Search Results Display */}
       {searchResults.length > 0 && (
         <div
           style={{
             background: 'var(--card-bg)',
-            padding: '1rem',
+            padding: '1.25rem',
             borderRadius: '12px',
             border: '1px solid var(--card-border)',
             boxShadow: 'var(--card-shadow)',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-              Search Results for "{searchQuery}" ({searchResults.length} concepts found)
+              Search Results for <span style={{ color: 'var(--accent-cyan)' }}>"{lastSearchedQuery}"</span> ({searchResults.length} concepts & topics found)
             </h4>
             <button
               type="button"
-              onClick={() => setSearchResults([])}
-              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem' }}
+              onClick={handleClearSearch}
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: '0.8rem' }}
             >
               Clear Results
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {searchResults.map((item) => (
               <div
                 key={`${item.item_type}-${item.id}`}
+                onClick={() => handleSelectResult(item)}
                 style={{
-                  padding: '0.75rem',
+                  padding: '0.75rem 1rem',
                   borderRadius: '8px',
                   background: 'var(--bg-tertiary)',
                   border: '1px solid var(--card-border)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--accent-cyan)';
+                  e.currentTarget.style.background = 'rgba(56, 189, 248, 0.08)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--card-border)';
+                  e.currentTarget.style.background = 'var(--bg-tertiary)';
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span
-                    style={{
-                      fontSize: '0.75rem',
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      background: item.item_type === 'concept' ? 'rgba(59, 130, 246, 0.15)' : item.item_type === 'topic' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(128, 87, 245, 0.15)',
-                      color: item.item_type === 'concept' ? 'var(--accent-cyan)' : item.item_type === 'topic' ? '#f59e0b' : 'var(--brand-secondary)',
-                    }}
-                  >
-                    {item.item_type}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        background:
+                          item.item_type === 'concept'
+                            ? 'rgba(59, 130, 246, 0.15)'
+                            : item.item_type === 'topic'
+                            ? 'rgba(245, 158, 11, 0.15)'
+                            : 'rgba(128, 87, 245, 0.15)',
+                        color:
+                          item.item_type === 'concept'
+                            ? 'var(--accent-cyan)'
+                            : item.item_type === 'topic'
+                            ? '#f59e0b'
+                            : 'var(--brand-secondary)',
+                      }}
+                    >
+                      {item.item_type}
+                    </span>
+                    <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>{item.title}</strong>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', fontWeight: 500 }}>
+                    View in Taxonomy →
                   </span>
-                  <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>{item.title}</strong>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
                   <strong>Path:</strong> {item.context_path}
@@ -173,6 +354,27 @@ export const KnowledgeExplorer: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Empty Search State */}
+      {hasSearched && searchResults.length === 0 && !searching && (
+        <div
+          style={{
+            background: 'var(--card-bg)',
+            padding: '1.25rem',
+            borderRadius: '12px',
+            border: '1px solid var(--card-border)',
+            boxShadow: 'var(--card-shadow)',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+            No concepts found matching "{lastSearchedQuery}"
+          </div>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            Try searching for terms like <strong>"algorithm"</strong>, <strong>"dijkstra"</strong>, <strong>"neural"</strong>, <strong>"architecture"</strong>, or explore the Academic Disciplines in the catalog below.
+          </p>
         </div>
       )}
 
