@@ -132,18 +132,22 @@ def _call_gemini_multimodal(
         extracted_doc_text = _extract_docx_text(file_bytes)
     elif is_pptx:
         extracted_doc_text = _extract_pptx_text(file_bytes)
+    elif is_pdf:
+        pdf_text = _extract_pdf_text_fallback(file_bytes)
+        if pdf_text and len(pdf_text.strip()) > 30:
+            extracted_doc_text = pdf_text
 
     # Content parts construction
     parts: List[Dict[str, Any]] = []
 
     if extracted_doc_text:
-        doc_kind = "PowerPoint Presentation Slides" if is_pptx else "Word Document"
-        prompt_intro = f"The student submitted a {doc_kind} with the following extracted content:\n\n{extracted_doc_text[:6000]}\n\n"
+        doc_kind = "PowerPoint Presentation Slides" if is_pptx else ("PDF Document / Academic Paper" if is_pdf else "Word Document")
+        prompt_intro = f"The student submitted a {doc_kind} with the following extracted content:\n\n{extracted_doc_text[:8000]}\n\n"
         if user_prompt:
             prompt_intro += f"Student's Question: {user_prompt}\n"
         parts.append({"text": prompt_intro})
     else:
-        # Pass bytes via inline_data (works for Image, Audio, and PDF!)
+        # Pass bytes via inline_data (works for Image, Audio, and scanned PDF)
         b64_data = base64.b64encode(file_bytes).decode("utf-8")
         parts.append({
             "inline_data": {
@@ -153,8 +157,8 @@ def _call_gemini_multimodal(
         })
         if is_audio:
             prompt_text = (
-                f"Listen carefully to this audio recording (speech/lecture). "
-                f"Transcribe what is spoken into the 'transcription' field, explain the academic principles discussed, "
+                f"Listen carefully to this audio recording (speech/lecture/soundtrack). "
+                f"Transcribe what is spoken into the 'transcription' field, explain the principles/content, "
                 f"and extract search keywords.\nStudent Question: {user_prompt or 'Explain what was discussed'}"
             )
         elif is_pdf:
@@ -169,12 +173,19 @@ def _call_gemini_multimodal(
             )
         parts.append({"text": prompt_text})
 
-    models_to_try = [
-        settings.LLM_MODEL_NAME,
-        "gemini-3.1-flash-lite-preview",
-        "gemini-flash-latest",
-        "gemini-1.5-flash",
-    ]
+    if is_audio:
+        models_to_try = [
+            "gemini-flash-latest",
+            "gemini-3.5-flash",
+            "gemini-2.5-flash",
+            settings.LLM_MODEL_NAME,
+        ]
+    else:
+        models_to_try = [
+            settings.LLM_MODEL_NAME,
+            "gemini-flash-latest",
+            "gemini-3.5-flash",
+        ]
 
     for model_name in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -202,9 +213,6 @@ def _call_gemini_multimodal(
                         return parsed
                 else:
                     logger.warning(f"Model {model_name} returned status {resp.status_code}: {resp.text[:120]}")
-                    # Stop failover if client error (corrupt media or invalid payload)
-                    if 400 <= resp.status_code < 500 and resp.status_code != 429:
-                        break
         except Exception as e:
             logger.warning(f"Error calling {model_name}: {e}")
 
