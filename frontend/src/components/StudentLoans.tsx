@@ -279,7 +279,7 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
                               onClick={() => setSelectedHoldForQR({ id: hold.id, book_title: hold.book_title })}
                               style={{ whiteSpace: 'nowrap' }}
                             >
-                              📱 Collection QR
+                              📱 Collection Token & QR
                             </button>
                           )}
                           {(hold.status === 'waiting' || hold.status === 'ready_for_pickup') && (

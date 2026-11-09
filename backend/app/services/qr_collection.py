@@ -67,10 +67,23 @@ def generate_book_collection_pass(db: Session, user: User, hold_id: int) -> Book
             t.is_used = True
             t.used_at = now
 
-        # Generate unpredictable raw token
-        raw_token = f"ATN-COLLECT-{secrets.token_urlsafe(32)}"
-        token_hash = hash_collection_token(raw_token)
-        expires_at = now + timedelta(minutes=TOKEN_EXPIRE_MINUTES)
+        # Generate clean, memorable unique numeric token code (6 digits, e.g. ATN-COLLECT-749201)
+        while True:
+            token_num = secrets.randbelow(900000) + 100000
+            raw_token = f"ATN-COLLECT-{token_num}"
+            token_hash = hash_collection_token(raw_token)
+            existing_tok = db.execute(
+                select(BookCollectionToken).where(BookCollectionToken.token_hash == token_hash)
+            ).scalar_one_or_none()
+            if not existing_tok:
+                break
+
+        # Token valid until hold pickup expires, or at least 48 hours
+        if hold.pickup_expires_at:
+            pickup_exp = hold.pickup_expires_at.replace(tzinfo=None) if hold.pickup_expires_at.tzinfo else hold.pickup_expires_at
+            expires_at = pickup_exp if pickup_exp > now else (now + timedelta(hours=48))
+        else:
+            expires_at = now + timedelta(hours=48)
 
         token_record = BookCollectionToken(
             hold_id=hold.id,
@@ -108,6 +121,7 @@ def verify_and_fulfill_qr_collection(
     """
     Circulation desk verification of patron's QR collection token.
     Atomically validates token, issues the loan, fulfills the hold, and consumes the token.
+    Supports scanning the full QR payload, entering the raw token, or typing the 6-digit token number.
     """
     if librarian.role != "librarian":
         raise HTTPException(
@@ -119,17 +133,37 @@ def verify_and_fulfill_qr_collection(
     if clean_token.startswith("ATHENAEUM-COLLECT:"):
         clean_token = clean_token.replace("ATHENAEUM-COLLECT:", "", 1).strip()
 
-    token_hash = hash_collection_token(clean_token)
+    # Generate candidate variations (full token, short code, TKN- prefix)
+    candidates = [clean_token]
+    upper_tok = clean_token.upper()
+    if upper_tok not in candidates:
+        candidates.append(upper_tok)
+    if upper_tok.startswith("TKN-"):
+        short_num = upper_tok.replace("TKN-", "", 1).strip()
+        candidates.append(f"ATN-COLLECT-{short_num}")
+        candidates.append(short_num)
+    elif upper_tok.startswith("ATN-COLLECT-"):
+        short_num = upper_tok.replace("ATN-COLLECT-", "", 1).strip()
+        candidates.append(short_num)
+        candidates.append(f"TKN-{short_num}")
+    elif upper_tok.isdigit():
+        candidates.append(f"ATN-COLLECT-{upper_tok}")
+        candidates.append(f"TKN-{upper_tok}")
 
     with atomic_write(db):
-        token_record = db.execute(
-            select(BookCollectionToken).where(BookCollectionToken.token_hash == token_hash)
-        ).scalar_one_or_none()
+        token_record = None
+        for cand in candidates:
+            cand_hash = hash_collection_token(cand)
+            token_record = db.execute(
+                select(BookCollectionToken).where(BookCollectionToken.token_hash == cand_hash)
+            ).scalar_one_or_none()
+            if token_record:
+                break
 
         if not token_record:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid collection pass. Token not recognized.",
+                detail=f"Invalid collection pass token '{clean_token}'. Token not recognized or not found.",
             )
 
         if token_record.is_used:

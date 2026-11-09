@@ -486,6 +486,7 @@ export interface BookHold {
   fulfilled_at?: string | null;
   cancelled_at?: string | null;
   cancellation_reason?: string | null;
+  pickup_token?: string | null;
 }
 
 export interface BookHoldListResponse {

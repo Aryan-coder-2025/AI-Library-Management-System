@@ -17,6 +17,7 @@ export const QRCollectionModal: React.FC<QRCollectionModalProps> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchPass = async () => {
@@ -106,7 +107,55 @@ export const QRCollectionModal: React.FC<QRCollectionModalProps> = ({
               <div>
                 <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">Present at Circulation Desk</p>
                 <h3 className="text-base font-bold text-slate-100 mt-1 line-clamp-1">{bookTitle}</h3>
-                <p className="text-xs text-slate-400">Copy Code: <span className="font-mono text-cyan-300">{pass.copy_code}</span></p>
+                <p className="text-xs text-slate-400">Reserved Copy: <span className="font-mono text-cyan-300">{pass.copy_code}</span></p>
+              </div>
+
+              {/* Unique Token Box for Desk Handover */}
+              <div
+                style={{
+                  background: 'rgba(37, 99, 235, 0.12)',
+                  border: '1.5px solid rgba(56, 189, 248, 0.4)',
+                  borderRadius: '12px',
+                  padding: '0.85rem 1rem',
+                  margin: '0.75rem 0',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', fontWeight: 600 }}>
+                  Unique Token Number for Librarian
+                </div>
+                <div
+                  style={{
+                    fontSize: '1.4rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 800,
+                    letterSpacing: '0.08em',
+                    color: '#38bdf8',
+                    margin: '0.35rem 0',
+                  }}
+                >
+                  {pass.token}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(pass.token);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  style={{
+                    padding: '0.35rem 0.85rem',
+                    fontSize: '0.75rem',
+                    borderRadius: '6px',
+                    background: copied ? '#059669' : '#1e293b',
+                    color: '#f8fafc',
+                    border: '1px solid #334155',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {copied ? '✓ Token Copied!' : '📋 Copy Token Number'}
+                </button>
               </div>
 
               <div className="p-4 bg-white rounded-2xl inline-block shadow-lg mx-auto">
@@ -119,19 +168,19 @@ export const QRCollectionModal: React.FC<QRCollectionModalProps> = ({
                   <span className="font-semibold text-slate-200">{pass.patron_name}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">Token ID:</span>
-                  <span className="font-mono text-xs text-slate-300">{pass.token.slice(0, 16)}...</span>
+                  <span className="text-slate-400">Token Number:</span>
+                  <span className="font-mono text-xs text-slate-200 font-bold">{pass.token}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-400">Valid Until:</span>
                   <span className="text-emerald-400 font-medium">
-                    {new Date(pass.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (2 hrs)
+                    {new Date(pass.expires_at).toLocaleDateString()} ({new Date(pass.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
                   </span>
                 </div>
               </div>
 
-              <p className="text-xs text-slate-400 text-center leading-relaxed">
-                Circulation staff will scan or verify this pass to issue your physical monograph.
+              <p className="text-xs text-slate-300 text-center leading-relaxed">
+                Give this unique token number to the circulation desk librarian, or let them scan your QR pass. Once the librarian verifies and hands you the physical copy, your loan will be approved and active.
               </p>
 
               <button

@@ -720,6 +720,7 @@ class BookHoldResponse(BaseModel):
     fulfilled_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
     cancellation_reason: Optional[str] = None
+    pickup_token: Optional[str] = None
 
 
 class BookHoldListResponse(BaseModel):
@@ -1603,7 +1604,7 @@ class BookCollectionPassResponse(BaseModel):
 
 
 class BookCollectionVerifyRequest(BaseModel):
-    token: str = Field(..., min_length=10, description="Collection pass token string")
+    token: str = Field(..., min_length=3, description="Collection pass token string or numeric token code")
 
 
 class BookCollectionVerifyResponse(BaseModel):

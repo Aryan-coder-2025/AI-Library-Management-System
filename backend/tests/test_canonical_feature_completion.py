@@ -369,6 +369,45 @@ def test_qr_book_collection_lifecycle(
     assert "already been consumed" in rescan_resp.json()["detail"]
 
 
+def test_qr_collection_verify_via_numeric_token_number(
+    client: TestClient,
+    db: Session,
+    student_user: User,
+    librarian_admin: User,
+    physics_monograph: Book,
+    physics_copies: list[BookCopy],
+):
+    # 1. Create a hold
+    db.info["_in_atomic_write"] = True
+    with atomic_write(db):
+        hold = BookHold(
+            book_id=physics_monograph.id,
+            user_id=student_user.id,
+            copy_id=physics_copies[1].id,
+            status="ready_for_pickup",
+            pickup_expires_at=datetime.utcnow() + timedelta(hours=48),
+        )
+        db.add(hold)
+
+    # 2. Generate pass as student
+    student_hdrs = make_headers(client, student_user.id, "student")
+    resp = client.post(f"/api/circulation/qr-collection/pass/{hold.id}", headers=student_hdrs)
+    assert resp.status_code == 200
+    full_token = resp.json()["token"]  # e.g. "ATN-COLLECT-749201"
+    token_code = full_token.replace("ATN-COLLECT-", "")
+
+    # 3. Librarian verifies using just the numeric token number (e.g. "749201")
+    lib_hdrs = make_headers(client, librarian_admin.id, "librarian")
+    verify_resp = client.post(
+        "/api/circulation/qr-collection/verify",
+        json={"token": token_code},
+        headers=lib_hdrs,
+    )
+    assert verify_resp.status_code == 200
+    assert verify_resp.json()["success"] is True
+    assert verify_resp.json()["copy_code"] == physics_copies[1].copy_code
+
+
 # ── 4. CIRC-07: Lost & Damaged Copy Processing (Zero Monetary Fines) ─────────
 
 def test_copy_operational_status_audit_and_reinstatement(

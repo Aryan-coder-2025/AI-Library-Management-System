@@ -29,6 +29,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [placingHold, setPlacingHold] = useState(false);
   const [createdHold, setCreatedHold] = useState<BookHold | null>(null);
   const [showQRPassModal, setShowQRPassModal] = useState<boolean>(false);
+  const [tokenCopied, setTokenCopied] = useState<boolean>(false);
   const [holdMessage, setHoldMessage] = useState<string | null>(null);
   const [holdError, setHoldError] = useState<string | null>(null);
 
@@ -227,25 +228,62 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                           className="alert alert-success"
                           style={{
                             marginTop: '0.75rem',
-                            padding: '0.65rem 0.85rem',
+                            padding: '0.75rem 0.9rem',
                             fontSize: '0.835rem',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: '0.5rem',
                           }}
                         >
-                          <span>{holdMessage}</span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <span>{holdMessage}</span>
+                            {createdHold?.status === 'ready_for_pickup' && (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => setShowQRPassModal(true)}
+                                style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                              >
+                                📱 Show Collection QR Pass
+                              </button>
+                            )}
+                          </div>
+
                           {createdHold?.status === 'ready_for_pickup' && (
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              onClick={() => setShowQRPassModal(true)}
-                              style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                            <div
+                              style={{
+                                marginTop: '0.75rem',
+                                padding: '0.75rem 0.85rem',
+                                background: 'rgba(14, 22, 38, 0.85)',
+                                border: '1px solid rgba(56, 189, 248, 0.4)',
+                                borderRadius: '8px',
+                              }}
                             >
-                              📱 Show Collection QR Pass
-                            </button>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                <div>
+                                  <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#94a3b8', fontWeight: 600 }}>
+                                    Unique Token Number for Librarian Collection Approval:
+                                  </div>
+                                  <div style={{ fontSize: '1.25rem', fontFamily: 'monospace', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.06em', marginTop: '0.15rem' }}>
+                                    {createdHold.pickup_token || createdHold.copy_code || `#${createdHold.id}`}
+                                  </div>
+                                </div>
+                                {createdHold.pickup_token && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(createdHold.pickup_token!);
+                                      setTokenCopied(true);
+                                      setTimeout(() => setTokenCopied(false), 2000);
+                                    }}
+                                    style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                                  >
+                                    {tokenCopied ? '✓ Copied!' : '📋 Copy Token'}
+                                  </button>
+                                )}
+                              </div>
+                              <p style={{ margin: '0.35rem 0 0', fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.4 }}>
+                                Present this token number to the librarian at the circulation desk. After handing you the physical copy, the librarian will verify the token to approve and activate your loan.
+                              </p>
+                            </div>
                           )}
                         </div>
                       )}

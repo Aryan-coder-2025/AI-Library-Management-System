@@ -180,11 +180,11 @@ export const LibrarianCirculation: React.FC = () => {
       {/* QR Book Collection Verification Station (CIRC-03) */}
       <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--color-primary, #2563EB)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-          <h3 style={{ fontSize: '1.05rem', margin: 0 }}>📱 QR Book Collection Desk (Hold Fulfillment)</h3>
-          <span className="badge badge-primary">CIRC-03 Verified</span>
+          <h3 style={{ fontSize: '1.05rem', margin: 0 }}>📱 Online Booking Collection & Loan Approval Desk</h3>
+          <span className="badge badge-primary">Token & QR Verification</span>
         </div>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-          Scan patron QR barcode or paste the secure single-use collection token string presented by a patron for an allocated hold.
+          When a student arrives to collect an online booked reservation, verify their unique token number (given by student) or scan their QR pass to approve and finalize the loan checkout.
         </p>
 
         {qrError && (
@@ -196,24 +196,24 @@ export const LibrarianCirculation: React.FC = () => {
         {qrResult && (
           <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
             <div>
-              <strong>Hold Fulfilled & Loan Issued!</strong>
+              <strong>✅ Loan Approved & Monograph Issued!</strong>
               <div>Book: <strong>{qrResult.book_title}</strong> (Barcode: <code>{qrResult.copy_code}</code>)</div>
               <div>Patron: <strong>{qrResult.patron_name}</strong> | Loan #{qrResult.loan_id} (Due: {new Date(qrResult.due_date).toLocaleDateString()})</div>
             </div>
           </div>
         )}
 
-        <form onSubmit={handleVerifyQrCollection} style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: '0.75rem', alignItems: 'end' }}>
+        <form onSubmit={handleVerifyQrCollection} style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: '0.75rem', alignItems: 'end' }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" htmlFor="qr-token-input">
-              Collection Pass Token *
-              <span className="form-label-hint">(e.g. ATN-COLLECT-... or scanned barcode text)</span>
+              Collection Token Number or Scanned QR Code *
+              <span className="form-label-hint">(e.g. 749201, TKN-749201, ATN-COLLECT-749201, or scanned QR)</span>
             </label>
             <input
               id="qr-token-input"
               type="text"
               className="form-input"
-              placeholder="Paste or scan ATN-COLLECT-..."
+              placeholder="Enter unique token from student (e.g. 749201) or scan QR..."
               value={qrToken}
               onChange={(e) => setQrToken(e.target.value)}
               required
@@ -222,10 +222,10 @@ export const LibrarianCirculation: React.FC = () => {
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ height: '38px' }}
+            style={{ height: '38px', whiteSpace: 'nowrap' }}
             disabled={qrVerifying || !qrToken.trim()}
           >
-            {qrVerifying ? 'Verifying...' : 'Scan / Verify Pass'}
+            {qrVerifying ? 'Approving...' : '✓ Approve & Issue Loan'}
           </button>
         </form>
       </div>

@@ -20,7 +20,11 @@ logger = logging.getLogger("athenaeum.holds")
 DEFAULT_PICKUP_WINDOW_DAYS = 7
 
 
-def serialize_hold(hold: BookHold, queue_position: Optional[int] = None) -> BookHoldResponse:
+def serialize_hold(
+    hold: BookHold,
+    queue_position: Optional[int] = None,
+    pickup_token: Optional[str] = None,
+) -> BookHoldResponse:
     """Serializes a BookHold model into BookHoldResponse schema."""
     book_title = hold.book.title if hold.book else "Unknown Book"
     book_author = hold.book.author if hold.book else None
@@ -46,6 +50,7 @@ def serialize_hold(hold: BookHold, queue_position: Optional[int] = None) -> Book
         fulfilled_at=hold.fulfilled_at,
         cancelled_at=hold.cancelled_at,
         cancellation_reason=hold.cancellation_reason,
+        pickup_token=pickup_token,
     )
 
 
@@ -164,22 +169,32 @@ def place_hold_service(db: Session, user: User, book_id: int) -> BookHoldRespons
             db.flush()
             db.refresh(new_hold)
 
+            # Generate unique collection token and pass for desk collection
+            pickup_token = None
+            try:
+                from app.services.qr_collection import generate_book_collection_pass
+                pass_resp = generate_book_collection_pass(db, user, new_hold.id)
+                pickup_token = pass_resp.token
+            except Exception as e:
+                logger.warning("Could not auto-generate collection token for hold %s: %s", new_hold.id, e)
+
             # Create in-app notification confirming reservation
             book_title = book.title if book else "Monograph"
+            token_notice = f" Your unique collection token is {pickup_token}." if pickup_token else ""
             notification = Notification(
                 user_id=user.id,
                 notification_type="hold_ready",
                 title="Online Loan Reservation Confirmed",
                 message=(
-                    f"Your online loan booking for '{book_title}' is confirmed! Copy {available_copy.copy_code} is reserved at the circulation desk. "
-                    f"Please collect it before {deadline.strftime('%b %d, %Y')} using your Collection QR pass."
+                    f"Your online loan booking for '{book_title}' is confirmed! Copy {available_copy.copy_code} is reserved at the circulation desk.{token_notice} "
+                    f"Present this token to the librarian upon collection before {deadline.strftime('%b %d, %Y')}."
                 ),
                 created_at=now,
                 dedup_key=f"online_reserve:{new_hold.id}:{int(now.timestamp())}",
             )
             db.add(notification)
-            logger.info("Online loan reservation created: allocated copy %s to user %s (hold %s)", available_copy.id, user.id, new_hold.id)
-            return serialize_hold(new_hold, queue_position=1)
+            logger.info("Online loan reservation created: allocated copy %s to user %s (hold %s, token %s)", available_copy.id, user.id, new_hold.id, pickup_token)
+            return serialize_hold(new_hold, queue_position=1, pickup_token=pickup_token)
         else:
             # 4. Monograph currently out of stock: queue patron into FIFO waitlist
             new_hold = BookHold(
