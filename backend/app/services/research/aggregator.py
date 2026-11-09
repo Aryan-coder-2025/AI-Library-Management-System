@@ -126,6 +126,7 @@ class AcademicResearchService:
         year: Optional[int] = None,
         is_oa: Optional[bool] = None,
         use_cache: bool = True,
+        skip_ai_notes: bool = False,
     ) -> AcademicSearchResponse:
         """
         Executes search across requested providers and returns unified, deduplicated results.
@@ -150,8 +151,10 @@ class AcademicResearchService:
         # Check if user query is a research question or asks for notes/synthesis
         q_lower = clean_query.lower()
         needs_ai_brief = (
-            any(w in q_lower for w in ["notes", "explain", "is it", "is ", "why ", "how ", "curable", "cure", "summary", "synthesize", "can you", "what are", "what is"])
-            or len(clean_query.split()) >= 6
+            not skip_ai_notes and (
+                any(w in q_lower for w in ["notes", "explain", "is it", "is ", "why ", "how ", "curable", "cure", "summary", "synthesize", "can you", "what are", "what is"])
+                or len(clean_query.split()) >= 6
+            )
         )
         if needs_ai_brief:
             ai_notes, extracted_kw = generate_ai_research_notes_and_keywords(clean_query)

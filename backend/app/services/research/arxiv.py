@@ -13,8 +13,8 @@ from app.schemas import AcademicPaperResult
 
 logger = logging.getLogger("athenaeum.research.arxiv")
 
-ARXIV_API_URL = "http://export.arxiv.org/api/query"
-DEFAULT_TIMEOUT = 6.0
+ARXIV_API_URL = "https://export.arxiv.org/api/query"
+DEFAULT_TIMEOUT = 5.0
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 ARXIV_NS = "{http://arxiv.org/schemas/atom}"
 
@@ -47,7 +47,7 @@ class ArxivAdapter:
         }
 
         try:
-            with httpx.Client(timeout=self.timeout, headers=self.headers) as client:
+            with httpx.Client(timeout=self.timeout, headers=self.headers, follow_redirects=True) as client:
                 resp = client.get(ARXIV_API_URL, params=params)
                 if resp.status_code != 200:
                     logger.warning("arXiv API returned status %s", resp.status_code)

@@ -173,19 +173,11 @@ def _call_gemini_multimodal(
             )
         parts.append({"text": prompt_text})
 
-    if is_audio:
-        models_to_try = [
-            "gemini-flash-latest",
-            "gemini-3.5-flash",
-            "gemini-2.5-flash",
-            settings.LLM_MODEL_NAME,
-        ]
-    else:
-        models_to_try = [
-            settings.LLM_MODEL_NAME,
-            "gemini-flash-latest",
-            "gemini-3.5-flash",
-        ]
+    models_to_try = [
+        "gemini-3.5-flash-lite",
+        "gemini-flash-latest",
+        settings.LLM_MODEL_NAME,
+    ]
 
     for model_name in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -200,7 +192,7 @@ def _call_gemini_multimodal(
         }
 
         try:
-            with httpx.Client(timeout=15.0) as client:
+            with httpx.Client(timeout=8.0) as client:
                 resp = client.post(url, json=payload)
                 if resp.status_code == 200:
                     data = resp.json()
@@ -300,7 +292,13 @@ def analyze_academic_image_service(
     paper_query = analysis.suggested_scholarly_search or cat_query
     if paper_query:
         try:
-            res = academic_research_service.search_papers(query=paper_query, limit=5, page=1)
+            res = academic_research_service.search_papers(
+                query=paper_query,
+                limit=5,
+                page=1,
+                skip_ai_notes=True,
+                providers=["openalex", "crossref", "arxiv"],
+            )
             for p in res.results:
                 scholarly_papers.append(
                     VisionPaperMatch(
