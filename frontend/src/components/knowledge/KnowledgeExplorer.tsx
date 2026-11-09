@@ -209,15 +209,15 @@ export const KnowledgeExplorer: React.FC = () => {
                     border: 'none',
                     textAlign: 'left',
                     cursor: 'pointer',
-                    background: selectedSubject?.id === s.id ? 'var(--nav-item-active-bg)' : 'transparent',
-                    borderLeft: selectedSubject?.id === s.id ? '3px solid var(--brand-secondary)' : '3px solid transparent',
+                    background: selectedSubject?.id === s.id ? 'var(--nav-item-active-bg, rgba(56, 189, 248, 0.12))' : 'transparent',
+                    borderLeft: selectedSubject?.id === s.id ? '3px solid var(--brand-secondary, #38bdf8)' : '3px solid transparent',
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  <span style={{ fontWeight: 600, fontSize: '0.875rem', color: selectedSubject?.id === s.id ? 'var(--brand-secondary)' : 'var(--text-primary)' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.875rem', color: selectedSubject?.id === s.id ? 'var(--brand-secondary, #38bdf8)' : 'var(--text-primary)' }}>
                     {s.name}
                   </span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: '0.75rem', color: selectedSubject?.id === s.id ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
                     {s.code} • {s.topics.length} topics
                   </span>
                 </button>

@@ -26,6 +26,10 @@
   --color-accent: #0EA5E9;
   --color-accent-subtle: rgba(14, 165, 233, 0.14);
   --color-focus: #3B82F6;
+  --brand-secondary: #38BDF8;
+  --brand-secondary-hover: #0EA5E9;
+  --accent-cyan: #38BDF8;
+  --nav-item-active-bg: rgba(56, 189, 248, 0.12);
 
   /* Structural Borders */
   --border-subtle: rgba(148, 163, 184, 0.14);
@@ -94,6 +98,10 @@
   --color-accent: #0284c7;
   --color-accent-subtle: rgba(2, 132, 199, 0.1);
   --color-focus: #2563eb;
+  --brand-secondary: #0284c7;
+  --brand-secondary-hover: #0369a1;
+  --accent-cyan: #0284c7;
+  --nav-item-active-bg: rgba(2, 132, 199, 0.1);
 
   --border-subtle: rgba(226, 232, 240, 0.9);
   --border-medium: rgba(203, 213, 225, 0.85);
