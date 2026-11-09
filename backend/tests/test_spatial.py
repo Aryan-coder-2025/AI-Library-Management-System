@@ -477,8 +477,13 @@ def test_alembic_upgrade_path_for_spatial_subsystem(tmp_path):
     test_db = tmp_path / "alembic_spatial_test.db"
     db_url = f"sqlite:///{test_db.as_posix()}"
 
-    cfg = Config("backend/alembic.ini")
-    cfg.set_main_option("script_location", "backend/alembic")
+    from pathlib import Path
+    backend_dir = Path(__file__).resolve().parent.parent
+    ini_path = backend_dir / "alembic.ini"
+    alembic_dir = backend_dir / "alembic"
+
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("script_location", str(alembic_dir))
     cfg.set_main_option("sqlalchemy.url", db_url)
 
     # 1. Upgrade from empty to head
