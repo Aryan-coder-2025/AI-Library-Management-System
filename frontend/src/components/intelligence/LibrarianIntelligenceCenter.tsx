@@ -1,130 +1,169 @@
-import React, { useEffect, useState } from 'react';
-import type {
-  AcquisitionRequestItem,
-  AcquisitionSuggestionItem,
-  CirculationTrends,
-  IntelligenceSnapshot,
-  InventoryAnalytics,
-  TwoWeekDemandForecast,
-} from '../../types/library';
+import React, { useState, useEffect, useCallback } from 'react';
+import { apiFetch, getCsrfToken } from '../../services/apiClient';
+
+interface ExecutiveSnapshot {
+  active_loans_count: number;
+  overdue_loans_count: number;
+  overdue_rate_pct: number;
+  active_holds_count: number;
+  current_occupancy_pct: number;
+  peak_occupancy_hour: number;
+  monograph_count: number;
+  generated_at: string;
+}
+
+interface CirculationPoint {
+  date: string;
+  issues: number;
+  returns: number;
+}
+
+interface CirculationTrends {
+  points: CirculationPoint[];
+  total_issues: number;
+  total_returns: number;
+  velocity_ratio: number;
+}
+
+interface InventoryMetrics {
+  total_monographs: number;
+  total_physical_copies: number;
+  available_copies: number;
+  borrowed_copies: number;
+  maintenance_copies: number;
+  damaged_copies: number;
+  lost_copies: number;
+  high_demand_titles_count: number;
+  zero_borrow_titles_count: number;
+  collection_turnover_rate: number;
+  total_audit_events_count: number;
+}
+
+interface DemandProjection {
+  date: string;
+  day_of_week: string;
+  projected_checkouts: number;
+  lower_bound: number;
+  upper_bound: number;
+}
+
+interface DemandForecast {
+  projections: DemandProjection[];
+  baseline_daily_average: number;
+  trend_direction: string;
+  methodology: string;
+}
+
+interface AcquisitionRequest {
+  id: number;
+  suggested_title: string;
+  suggested_author?: string;
+  isbn?: string;
+  status: 'suggested' | 'approved' | 'ordered' | 'received' | 'rejected';
+  requested_by_id?: number;
+  rationale?: string;
+  estimated_cost?: number;
+  created_at: string;
+}
+
+interface ZeroResultSuggestion {
+  query_text: string;
+  frequency: number;
+  last_searched: string;
+}
 
 export const LibrarianIntelligenceCenter: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'snapshot' | 'inventory' | 'forecast' | 'acquisitions'>('snapshot');
 
-  // Data states
-  const [snapshot, setSnapshot] = useState<IntelligenceSnapshot | null>(null);
-  const [inventory, setInventory] = useState<InventoryAnalytics | null>(null);
+  const [snapshot, setSnapshot] = useState<ExecutiveSnapshot | null>(null);
   const [trends, setTrends] = useState<CirculationTrends | null>(null);
-  const [forecast, setForecast] = useState<TwoWeekDemandForecast | null>(null);
-  const [suggestions, setSuggestions] = useState<AcquisitionSuggestionItem[]>([]);
-  const [acquisitions, setAcquisitions] = useState<AcquisitionRequestItem[]>([]);
+  const [inventory, setInventory] = useState<InventoryMetrics | null>(null);
+  const [forecast, setForecast] = useState<DemandForecast | null>(null);
+  const [acquisitions, setAcquisitions] = useState<AcquisitionRequest[]>([]);
+  const [suggestions, setSuggestions] = useState<ZeroResultSuggestion[]>([]);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // New acquisition modal
+  // Modal State for new candidate request
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
-  const [reqTitle, setReqTitle] = useState<string>('');
-  const [reqAuthor, setReqAuthor] = useState<string>('');
-  const [reqIsbn, setReqIsbn] = useState<string>('');
-  const [reqNotes, setReqNotes] = useState<string>('');
-  const [submittingReq, setSubmittingReq] = useState<boolean>(false);
+  const [reqTitle, setReqTitle] = useState('');
+  const [reqAuthor, setReqAuthor] = useState('');
+  const [reqIsbn, setReqIsbn] = useState('');
+  const [reqNotes, setReqNotes] = useState('');
+  const [submittingReq, setSubmittingReq] = useState(false);
 
-  useEffect(() => {
-    fetchAllIntelligenceData();
-  }, []);
-
-  const fetchAllIntelligenceData = async () => {
+  const fetchAllIntelligenceData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-
-      const [resSnap, resInv, resTrends, resFore, resSugg, resAcq] = await Promise.all([
-        fetch('/api/intelligence/snapshot'),
-        fetch('/api/intelligence/inventory'),
-        fetch('/api/intelligence/circulation-trends?days=14'),
-        fetch('/api/intelligence/forecast'),
-        fetch('/api/intelligence/acquisitions/suggestions?limit=15'),
-        fetch('/api/intelligence/acquisitions/requests'),
+      const [snapRes, trendsRes, invRes, foreRes, acqRes, suggRes] = await Promise.all([
+        apiFetch<ExecutiveSnapshot>('/api/intelligence/snapshot').catch(() => null),
+        apiFetch<CirculationTrends>('/api/intelligence/circulation-velocity?days=14').catch(() => null),
+        apiFetch<InventoryMetrics>('/api/intelligence/inventory-turnover').catch(() => null),
+        apiFetch<DemandForecast>('/api/intelligence/demand-forecast?days=14').catch(() => null),
+        apiFetch<AcquisitionRequest[]>('/api/intelligence/acquisitions').catch(() => []),
+        apiFetch<ZeroResultSuggestion[]>('/api/intelligence/zero-result-suggestions').catch(() => []),
       ]);
 
-      if (resSnap.ok) setSnapshot(await resSnap.json());
-      if (resInv.ok) setInventory(await resInv.json());
-      if (resTrends.ok) setTrends(await resTrends.json());
-      if (resFore.ok) setForecast(await resFore.json());
-      if (resSugg.ok) {
-        const data = await resSugg.json();
-        setSuggestions(data.suggestions || []);
-      }
-      if (resAcq.ok) {
-        const data = await resAcq.json();
-        setAcquisitions(data.items || []);
-      }
-    } catch (err) {
-      setError('Failed to load library intelligence metrics.');
+      if (snapRes) setSnapshot(snapRes);
+      if (trendsRes) setTrends(trendsRes);
+      if (invRes) setInventory(invRes);
+      if (foreRes) setForecast(foreRes);
+      if (acqRes) setAcquisitions(acqRes);
+      if (suggRes) setSuggestions(suggRes);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to retrieve intelligence analytics.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchAllIntelligenceData();
+  }, [fetchAllIntelligenceData]);
 
   const handleCreateAcquisitionRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reqTitle.trim()) return;
 
+    setSubmittingReq(true);
     try {
-      setSubmittingReq(true);
-      const csrfToken = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('csrf_token='))
-        ?.split('=')[1] || '';
-
-      const res = await fetch('/api/intelligence/acquisitions/requests', {
+      const csrfToken = getCsrfToken();
+      const res = await fetch('/api/intelligence/acquisitions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken,
         },
         body: JSON.stringify({
-          title: reqTitle.trim(),
-          author: reqAuthor.trim() || undefined,
+          suggested_title: reqTitle.trim(),
+          suggested_author: reqAuthor.trim() || undefined,
           isbn: reqIsbn.trim() || undefined,
-          notes: reqNotes.trim() || undefined,
+          rationale: reqNotes.trim() || undefined,
         }),
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to create acquisition request.');
+      if (res.ok) {
+        setShowAddModal(false);
+        setReqTitle('');
+        setReqAuthor('');
+        setReqIsbn('');
+        setReqNotes('');
+        fetchAllIntelligenceData();
       }
-
-      setShowAddModal(false);
-      setReqTitle('');
-      setReqAuthor('');
-      setReqIsbn('');
-      setReqNotes('');
-      // Refresh requests
-      const resAcq = await fetch('/api/intelligence/acquisitions/requests');
-      if (resAcq.ok) {
-        const data = await resAcq.json();
-        setAcquisitions(data.items || []);
-      }
-    } catch (err: any) {
-      alert(err.message || 'Error submitting request.');
+    } catch (err) {
+      console.error('Failed to create acquisition candidate:', err);
     } finally {
       setSubmittingReq(false);
     }
   };
 
-  const handleUpdateAcquisitionStatus = async (
-    reqId: number,
-    newStatus: 'approved' | 'rejected' | 'ordered' | 'received',
-  ) => {
+  const handleUpdateAcquisitionStatus = async (reqId: number, newStatus: string) => {
     try {
-      const csrfToken = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('csrf_token='))
-        ?.split('=')[1] || '';
-
-      const res = await fetch(`/api/intelligence/acquisitions/requests/${reqId}`, {
+      const csrfToken = getCsrfToken();
+      const res = await fetch(`/api/intelligence/acquisitions/${reqId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -135,7 +174,7 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
 
       if (res.ok) {
         setAcquisitions((prev) =>
-          prev.map((item) => (item.id === reqId ? { ...item, status: newStatus } : item))
+          prev.map((item) => (item.id === reqId ? { ...item, status: newStatus as any } : item))
         );
       }
     } catch (err) {
@@ -144,24 +183,60 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8 animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-6">
+    <div style={{ maxWidth: '1360px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '3rem' }}>
+      {/* Cockpit Header */}
+      <div
+        style={{
+          background: 'var(--card-bg, #0E1626)',
+          border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+          borderRadius: '14px',
+          padding: '1.5rem 1.75rem',
+          boxShadow: 'var(--card-shadow)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
+        }}
+      >
         <div>
-          <div className="flex items-center space-x-3">
-            <span className="text-3xl">🏛️</span>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-100 tracking-tight">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontSize: '1.75rem' }}>🏛️</span>
+            <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary, #F8FAFC)', letterSpacing: '-0.02em' }}>
               Librarian Intelligence Centre
-            </h1>
+            </h2>
+            <span
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                background: 'rgba(56, 189, 248, 0.12)',
+                color: 'var(--brand-secondary, #38BDF8)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+              }}
+            >
+              ADMIN COCKPIT
+            </span>
           </div>
-          <p className="text-slate-400 text-sm mt-1 max-w-2xl">
+          <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary, #94A3B8)', maxWidth: '780px', lineHeight: 1.5 }}>
             Unified administrative intelligence cockpit for institutional circulation trends, collection turnover, predictive demand forecasting, and zero-search procurement workflows.
           </p>
         </div>
 
         <button
+          type="button"
           onClick={fetchAllIntelligenceData}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center space-x-2"
+          className="btn btn-secondary"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.6rem 1.15rem',
+            fontSize: '0.825rem',
+            fontWeight: 600,
+          }}
         >
           <span>🔄</span>
           <span>Refresh Data</span>
@@ -169,117 +244,252 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-950/40 border border-red-800/60 rounded-xl text-xs text-red-300">
-          {error}
+        <div className="alert alert-error">
+          <span>⚠️ {error}</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={fetchAllIntelligenceData}>
+            Retry
+          </button>
         </div>
       )}
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex space-x-2 border-b border-slate-800">
-        <button
-          onClick={() => setActiveTab('snapshot')}
-          className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition ${
-            activeTab === 'snapshot'
-              ? 'bg-slate-800/90 text-cyan-400 border-t-2 border-cyan-500 border-x border-slate-700'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-          }`}
-        >
-          📊 Executive Snapshot (INTEL-02)
-        </button>
-        <button
-          onClick={() => setActiveTab('inventory')}
-          className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition ${
-            activeTab === 'inventory'
-              ? 'bg-slate-800/90 text-cyan-400 border-t-2 border-cyan-500 border-x border-slate-700'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-          }`}
-        >
-          📦 Inventory & Turnover (INTEL-04)
-        </button>
-        <button
-          onClick={() => setActiveTab('forecast')}
-          className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition ${
-            activeTab === 'forecast'
-              ? 'bg-slate-800/90 text-cyan-400 border-t-2 border-cyan-500 border-x border-slate-700'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-          }`}
-        >
-          📈 2-Week Demand Forecast (INTEL-03)
-        </button>
-        <button
-          onClick={() => setActiveTab('acquisitions')}
-          className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition ${
-            activeTab === 'acquisitions'
-              ? 'bg-slate-800/90 text-cyan-400 border-t-2 border-cyan-500 border-x border-slate-700'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-          }`}
-        >
-          🛍️ Acquisitions Pipeline (INTEL-05)
-        </button>
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          borderBottom: '1px solid var(--border-medium, rgba(148, 163, 184, 0.2))',
+          paddingBottom: '0.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        {[
+          { key: 'snapshot', label: '📊 Executive Snapshot (INTEL-02)' },
+          { key: 'inventory', label: '📦 Inventory & Turnover (INTEL-04)' },
+          { key: 'forecast', label: '📈 2-Week Demand Forecast (INTEL-03)' },
+          { key: 'acquisitions', label: '🛍️ Acquisitions Pipeline (INTEL-05)' },
+        ].map((tab) => {
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key as any)}
+              style={{
+                padding: '0.6rem 1.15rem',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                border: isActive
+                  ? '1px solid var(--brand-secondary, #38BDF8)'
+                  : '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+                background: isActive ? 'var(--nav-item-active-bg, rgba(56, 189, 248, 0.14))' : 'var(--bg-surface, #0E1626)',
+                color: isActive ? 'var(--brand-secondary, #38BDF8)' : 'var(--text-secondary, #94A3B8)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-slate-500 text-sm">Aggregating institutional telemetry...</div>
+        <div
+          style={{
+            background: 'var(--card-bg, #0E1626)',
+            padding: '4rem 1rem',
+            borderRadius: '12px',
+            border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+            textAlign: 'center',
+            color: 'var(--text-secondary, #94A3B8)',
+            fontSize: '0.95rem',
+          }}
+        >
+          <span style={{ fontSize: '2rem', display: 'block', marginBottom: '0.75rem' }}>⏳</span>
+          Aggregating institutional telemetry & circulation intelligence...
+        </div>
       ) : (
         <div>
           {/* TAB 1: EXECUTIVE SNAPSHOT */}
           {activeTab === 'snapshot' && snapshot && (
-            <div className="space-y-6">
-              {/* KPI Cards Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Active Loans</span>
-                  <p className="text-2xl font-black text-slate-100">{snapshot.active_loans_count}</p>
-                  <p className="text-[11px] text-cyan-400">Total circulating items</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              {/* 4 KPI Cards Grid */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                  gap: '1rem',
+                }}
+              >
+                <div
+                  style={{
+                    background: 'var(--card-bg, #0E1626)',
+                    border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                    borderRadius: '12px',
+                    padding: '1.25rem',
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted, #64748B)', letterSpacing: '0.05em' }}>
+                    Active Loans
+                  </span>
+                  <div style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--accent-cyan, #38BDF8)', margin: '0.35rem 0' }}>
+                    {snapshot.active_loans_count}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                    Total circulating monograph copies
+                  </div>
                 </div>
 
-                <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Overdue Rate</span>
-                  <p className="text-2xl font-black text-rose-400">{snapshot.overdue_rate_pct}%</p>
-                  <p className="text-[11px] text-slate-400">{snapshot.overdue_loans_count} overdue accounts</p>
+                <div
+                  style={{
+                    background: 'var(--card-bg, #0E1626)',
+                    border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                    borderRadius: '12px',
+                    padding: '1.25rem',
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted, #64748B)', letterSpacing: '0.05em' }}>
+                    Overdue Rate
+                  </span>
+                  <div style={{ fontSize: '2.2rem', fontWeight: 800, color: snapshot.overdue_rate_pct > 0 ? '#FB7185' : '#34D399', margin: '0.35rem 0' }}>
+                    {snapshot.overdue_rate_pct}%
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                    {snapshot.overdue_loans_count} overdue patron accounts
+                  </div>
                 </div>
 
-                <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Active Holds</span>
-                  <p className="text-2xl font-black text-amber-400">{snapshot.active_holds_count}</p>
-                  <p className="text-[11px] text-slate-400">Patrons in waitlist queue</p>
+                <div
+                  style={{
+                    background: 'var(--card-bg, #0E1626)',
+                    border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                    borderRadius: '12px',
+                    padding: '1.25rem',
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted, #64748B)', letterSpacing: '0.05em' }}>
+                    Active Holds
+                  </span>
+                  <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#FBBF24', margin: '0.35rem 0' }}>
+                    {snapshot.active_holds_count}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                    Patrons currently in reservation waitlist
+                  </div>
                 </div>
 
-                <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Space Occupancy</span>
-                  <p className="text-2xl font-black text-emerald-400">{snapshot.current_occupancy_pct}%</p>
-                  <p className="text-[11px] text-slate-400">Peak Hour: ~{snapshot.peak_occupancy_hour}:00</p>
+                <div
+                  style={{
+                    background: 'var(--card-bg, #0E1626)',
+                    border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                    borderRadius: '12px',
+                    padding: '1.25rem',
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted, #64748B)', letterSpacing: '0.05em' }}>
+                    Space Occupancy
+                  </span>
+                  <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#34D399', margin: '0.35rem 0' }}>
+                    {snapshot.current_occupancy_pct}%
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                    Diurnal Peak Hour: ~{snapshot.peak_occupancy_hour}:00
+                  </div>
                 </div>
               </div>
 
-              {/* 14-Day Circulation Trends */}
+              {/* 14-Day Circulation Trends Visual Velocity */}
               {trends && (
-                <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4">
-                  <div className="flex justify-between items-center">
+                <div
+                  style={{
+                    background: 'var(--card-bg, #0E1626)',
+                    border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                    borderRadius: '14px',
+                    padding: '1.5rem',
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-200">14-Day Circulation Velocity</h3>
-                      <p className="text-xs text-slate-400">Daily monograph issue and return volume.</p>
+                      <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary, #F8FAFC)' }}>
+                        14-Day Circulation Velocity
+                      </h3>
+                      <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                        Daily monograph checkout issues and returns velocity across the library network.
+                      </p>
                     </div>
-                    <div className="flex items-center space-x-4 text-xs">
-                      <span className="flex items-center space-x-1.5 text-cyan-400">
-                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>
-                        <span>Issues ({trends.total_issues})</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.8rem' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-cyan, #38BDF8)', fontWeight: 600 }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#38BDF8' }} />
+                        Issues ({trends.total_issues})
                       </span>
-                      <span className="flex items-center space-x-1.5 text-emerald-400">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                        <span>Returns ({trends.total_returns})</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#34D399', fontWeight: 600 }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#34D399' }} />
+                        Returns ({trends.total_returns})
                       </span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-7 md:grid-cols-14 gap-2 pt-4">
+                  {/* 14 Daily Velocity Cards */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
+                      gap: '0.5rem',
+                      paddingTop: '0.5rem',
+                    }}
+                  >
                     {trends.points.map((pt) => (
-                      <div key={pt.date} className="flex flex-col items-center space-y-1">
-                        <div className="w-full bg-slate-950/60 rounded-lg p-2 text-center border border-slate-800">
-                          <span className="text-[10px] text-cyan-300 font-bold block">{pt.issues}</span>
-                          <span className="text-[10px] text-emerald-300 font-bold block">{pt.returns}</span>
+                      <div
+                        key={pt.date}
+                        style={{
+                          background: 'var(--bg-tertiary, #141F36)',
+                          border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.15))',
+                          borderRadius: '8px',
+                          padding: '0.65rem 0.35rem',
+                          textAlign: 'center',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.35rem',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted, #64748B)', fontFamily: 'monospace' }}>
+                          {pt.date.slice(5)}
                         </div>
-                        <span className="text-[9px] text-slate-500 font-mono">{pt.date.slice(5)}</span>
+                        <div style={{ width: '100%', display: 'flex', justifyContent: 'space-around', gap: '2px' }}>
+                          <span
+                            title="Issues"
+                            style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              color: '#38BDF8',
+                              background: 'rgba(56, 189, 248, 0.15)',
+                              padding: '2px 5px',
+                              borderRadius: '4px',
+                            }}
+                          >
+                            {pt.issues}
+                          </span>
+                          <span
+                            title="Returns"
+                            style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              color: '#34D399',
+                              background: 'rgba(52, 211, 153, 0.15)',
+                              padding: '2px 5px',
+                              borderRadius: '4px',
+                            }}
+                          >
+                            {pt.returns}
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -290,80 +500,141 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
 
           {/* TAB 2: INVENTORY ANALYTICS */}
           {activeTab === 'inventory' && inventory && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Collection Turnover</h3>
-                  <div className="flex items-baseline space-x-2">
-                    <p className="text-4xl font-extrabold text-cyan-400">{inventory.collection_turnover_rate}x</p>
-                    <span className="text-xs text-slate-400">lifetime loan turnover</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                  gap: '1.25rem',
+                }}
+              >
+                <div
+                  style={{
+                    background: 'var(--card-bg, #0E1626)',
+                    border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                    borderRadius: '12px',
+                    padding: '1.5rem',
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted, #64748B)' }}>
+                    Collection Turnover
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', margin: '0.5rem 0' }}>
+                    <span style={{ fontSize: '2.5rem', fontWeight: 900, color: 'var(--brand-secondary, #38BDF8)' }}>
+                      {inventory.collection_turnover_rate}x
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                      lifetime loan turnover
+                    </span>
                   </div>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Evaluated across {inventory.total_monographs} monograph titles and {inventory.total_physical_copies} copies.
+                  <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--text-secondary, #94A3B8)', lineHeight: 1.5 }}>
+                    Evaluated across {inventory.total_monographs} monograph titles and {inventory.total_physical_copies} total physical items in collection.
                   </p>
                 </div>
 
-                <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Demand Distribution</h3>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">High-Demand Titles:</span>
-                      <span className="font-bold text-amber-300">{inventory.high_demand_titles_count}</span>
+                <div
+                  style={{
+                    background: 'var(--card-bg, #0E1626)',
+                    border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                    borderRadius: '12px',
+                    padding: '1.5rem',
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted, #64748B)' }}>
+                    Demand Distribution
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.75rem', fontSize: '0.85rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.1))', paddingBottom: '0.4rem' }}>
+                      <span style={{ color: 'var(--text-secondary, #94A3B8)' }}>High-Demand Titles:</span>
+                      <strong style={{ color: '#FBBF24' }}>{inventory.high_demand_titles_count}</strong>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Zero-Borrow Titles:</span>
-                      <span className="font-bold text-slate-300">{inventory.zero_borrow_titles_count}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.1))', paddingBottom: '0.4rem' }}>
+                      <span style={{ color: 'var(--text-secondary, #94A3B8)' }}>Zero-Borrow Titles:</span>
+                      <strong style={{ color: 'var(--text-primary, #F8FAFC)' }}>{inventory.zero_borrow_titles_count}</strong>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Audit Events Recorded:</span>
-                      <span className="font-bold text-cyan-300">{inventory.total_audit_events_count}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary, #94A3B8)' }}>Audit Events Recorded:</span>
+                      <strong style={{ color: '#38BDF8' }}>{inventory.total_audit_events_count}</strong>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Degradation & Loss</h3>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Under Maintenance:</span>
-                      <span className="font-bold text-amber-400">{inventory.maintenance_copies}</span>
+                <div
+                  style={{
+                    background: 'var(--card-bg, #0E1626)',
+                    border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                    borderRadius: '12px',
+                    padding: '1.5rem',
+                    boxShadow: 'var(--card-shadow)',
+                  }}
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-muted, #64748B)' }}>
+                    Degradation & Loss Status
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.75rem', fontSize: '0.85rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.1))', paddingBottom: '0.4rem' }}>
+                      <span style={{ color: 'var(--text-secondary, #94A3B8)' }}>Under Maintenance:</span>
+                      <strong style={{ color: '#FBBF24' }}>{inventory.maintenance_copies}</strong>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Damaged Flagged:</span>
-                      <span className="font-bold text-rose-400">{inventory.damaged_copies}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.1))', paddingBottom: '0.4rem' }}>
+                      <span style={{ color: 'var(--text-secondary, #94A3B8)' }}>Damaged Flagged:</span>
+                      <strong style={{ color: '#FB7185' }}>{inventory.damaged_copies}</strong>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Lost Reported:</span>
-                      <span className="font-bold text-red-500">{inventory.lost_copies}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary, #94A3B8)' }}>Lost Reported:</span>
+                      <strong style={{ color: '#EF4444' }}>{inventory.lost_copies}</strong>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Physical Copy Operational Status Bar */}
-              <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4">
-                <h3 className="text-sm font-bold text-slate-200">Physical Copy Fleet Distribution</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-center">
-                  <div className="p-3 bg-slate-950/60 border border-emerald-800/40 rounded-xl">
-                    <span className="text-xs text-emerald-400 font-semibold block">Available</span>
-                    <span className="text-lg font-bold text-slate-100">{inventory.available_copies}</span>
-                  </div>
-                  <div className="p-3 bg-slate-950/60 border border-cyan-800/40 rounded-xl">
-                    <span className="text-xs text-cyan-400 font-semibold block">On Loan</span>
-                    <span className="text-lg font-bold text-slate-100">{inventory.borrowed_copies}</span>
-                  </div>
-                  <div className="p-3 bg-slate-950/60 border border-amber-800/40 rounded-xl">
-                    <span className="text-xs text-amber-400 font-semibold block">Maintenance</span>
-                    <span className="text-lg font-bold text-slate-100">{inventory.maintenance_copies}</span>
-                  </div>
-                  <div className="p-3 bg-slate-950/60 border border-rose-800/40 rounded-xl">
-                    <span className="text-xs text-rose-400 font-semibold block">Damaged</span>
-                    <span className="text-lg font-bold text-slate-100">{inventory.damaged_copies}</span>
-                  </div>
-                  <div className="p-3 bg-slate-950/60 border border-red-800/40 rounded-xl">
-                    <span className="text-xs text-red-400 font-semibold block">Lost</span>
-                    <span className="text-lg font-bold text-slate-100">{inventory.lost_copies}</span>
-                  </div>
+              <div
+                style={{
+                  background: 'var(--card-bg, #0E1626)',
+                  border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                  borderRadius: '14px',
+                  padding: '1.5rem',
+                  boxShadow: 'var(--card-shadow)',
+                }}
+              >
+                <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', color: 'var(--text-primary, #F8FAFC)' }}>
+                  Physical Copy Operational Fleet Distribution ({inventory.total_physical_copies} copies)
+                </h3>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                    gap: '0.75rem',
+                  }}
+                >
+                  {[
+                    { label: 'Available (Shelf)', count: inventory.available_copies, color: '#34D399', bg: 'rgba(52, 211, 153, 0.12)' },
+                    { label: 'On Loan', count: inventory.borrowed_copies, color: '#38BDF8', bg: 'rgba(56, 189, 248, 0.12)' },
+                    { label: 'Maintenance', count: inventory.maintenance_copies, color: '#FBBF24', bg: 'rgba(251, 191, 36, 0.12)' },
+                    { label: 'Damaged', count: inventory.damaged_copies, color: '#FB7185', bg: 'rgba(251, 113, 133, 0.12)' },
+                    { label: 'Lost', count: inventory.lost_copies, color: '#EF4444', bg: 'rgba(239, 68, 68, 0.12)' },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      style={{
+                        padding: '1rem',
+                        background: 'var(--bg-tertiary, #141F36)',
+                        border: `1px solid ${stat.color}40`,
+                        borderRadius: '10px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: stat.color, display: 'block', marginBottom: '0.25rem' }}>
+                        {stat.label}
+                      </span>
+                      <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary, #F8FAFC)' }}>
+                        {stat.count}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -371,33 +642,87 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
 
           {/* TAB 3: DEMAND FORECASTING */}
           {activeTab === 'forecast' && forecast && (
-            <div className="space-y-6">
-              <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div
+                style={{
+                  background: 'var(--card-bg, #0E1626)',
+                  border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                  borderRadius: '14px',
+                  padding: '1.5rem',
+                  boxShadow: 'var(--card-shadow)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-200">14-Day Forward Checkout Demand Projection</h3>
-                    <p className="text-xs text-slate-400">{forecast.methodology}</p>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary, #F8FAFC)' }}>
+                      14-Day Forward Checkout Demand Projection
+                    </h3>
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                      {forecast.methodology}
+                    </p>
                   </div>
-                  <div className="flex items-center space-x-3 text-xs">
-                    <span className="px-2.5 py-1 bg-slate-800 text-slate-300 rounded-lg">
-                      Baseline: <strong className="text-cyan-300">{forecast.baseline_daily_average}/day</strong>
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <span
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        borderRadius: '8px',
+                        background: 'var(--bg-tertiary, #141F36)',
+                        border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.2))',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-secondary, #94A3B8)',
+                      }}
+                    >
+                      Baseline: <strong style={{ color: '#38BDF8' }}>{forecast.baseline_daily_average}/day</strong>
                     </span>
-                    <span className="px-2.5 py-1 bg-slate-800 text-slate-300 rounded-lg">
-                      Trend: <strong className="text-emerald-300 uppercase">{forecast.trend_direction}</strong>
+                    <span
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        borderRadius: '8px',
+                        background: 'var(--bg-tertiary, #141F36)',
+                        border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.2))',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-secondary, #94A3B8)',
+                      }}
+                    >
+                      Trend: <strong style={{ color: '#34D399', textTransform: 'uppercase' }}>{forecast.trend_direction}</strong>
                     </span>
                   </div>
                 </div>
 
-                {/* Forecast Table / Graph Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-7 gap-3 pt-4">
+                {/* 14 Daily Forecast Cards */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(75px, 1fr))',
+                    gap: '0.5rem',
+                  }}
+                >
                   {forecast.projections.map((p) => (
-                    <div key={p.date} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl text-center space-y-1">
-                      <span className="text-[11px] font-bold text-slate-300 block">{p.day_of_week.slice(0, 3)}</span>
-                      <span className="text-[10px] text-slate-500 font-mono block">{p.date.slice(5)}</span>
-                      <p className="text-lg font-extrabold text-cyan-400 mt-1">{p.projected_checkouts}</p>
-                      <p className="text-[9px] text-slate-400 font-mono">
+                    <div
+                      key={p.date}
+                      style={{
+                        background: 'var(--bg-tertiary, #141F36)',
+                        border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.15))',
+                        borderRadius: '10px',
+                        padding: '0.75rem 0.35rem',
+                        textAlign: 'center',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.2rem',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary, #94A3B8)' }}>
+                        {p.day_of_week.slice(0, 3)}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted, #64748B)', fontFamily: 'monospace' }}>
+                        {p.date.slice(5)}
+                      </span>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--brand-secondary, #38BDF8)', margin: '0.25rem 0' }}>
+                        {p.projected_checkouts}
+                      </div>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted, #64748B)', fontFamily: 'monospace' }}>
                         [{p.lower_bound} - {p.upper_bound}]
-                      </p>
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -407,34 +732,84 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
 
           {/* TAB 4: ACQUISITIONS PIPELINE */}
           {activeTab === 'acquisitions' && (
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-200">Zero-Result Search Demand Signals (INTEL-05)</h3>
-                  <p className="text-xs text-slate-400">Unmet student search demand revealing gaps in library holdings.</p>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary, #F8FAFC)' }}>
+                    Zero-Result Search Demand Signals (INTEL-05)
+                  </h3>
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                    Unmet student search demand revealing holdings gaps and candidate procurement recommendations.
+                  </p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowAddModal(true)}
-                  className="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-xl transition"
+                  className="btn btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.825rem', padding: '0.55rem 1rem' }}
                 >
-                  + Add Candidate Title
+                  <span>+</span>
+                  <span>Add Candidate Title</span>
                 </button>
               </div>
 
               {/* Zero-Result Search Suggestions Table */}
-              <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Patron Search Telemetry Signals</h4>
+              <div
+                style={{
+                  background: 'var(--card-bg, #0E1626)',
+                  border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                  borderRadius: '14px',
+                  padding: '1.25rem',
+                  boxShadow: 'var(--card-shadow)',
+                }}
+              >
+                <h4 style={{ margin: '0 0 0.85rem 0', fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted, #64748B)', textTransform: 'uppercase' }}>
+                  Patron Search Telemetry Signals
+                </h4>
                 {suggestions.length === 0 ? (
-                  <p className="text-xs text-slate-500 p-4 text-center">No zero-result searches logged in current period.</p>
+                  <p style={{ margin: 0, textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted, #64748B)', fontSize: '0.85rem' }}>
+                    No zero-result searches logged in the current telemetry window.
+                  </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                      gap: '0.75rem',
+                    }}
+                  >
                     {suggestions.map((s, idx) => (
-                      <div key={idx} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl flex justify-between items-center text-xs">
+                      <div
+                        key={idx}
+                        style={{
+                          background: 'var(--bg-tertiary, #141F36)',
+                          border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+                          borderRadius: '10px',
+                          padding: '0.85rem 1rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
                         <div>
-                          <p className="font-semibold text-slate-200">"{s.query_text}"</p>
-                          <span className="text-[10px] text-slate-500">Last: {new Date(s.last_searched).toLocaleDateString()}</span>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary, #F8FAFC)', fontSize: '0.875rem' }}>
+                            "{s.query_text}"
+                          </div>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted, #64748B)' }}>
+                            Last queried: {new Date(s.last_searched).toLocaleDateString()}
+                          </span>
                         </div>
-                        <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-bold text-xs">
+                        <span
+                          style={{
+                            background: 'rgba(56, 189, 248, 0.15)',
+                            color: 'var(--accent-cyan, #38BDF8)',
+                            border: '1px solid rgba(56, 189, 248, 0.3)',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontWeight: 700,
+                            fontSize: '0.78rem',
+                          }}
+                        >
                           {s.frequency}x
                         </span>
                       </div>
@@ -444,50 +819,97 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
               </div>
 
               {/* Acquisition Requests Review Triage Table */}
-              <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Collection Development Triage</h4>
+              <div
+                style={{
+                  background: 'var(--card-bg, #0E1626)',
+                  border: '1px solid var(--card-border, rgba(148, 163, 184, 0.16))',
+                  borderRadius: '14px',
+                  padding: '1.25rem',
+                  boxShadow: 'var(--card-shadow)',
+                }}
+              >
+                <h4 style={{ margin: '0 0 0.85rem 0', fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted, #64748B)', textTransform: 'uppercase' }}>
+                  Collection Development Triage
+                </h4>
                 {acquisitions.length === 0 ? (
-                  <p className="text-xs text-slate-500 p-4 text-center">No acquisition requests pending review.</p>
+                  <p style={{ margin: 0, textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted, #64748B)', fontSize: '0.85rem' }}>
+                    No acquisition requests pending review.
+                  </p>
                 ) : (
-                  <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl overflow-hidden bg-slate-950/40">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                     {acquisitions.map((item) => (
-                      <div key={item.id} className="p-3.5 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 text-xs">
+                      <div
+                        key={item.id}
+                        style={{
+                          background: 'var(--bg-tertiary, #141F36)',
+                          border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+                          borderRadius: '10px',
+                          padding: '0.85rem 1.15rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '0.75rem',
+                        }}
+                      >
                         <div>
-                          <div className="flex items-center space-x-2">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                item.status === 'approved'
-                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                  : item.status === 'ordered'
-                                  ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
-                                  : item.status === 'received'
-                                  ? 'bg-blue-950 text-blue-300 border border-blue-800'
-                                  : item.status === 'rejected'
-                                  ? 'bg-red-950 text-red-300 border border-red-800'
-                                  : 'bg-slate-800 text-slate-300 border border-slate-700'
-                              }`}
+                              style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                background:
+                                  item.status === 'approved'
+                                    ? 'rgba(52, 211, 153, 0.15)'
+                                    : item.status === 'ordered'
+                                    ? 'rgba(56, 189, 248, 0.15)'
+                                    : item.status === 'received'
+                                    ? 'rgba(99, 102, 241, 0.15)'
+                                    : item.status === 'rejected'
+                                    ? 'rgba(239, 68, 68, 0.15)'
+                                    : 'rgba(251, 191, 36, 0.15)',
+                                color:
+                                  item.status === 'approved'
+                                    ? '#34D399'
+                                    : item.status === 'ordered'
+                                    ? '#38BDF8'
+                                    : item.status === 'received'
+                                    ? '#818CF8'
+                                    : item.status === 'rejected'
+                                    ? '#EF4444'
+                                    : '#FBBF24',
+                              }}
                             >
                               {item.status}
                             </span>
-                            <span className="font-bold text-slate-200">{item.suggested_title}</span>
+                            <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary, #F8FAFC)' }}>
+                              {item.suggested_title}
+                            </strong>
                           </div>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #94A3B8)', marginTop: '0.25rem' }}>
                             Author: {item.suggested_author || 'N/A'} {item.isbn && `• ISBN: ${item.isbn}`}
-                          </p>
+                          </div>
                         </div>
 
-                        <div className="flex items-center space-x-2">
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
                           {item.status === 'suggested' && (
                             <>
                               <button
+                                type="button"
                                 onClick={() => handleUpdateAcquisitionStatus(item.id, 'approved')}
-                                className="px-2.5 py-1 bg-emerald-900/60 hover:bg-emerald-800/60 text-emerald-300 rounded transition font-medium"
+                                className="btn btn-sm"
+                                style={{ background: '#059669', color: '#fff', border: 'none', padding: '0.35rem 0.75rem' }}
                               >
                                 Approve
                               </button>
                               <button
+                                type="button"
                                 onClick={() => handleUpdateAcquisitionStatus(item.id, 'rejected')}
-                                className="px-2.5 py-1 bg-red-900/60 hover:bg-red-800/60 text-red-300 rounded transition font-medium"
+                                className="btn btn-sm"
+                                style={{ background: '#DC2626', color: '#fff', border: 'none', padding: '0.35rem 0.75rem' }}
                               >
                                 Reject
                               </button>
@@ -495,16 +917,20 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
                           )}
                           {item.status === 'approved' && (
                             <button
+                              type="button"
                               onClick={() => handleUpdateAcquisitionStatus(item.id, 'ordered')}
-                              className="px-2.5 py-1 bg-cyan-900/60 hover:bg-cyan-800/60 text-cyan-300 rounded transition font-medium"
+                              className="btn btn-sm btn-primary"
+                              style={{ padding: '0.35rem 0.75rem' }}
                             >
                               Mark Ordered
                             </button>
                           )}
                           {item.status === 'ordered' && (
                             <button
+                              type="button"
                               onClick={() => handleUpdateAcquisitionStatus(item.id, 'received')}
-                              className="px-2.5 py-1 bg-blue-900/60 hover:bg-blue-800/60 text-blue-300 rounded transition font-medium"
+                              className="btn btn-sm"
+                              style={{ background: '#4F46E5', color: '#fff', border: 'none', padding: '0.35rem 0.75rem' }}
                             >
                               Mark Received
                             </button>
@@ -522,70 +948,165 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
 
       {/* Modal: Create Acquisition Candidate */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/50">
-              <h2 className="text-base font-bold text-slate-100">Add Acquisition Candidate</h2>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-200">✕</button>
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(8, 13, 26, 0.75)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--bg-surface, #0E1626)',
+              border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+              borderRadius: '14px',
+              maxWidth: '460px',
+              width: '100%',
+              boxShadow: 'var(--shadow-modal)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+                background: 'var(--bg-subtle, #1C2B4A)',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary, #F8FAFC)' }}>
+                Add Acquisition Candidate
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted, #94A3B8)', fontSize: '1.25rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
             </div>
-            <form onSubmit={handleCreateAcquisitionRequest} className="p-6 space-y-4">
+
+            <form onSubmit={handleCreateAcquisitionRequest} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Book Title *</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary, #94A3B8)', marginBottom: '0.35rem' }}>
+                  Book Title *
+                </label>
                 <input
                   type="text"
                   required
                   value={reqTitle}
                   onChange={(e) => setReqTitle(e.target.value)}
                   placeholder="e.g. Deep Reinforcement Learning in Practice"
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                    background: 'var(--bg-tertiary, #141F36)',
+                    color: 'var(--text-primary, #F8FAFC)',
+                    fontSize: '0.875rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Author</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary, #94A3B8)', marginBottom: '0.35rem' }}>
+                  Author
+                </label>
                 <input
                   type="text"
                   value={reqAuthor}
                   onChange={(e) => setReqAuthor(e.target.value)}
                   placeholder="e.g. Richard S. Sutton"
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:outline-none"
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                    background: 'var(--bg-tertiary, #141F36)',
+                    color: 'var(--text-primary, #F8FAFC)',
+                    fontSize: '0.875rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">ISBN</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary, #94A3B8)', marginBottom: '0.35rem' }}>
+                  ISBN
+                </label>
                 <input
                   type="text"
                   value={reqIsbn}
                   onChange={(e) => setReqIsbn(e.target.value)}
                   placeholder="e.g. 9780262039246"
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:outline-none"
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                    background: 'var(--bg-tertiary, #141F36)',
+                    color: 'var(--text-primary, #F8FAFC)',
+                    fontSize: '0.875rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Notes / Rationale</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary, #94A3B8)', marginBottom: '0.35rem' }}>
+                  Notes / Rationale
+                </label>
                 <input
                   type="text"
                   value={reqNotes}
                   onChange={(e) => setReqNotes(e.target.value)}
                   placeholder="e.g. Requested for CS-400 Machine Learning seminar"
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:outline-none"
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                    background: 'var(--bg-tertiary, #141F36)',
+                    color: 'var(--text-primary, #F8FAFC)',
+                    fontSize: '0.875rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
                 />
               </div>
 
-              <div className="flex justify-end space-x-3 pt-2">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition"
+                  className="btn btn-secondary"
+                  style={{ padding: '0.6rem 1.15rem' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingReq}
-                  className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg transition shadow disabled:opacity-50"
+                  className="btn btn-primary"
+                  style={{ padding: '0.6rem 1.25rem' }}
                 >
                   {submittingReq ? 'Submitting...' : 'Submit Request'}
                 </button>
@@ -597,3 +1118,4 @@ export const LibrarianIntelligenceCenter: React.FC = () => {
     </div>
   );
 };
+export default LibrarianIntelligenceCenter;

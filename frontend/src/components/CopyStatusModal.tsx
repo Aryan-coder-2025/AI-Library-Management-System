@@ -54,10 +54,11 @@ export const CopyStatusModal: React.FC<CopyStatusModalProps> = ({
     try {
       setSubmitting(true);
       setError(null);
-      const csrfToken = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('csrf_token='))
-        ?.split('=')[1] || '';
+      const csrfToken =
+        document.cookie
+          .split('; ')
+          .find((row) => row.startsWith('csrf_token='))
+          ?.split('=')[1] || '';
 
       const res = await fetch(`/api/circulation/copies/${copyId}/status`, {
         method: 'POST',
@@ -86,48 +87,136 @@ export const CopyStatusModal: React.FC<CopyStatusModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/50">
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(8, 13, 26, 0.78)',
+        backdropFilter: 'blur(4px)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem',
+      }}
+    >
+      <div
+        style={{
+          background: 'var(--bg-surface, #0E1626)',
+          border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+          borderRadius: '14px',
+          maxWidth: '560px',
+          width: '100%',
+          boxShadow: 'var(--shadow-modal)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '90vh',
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '1.25rem 1.5rem',
+            borderBottom: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+            background: 'var(--bg-subtle, #1C2B4A)',
+          }}
+        >
           <div>
-            <h2 className="text-lg font-bold text-slate-100">Physical Copy Maintenance & Status</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Copy <span className="font-mono text-cyan-400 font-semibold">{copyCode}</span> • {bookTitle}
+            <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary, #F8FAFC)' }}>
+              Physical Copy Maintenance & Status
+            </h3>
+            <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary, #94A3B8)' }}>
+              Copy <span style={{ fontFamily: 'monospace', color: 'var(--accent-cyan, #38BDF8)', fontWeight: 700 }}>{copyCode}</span> • {bookTitle}
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 text-xl font-bold p-1 rounded-lg hover:bg-slate-800 transition"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-muted, #94A3B8)',
+              fontSize: '1.25rem',
+              cursor: 'pointer',
+              padding: '4px',
+            }}
           >
             ✕
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-6">
+        <div style={{ padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {error && (
-            <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-xl text-xs text-red-300">
-              {error}
+            <div className="alert alert-error" style={{ margin: 0 }}>
+              <span>⚠️ {error}</span>
             </div>
           )}
 
           {/* Status Form */}
-          <form onSubmit={handleUpdate} className="space-y-4 bg-slate-950/40 p-4 border border-slate-800/80 rounded-xl">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-cyan-400">Record Operational Transition</h3>
+          <form
+            onSubmit={handleUpdate}
+            style={{
+              background: 'var(--bg-tertiary, #141F36)',
+              border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+              borderRadius: '10px',
+              padding: '1.25rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+            }}
+          >
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--brand-secondary, #38BDF8)', letterSpacing: '0.05em' }}>
+              Record Operational Transition
+            </span>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Current Status</label>
-                <span className="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide bg-slate-800 text-slate-300 border border-slate-700">
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary, #94A3B8)', marginBottom: '0.35rem' }}>
+                  Current Status
+                </label>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    padding: '0.45rem 0.75rem',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    background: 'var(--bg-surface, #0E1626)',
+                    color: 'var(--text-secondary, #94A3B8)',
+                    border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.2))',
+                  }}
+                >
                   {currentStatus}
                 </span>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">New Status</label>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary, #94A3B8)', marginBottom: '0.35rem' }}>
+                  New Status
+                </label>
                 <select
                   value={selectedStatus}
                   onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  style={{
+                    width: '100%',
+                    background: 'var(--bg-surface, #0E1626)',
+                    border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                    color: 'var(--text-primary, #F8FAFC)',
+                    fontSize: '0.8rem',
+                    borderRadius: '6px',
+                    padding: '0.45rem 0.65rem',
+                    outline: 'none',
+                  }}
                 >
                   <option value="available">Available (Shelf)</option>
                   <option value="maintenance">Maintenance</option>
@@ -139,28 +228,42 @@ export const CopyStatusModal: React.FC<CopyStatusModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Audit Notes / Reason</label>
+              <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary, #94A3B8)', marginBottom: '0.35rem' }}>
+                Audit Notes / Reason
+              </label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="e.g. Spine damage reported upon return, sent to conservation lab..."
                 rows={3}
-                className="w-full bg-slate-800/80 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                style={{
+                  width: '100%',
+                  background: 'var(--bg-surface, #0E1626)',
+                  border: '1px solid var(--border-medium, rgba(148, 163, 184, 0.25))',
+                  color: 'var(--text-primary, #F8FAFC)',
+                  fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  padding: '0.5rem 0.65rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
               />
             </div>
 
-            <div className="flex justify-end space-x-3 pt-2">
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem', marginTop: '0.25rem' }}>
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition"
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '0.45rem 1rem' }}
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg transition shadow-md disabled:opacity-50"
+                className="btn btn-primary btn-sm"
+                style={{ padding: '0.45rem 1.15rem' }}
               >
                 {submitting ? 'Recording...' : 'Record Status Change'}
               </button>
@@ -169,28 +272,54 @@ export const CopyStatusModal: React.FC<CopyStatusModalProps> = ({
 
           {/* Audit History */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Audit Trail & Incident Log</h3>
+            <h4 style={{ margin: '0 0 0.65rem 0', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted, #64748B)' }}>
+              Audit Trail & Incident Log
+            </h4>
             {loadingHistory ? (
-              <p className="text-xs text-slate-500">Loading audit events...</p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted, #64748B)' }}>Loading audit events...</p>
             ) : history.length === 0 ? (
-              <div className="p-4 bg-slate-950/20 border border-slate-800/40 rounded-xl text-center text-xs text-slate-500">
+              <div
+                style={{
+                  padding: '1.25rem',
+                  background: 'var(--bg-tertiary, #141F36)',
+                  border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.12))',
+                  borderRadius: '8px',
+                  textAlign: 'center',
+                  fontSize: '0.8rem',
+                  color: 'var(--text-muted, #64748B)',
+                }}
+              >
                 No prior status changes or audit incidents recorded for this copy.
               </div>
             ) : (
-              <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto' }}>
                 {history.map((ev) => (
-                  <div key={ev.id} className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl text-xs space-y-1">
-                    <div className="flex justify-between items-center text-slate-400">
-                      <span className="font-semibold text-slate-200">{ev.event_type.replace('_', ' ').toUpperCase()}</span>
-                      <span>{new Date(ev.recorded_at).toLocaleDateString()} {new Date(ev.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <div
+                    key={ev.id}
+                    style={{
+                      padding: '0.75rem',
+                      background: 'var(--bg-tertiary, #141F36)',
+                      border: '1px solid var(--border-subtle, rgba(148, 163, 184, 0.16))',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary, #94A3B8)' }}>
+                      <strong style={{ color: 'var(--text-primary, #F8FAFC)' }}>{ev.event_type.replace('_', ' ').toUpperCase()}</strong>
+                      <span>
+                        {new Date(ev.recorded_at).toLocaleDateString()} {new Date(ev.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
                     </div>
-                    <div className="flex items-center space-x-2 text-slate-300">
-                      <span className="font-mono text-[11px] text-slate-400">{ev.previous_status || 'initial'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary, #94A3B8)' }}>
+                      <span style={{ fontFamily: 'monospace' }}>{ev.previous_status || 'initial'}</span>
                       <span>→</span>
-                      <span className="font-mono text-[11px] text-cyan-300 font-bold">{ev.new_status}</span>
-                      <span className="text-slate-500">• Auditor: {ev.auditor_name}</span>
+                      <strong style={{ fontFamily: 'monospace', color: 'var(--brand-secondary, #38BDF8)' }}>{ev.new_status}</strong>
+                      <span style={{ color: 'var(--text-muted, #64748B)' }}>• Auditor: {ev.auditor_name}</span>
                     </div>
-                    {ev.notes && <p className="text-slate-400 italic text-[11px] mt-0.5">"{ev.notes}"</p>}
+                    {ev.notes && <p style={{ margin: '0.2rem 0 0 0', fontStyle: 'italic', color: 'var(--text-muted, #64748B)' }}>"{ev.notes}"</p>}
                   </div>
                 ))}
               </div>
@@ -201,3 +330,4 @@ export const CopyStatusModal: React.FC<CopyStatusModalProps> = ({
     </div>
   );
 };
+export default CopyStatusModal;
