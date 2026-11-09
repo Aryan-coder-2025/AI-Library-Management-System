@@ -7,10 +7,10 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0+-D71F00.svg)](https://www.sqlalchemy.org/)
-[![Test Suite](https://img.shields.io/badge/Tests-393%20Passed%20(2%20Skipped)-success.svg)]()
+[![Test Suite](https://img.shields.io/badge/Tests-404%20Passed%20(2%20Skipped)-success.svg)]()
 [![License](https://img.shields.io/badge/License-Pending%20Institutional%20Approval-lightgrey.svg)]()
 
-**Athenaeum** is an enterprise-grade academic library automation and intelligence platform. It bridges physical resource circulation—monograph barcode tracking, patron quotas, study-space bookings, and course reserves—with modern dense semantic discovery, multi-floor interactive spatial wayfinding, external scholarly aggregation, and an agentic multi-pillar artificial intelligence engine.
+**Athenaeum** is an enterprise-grade academic library automation and intelligence platform. It bridges physical resource circulation—monograph barcode tracking, patron quotas, study-space bookings, and course reserves—with modern dense semantic discovery, multi-floor interactive spatial wayfinding, external scholarly aggregation, an autonomous multi-step tool-executing AI Copilot, and multimodal omnichannel research discovery across audio lecture clips, PDFs, slide decks, and diagrams.
 
 ---
 
@@ -121,7 +121,18 @@ For full sequence diagrams and component interactions, see [docs/ARCHITECTURE.md
 - **Role-Based Borrowing**: Students (5 items, 14 days, 2 self-renewals), Faculty (10 items, 30 days).
 - **Priority Hold Queues**: FIFO hold placement on checked-out monographs with automatic copy allocation and 48-hour pickup expiration timers upon return.
 - **Cryptographic QR Collection**: Patron generates a 15-minute secure QR token on mobile; librarian scans token at desk to auto-fulfill the hold into an active loan.
+- **Touchless QR Returns & Zero-Fine Clearance**: Patron generates an instant return pass token; staff scans to discharge without fines. Real-time institutional Clearance Certificate verification.
 - **Lost & Damaged Processing**: Copy condition tracking (`good`, `fair`, `poor`, `damaged`, `lost`) with audit logging.
+
+### 🤖 Autonomous AI Agent Copilot
+- **ReAct Tool Execution Loop**: Autonomous multi-turn agent capable of executing 10 library actions in real-time.
+- **Interactive Action Cards**: Dynamic response cards for study desk bookings (with direct "View on Floor Map 📍" navigation), monograph holds, loan renewals, return passes, and scholarly preprints.
+- **Live Action Trace**: Expandable telemetry showing tool execution arguments, runtime parameters, and institutional policy provenance.
+
+### 🎙️ Multimodal Omnichannel AI Research Discovery
+- **Comprehensive Media Ingestion**: Accepts Audio lecture clips (`.mp3`, `.wav`, `.m4a`, `.webm`), browser microphone recordings, research PDFs, Word documents (`.docx`), PowerPoint slides (`.pptx`), and architectural diagrams.
+- **Acoustic & Conceptual Decomposition**: Powered by `gemini-3.5-flash-lite`, transcribing speech, synthesizing academic principles, and extracting LaTeX formulas.
+- **Cross-Repository Linkage**: Synchronously surfaces internal library holdings alongside global open-access preprints (OpenAlex, arXiv, Crossref).
 
 ### 🎓 Teacher Portal & Course Reserves
 - **Course Reading Lists**: Faculty link required and recommended monographs to academic courses.
