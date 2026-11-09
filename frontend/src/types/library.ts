@@ -797,6 +797,8 @@ export interface VisionResearchAnalysis {
   key_concepts: string[];
   suggested_catalogue_search: string;
   suggested_scholarly_search: string;
+  transcription?: string | null;
+  media_format?: string | null;
 }
 
 export interface VisionCatalogueMatch {

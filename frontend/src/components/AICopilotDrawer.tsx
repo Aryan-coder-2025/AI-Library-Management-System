@@ -691,10 +691,10 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
               type="button"
               className="btn btn-secondary copilot-vision-btn"
               onClick={() => setShowVisionModal(true)}
-              title="Upload photo or paste screenshot (Ctrl+V) for Multimodal Vision Research"
+              title="Multimodal Analysis: Images, Voice Recordings (mic), PDF Papers, Word, or Slides"
               style={{ padding: '0 0.65rem', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              📷
+              🎙️📷
             </button>
 
             <button

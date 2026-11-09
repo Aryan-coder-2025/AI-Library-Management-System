@@ -85,27 +85,61 @@ async def vision_research_search(
     current_user: User = Depends(get_current_active_user),
 ):
     """
-    Analyzes an academic image (diagram, equation, textbook snippet, paper abstract)
-    using Gemini Multimodal Vision, then retrieves matching library monographs
+    Analyzes multimodal academic media (diagrams, whiteboard math, audio lecture clips,
+    voice inquiries, PDF research papers, Word docs, PowerPoint slides)
+    using Gemini Multimodal AI, then retrieves matching library monographs
     and arXiv/OpenAlex research papers.
     """
-    if not file.content_type or not file.content_type.startswith("image/"):
+    allowed_types = [
+        "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif",
+        "audio/wav", "audio/x-wav", "audio/mp3", "audio/mpeg", "audio/webm", "audio/ogg", "audio/m4a", "audio/x-m4a",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/msword",
+        "text/plain", "text/markdown",
+    ]
+
+    ct = (file.content_type or "").lower()
+    is_valid_type = any(ct.startswith(prefix) for prefix in ["image/", "audio/"]) or ct in allowed_types or (
+        file.filename and file.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".pdf", ".mp3", ".wav", ".m4a", ".webm", ".docx", ".pptx"))
+    )
+
+    if not is_valid_type:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded file must be a valid image (PNG, JPEG, WEBP).",
+            detail="Supported formats: Images (PNG, JPG, WEBP), Audio (WAV, MP3, WEBM, M4A), PDFs, Word (.docx), and PowerPoint (.pptx).",
         )
 
     image_bytes = await file.read()
-    if len(image_bytes) > 10 * 1024 * 1024:  # 10MB limit
+    if len(image_bytes) > 25 * 1024 * 1024:  # 25MB limit
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Image size exceeds 10MB limit.",
+            detail="File size exceeds 25MB limit.",
         )
+
+    effective_mime = ct if ct in allowed_types or any(ct.startswith(p) for p in ["image/", "audio/"]) else "application/octet-stream"
+    if file.filename:
+        fn_lower = file.filename.lower()
+        if fn_lower.endswith(".pdf"):
+            effective_mime = "application/pdf"
+        elif fn_lower.endswith(".docx"):
+            effective_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        elif fn_lower.endswith(".pptx"):
+            effective_mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        elif fn_lower.endswith(".mp3"):
+            effective_mime = "audio/mp3"
+        elif fn_lower.endswith(".wav"):
+            effective_mime = "audio/wav"
+        elif fn_lower.endswith(".m4a"):
+            effective_mime = "audio/m4a"
+        elif fn_lower.endswith(".webm"):
+            effective_mime = "audio/webm"
 
     return analyze_academic_image_service(
         db=db,
         image_bytes=image_bytes,
-        mime_type=file.content_type,
+        mime_type=effective_mime,
         user_prompt=query,
     )
 

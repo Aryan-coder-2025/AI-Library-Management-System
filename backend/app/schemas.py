@@ -1867,12 +1867,14 @@ class AcquisitionRequestListResponse(BaseModel):
 
 class VisionResearchAnalysis(BaseModel):
     summary: str
-    detected_type: str = "diagram"  # diagram, equation, textbook_page, paper_abstract, book_cover, notes
+    detected_type: str = "diagram"  # diagram, equation, textbook_page, paper_abstract, book_cover, notes, audio_lecture, pdf_document, slide_deck, document
     academic_field: str = "General Academic"
     extracted_latex: List[str] = Field(default_factory=list)
     key_concepts: List[str] = Field(default_factory=list)
     suggested_catalogue_search: str = ""
     suggested_scholarly_search: str = ""
+    transcription: Optional[str] = None
+    media_format: Optional[str] = None
 
 
 class VisionCatalogueMatch(BaseModel):

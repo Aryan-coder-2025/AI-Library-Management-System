@@ -170,10 +170,10 @@ export const SemanticSearch: React.FC<SemanticSearchProps> = ({
             whiteSpace: 'nowrap',
             padding: '0.6rem 1.1rem',
           }}
-          title="Search by uploading or pasting a photo of a diagram, equation, or textbook snippet"
+          title="Search by image, voice recording, PDF paper, Word (.docx) or PowerPoint (.pptx)"
         >
-          <span>📸</span>
-          <span>Vision Search</span>
+          <span>🎙️📸</span>
+          <span>Multimodal & Audio Search</span>
         </button>
       </form>
 
