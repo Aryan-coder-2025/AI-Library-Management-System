@@ -1,28 +1,49 @@
 """
 Service module for PILLAR 3 (Intelligent Librarian Agent) & PILLAR 5 (RAG Recommendation Assistant).
-Orchestrates structured tool calls (spatial location, availability, hybrid search, policy lookup),
-assembles verified RAG context, and provides explainable recommendations with citations.
+Orchestrates autonomous agent actions (space reservations, monograph holds, loan renewals, return passes,
+academic research discovery), structured tool calls, assembled verified RAG context, and explainable recommendations.
 Supports bounded multi-turn conversational context and coreference resolution.
 """
-from datetime import datetime
+from datetime import datetime, date, time, timedelta, timezone
 import json
 import logging
+import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+import httpx
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Book, BookCopy, LibraryFloor, Loan, SpatialResourceMapping, StudyRoom, StudySeat, StudyZone, User
+from app.models import (
+    Book,
+    BookCopy,
+    BookHold,
+    LibraryFloor,
+    Loan,
+    SpatialResourceMapping,
+    StudyRoom,
+    StudySeat,
+    StudyZone,
+    User,
+)
 from app.schemas import (
     ChatMessageInput,
+    CopilotAgentAction,
     CopilotToolCall,
     EnhancedCopilotResponse,
+    ReservationCreate,
     StructuredCitation,
 )
 from app.services import spatial as spatial_service
-from app.services.copilot import get_llm_provider, get_policy_sections, search_policies
+from app.services import spaces as space_service
+from app.services import loans as loans_service
+from app.services.holds import place_hold_service
+from app.services.qr_collection import generate_book_collection_pass
+from app.services.qr_return import generate_book_return_token
+from app.services.research.aggregator import academic_research_service
 from app.services.semantic import hybrid_search_service
+from app.services.copilot import get_llm_provider, get_policy_sections, search_policies
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -32,19 +53,24 @@ settings = get_settings()
 
 def tool_search_catalogue(db: Session, query: str, limit: int = 5) -> Dict[str, Any]:
     """Tool: Searches library catalogue using hybrid lexical and semantic search."""
-    res = hybrid_search_service(db=db, query=query, page_size=limit)
-    items = [
-        {
-            "id": b.id,
-            "title": b.title,
-            "author": b.author,
-            "isbn": b.isbn,
-            "category": b.category,
-            "available_copies": getattr(b, "available_copies", 0),
-        }
-        for b in res.items
-    ]
-    return {"query": query, "total_found": len(items), "books": items}
+    try:
+        res = hybrid_search_service(db=db, query=query, page_size=limit)
+        items = [
+            {
+                "id": b.id,
+                "title": b.title,
+                "author": b.author,
+                "isbn": b.isbn,
+                "category": b.category,
+                "available_copies": getattr(b, "available_copies", 0),
+                "total_copies": getattr(b, "total_copies", 0),
+            }
+            for b in res.items
+        ]
+        return {"query": query, "total_found": len(items), "books": items}
+    except Exception as e:
+        logger.error(f"Error searching catalogue: {e}")
+        return {"query": query, "total_found": 0, "books": [], "error": str(e)}
 
 
 def tool_get_spatial_resource(db: Session, resource_type: str, resource_id: int) -> Dict[str, Any]:
@@ -107,6 +133,627 @@ def tool_get_patron_loans(db: Session, current_user: User) -> Dict[str, Any]:
     return {"active_loans_count": len(items), "loans": items}
 
 
+def tool_reserve_study_space(
+    db: Session,
+    current_user: User,
+    floor_number: Optional[int] = None,
+    seat_id: Optional[int] = None,
+    room_id: Optional[int] = None,
+    date_str: Optional[str] = None,
+    start_time_str: Optional[str] = None,
+    end_time_str: Optional[str] = None,
+    resource_type: str = "seat",
+) -> Dict[str, Any]:
+    """
+    Tool: Autonomously books a study seat or room for the authenticated patron.
+    Enforces quota constraints, operating hours, and generates a valid check-in token.
+    """
+    if current_user.role not in ("student", "teacher"):
+        return {
+            "status": "failed",
+            "reason": f"Patrons with role '{current_user.role}' cannot create study space reservations.",
+        }
+
+    # 1. Quota Check: Student max 1 active reservation, teacher max 2
+    my_res = space_service.get_my_reservations_service(db=db, user=current_user, status_filter="active", page=1, page_size=10)
+    quota_limit = 2 if current_user.role == "teacher" else 1
+    if my_res.total >= quota_limit:
+        first_active = my_res.items[0] if my_res.items else None
+        return {
+            "status": "quota_reached",
+            "quota_limit": quota_limit,
+            "active_count": my_res.total,
+            "message": f"You already have {my_res.total} active reservation (quota limit is {quota_limit}).",
+            "existing_reservation": {
+                "id": first_active.id if first_active else None,
+                "label": first_active.resource_label if first_active else None,
+                "start_time": first_active.start_time.isoformat() if first_active else None,
+                "end_time": first_active.end_time.isoformat() if first_active else None,
+            } if first_active else None,
+        }
+
+    # 2. Resolve target reservation timing
+    inst_tz = space_service.get_library_timezone(settings.LIBRARY_TIMEZONE)
+    now_utc_naive = space_service.normalize_utc_datetime(space_service.get_utc_now())
+    now_local = space_service.get_utc_now().astimezone(inst_tz)
+
+    if date_str:
+        d_str = date_str.lower().strip()
+        if "tomorrow" in d_str:
+            target_date = (now_local + timedelta(days=1)).date()
+        elif "today" in d_str:
+            target_date = now_local.date()
+        else:
+            try:
+                parsed = datetime.strptime(d_str[:10], "%Y-%m-%d").date()
+                if parsed.year < now_local.year:
+                    parsed = parsed.replace(year=now_local.year)
+                target_date = parsed
+            except Exception:
+                target_date = (now_local + timedelta(days=1)).date()
+    else:
+        if now_local.hour >= 18:
+            target_date = (now_local + timedelta(days=1)).date()
+        else:
+            target_date = now_local.date()
+
+    # Past-date guard: if date is in the past, push to tomorrow
+    if target_date < now_local.date():
+        target_date = (now_local + timedelta(days=1)).date()
+
+    if start_time_str:
+        parts = start_time_str.split(":")
+        try:
+            start_hour = int(parts[0])
+        except Exception:
+            start_hour = max(now_local.hour + 1, 9) if target_date == now_local.date() else 10
+    else:
+        start_hour = max(now_local.hour + 1, 9) if target_date == now_local.date() else 10
+
+    if end_time_str:
+        parts = end_time_str.split(":")
+        try:
+            end_hour = int(parts[0])
+        except Exception:
+            end_hour = min(start_hour + 2, 21)
+    else:
+        end_hour = min(start_hour + 2, 21)
+
+    if start_hour >= 20 or (target_date == now_local.date() and start_hour <= now_local.hour):
+        target_date = (now_local + timedelta(days=1)).date()
+        start_hour = 10
+        end_hour = 12
+
+    local_start = datetime(target_date.year, target_date.month, target_date.day, start_hour, 0, tzinfo=inst_tz)
+    local_end = datetime(target_date.year, target_date.month, target_date.day, end_hour, 0, tzinfo=inst_tz)
+
+    utc_start = space_service.normalize_utc_datetime(local_start)
+    utc_end = space_service.normalize_utc_datetime(local_end)
+
+    # 3. Resolve Resource (Seat or Room)
+    target_floor_num = floor_number if floor_number is not None else 0
+    chosen_seat_id = seat_id
+    chosen_room_id = room_id
+    resource_type_normalized = "room" if resource_type == "room" or chosen_room_id is not None else "seat"
+
+    if resource_type_normalized == "seat" and chosen_seat_id is None:
+        stmt = (
+            select(StudySeat)
+            .join(SpatialResourceMapping, SpatialResourceMapping.resource_id == StudySeat.id)
+            .join(LibraryFloor, SpatialResourceMapping.floor_id == LibraryFloor.id)
+            .filter(
+                SpatialResourceMapping.resource_type == "seat",
+                LibraryFloor.floor_number == target_floor_num,
+                StudySeat.is_active == True,
+            )
+        )
+        candidates = db.execute(stmt).scalars().all()
+        if not candidates:
+            candidates = db.execute(select(StudySeat).where(StudySeat.is_active == True)).scalars().all()
+
+        if candidates:
+            chosen_seat_id = candidates[0].id
+
+    if resource_type_normalized == "room" and chosen_room_id is None:
+        rm_stmt = select(StudyRoom).where(StudyRoom.is_active == True)
+        rooms = db.execute(rm_stmt).scalars().all()
+        if rooms:
+            chosen_room_id = rooms[0].id
+
+    if resource_type_normalized == "seat" and chosen_seat_id is None:
+        return {"status": "failed", "reason": "No active study seats found in library topology."}
+    if resource_type_normalized == "room" and chosen_room_id is None:
+        return {"status": "failed", "reason": "No active study rooms found in library topology."}
+
+    # 4. Create Reservation
+    payload = ReservationCreate(
+        resource_type=resource_type_normalized,
+        seat_id=chosen_seat_id if resource_type_normalized == "seat" else None,
+        room_id=chosen_room_id if resource_type_normalized == "room" else None,
+        start_time=utc_start,
+        end_time=utc_end,
+        expected_attendees=1,
+    )
+
+    try:
+        res = space_service.create_reservation_service(
+            db=db,
+            user=current_user,
+            data=payload,
+            now_utc=now_utc_naive,
+        )
+
+        resource_label = f"Seat #{res.seat_id}" if res.resource_type == "seat" else f"Room #{res.room_id}"
+        qr_token_str = None
+        try:
+            pass_obj = space_service.get_reservation_qr_token_service(db=db, user=current_user, reservation_id=res.id)
+            resource_label = pass_obj.resource_name
+            qr_token_str = pass_obj.qr_token
+        except Exception as pe:
+            logger.warning(f"Could not retrieve check-in pass object: {pe}")
+            if res.resource_type == "seat" and res.seat_id:
+                st = db.get(StudySeat, res.seat_id)
+                if st:
+                    resource_label = f"Seat {st.seat_code}"
+            elif res.resource_type == "room" and res.room_id:
+                rm = db.get(StudyRoom, res.room_id)
+                if rm:
+                    resource_label = f"Room {rm.name}"
+
+        return {
+            "status": "success",
+            "reservation_id": res.id,
+            "resource_type": res.resource_type,
+            "resource_label": resource_label,
+            "floor_number": target_floor_num,
+            "start_time": res.start_time.isoformat(),
+            "end_time": res.end_time.isoformat(),
+            "check_in_token": qr_token_str or f"RES-{res.id:06d}",
+            "formatted_window": f"{local_start.strftime('%A, %b %d %I:%M %p')} - {local_end.strftime('%I:%M %p')}",
+        }
+    except Exception as e:
+        logger.warning(f"Failed to reserve space: {e}")
+        return {"status": "failed", "reason": str(e)}
+
+
+def tool_place_monograph_hold(
+    db: Session,
+    current_user: User,
+    book_id: Optional[int] = None,
+    book_title: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Tool: Places an online hold / shelf reservation on a physical book."""
+    target_book_id = book_id
+    target_book_obj: Optional[Book] = None
+
+    if target_book_id is None and book_title:
+        # Search book by title or keywords
+        res = hybrid_search_service(db=db, query=book_title, page_size=1)
+        if res.items:
+            target_book_obj = res.items[0]
+            target_book_id = target_book_obj.id
+
+    if target_book_id is None:
+        return {"status": "failed", "reason": "Could not identify book to hold."}
+
+    if target_book_obj is None:
+        target_book_obj = db.execute(select(Book).where(Book.id == target_book_id)).scalar_one_or_none()
+
+    if not target_book_obj:
+        return {"status": "failed", "reason": f"Book with ID {target_book_id} not found."}
+
+    try:
+        hold_res = place_hold_service(db=db, user=current_user, book_id=target_book_id)
+        qr_token: Optional[str] = None
+
+        # If hold is immediately ready for pickup, generate collection QR pass!
+        if hold_res.status == "ready_for_pickup":
+            try:
+                pass_res = generate_book_collection_pass(db=db, user=current_user, hold_id=hold_res.id)
+                qr_token = pass_res.token
+            except Exception as e:
+                logger.warning(f"Could not generate collection pass for hold {hold_res.id}: {e}")
+
+        return {
+            "status": "success",
+            "hold_id": hold_res.id,
+            "book_id": target_book_obj.id,
+            "book_title": target_book_obj.title,
+            "hold_status": hold_res.status,
+            "queue_position": hold_res.queue_position,
+            "pickup_deadline": hold_res.pickup_deadline.isoformat() if hold_res.pickup_deadline else None,
+            "qr_token": qr_token,
+        }
+    except Exception as e:
+        logger.warning(f"Hold placement failed: {e}")
+        return {"status": "failed", "reason": str(e)}
+
+
+def tool_renew_loan(
+    db: Session,
+    current_user: User,
+    loan_id: Optional[int] = None,
+    book_title: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Tool: Renews an active monograph loan for the patron."""
+    target_loan_id = loan_id
+
+    # If loan_id is not given, find patron's active loans
+    stmt = select(Loan).where(Loan.student_id == current_user.id, Loan.returned_at.is_(None))
+    active_loans = db.execute(stmt).scalars().all()
+
+    if not active_loans:
+        return {"status": "failed", "reason": "You currently have no active monograph loans to renew."}
+
+    if target_loan_id is None:
+        if book_title:
+            b_norm = book_title.lower()
+            for ln in active_loans:
+                if ln.copy and ln.copy.book and b_norm in ln.copy.book.title.lower():
+                    target_loan_id = ln.id
+                    break
+        if target_loan_id is None and len(active_loans) == 1:
+            target_loan_id = active_loans[0].id
+
+    if target_loan_id is None:
+        return {
+            "status": "ambiguous",
+            "reason": "Multiple active loans found. Please specify which book to renew.",
+            "loans": [{"id": ln.id, "title": ln.copy.book.title if ln.copy and ln.copy.book else "Unknown"} for ln in active_loans],
+        }
+
+    try:
+        res = loans_service.renew_loan_service(db=db, loan_id=target_loan_id, current_user=current_user)
+        title = res.book.title if res.book else "Monograph"
+        return {
+            "status": "success",
+            "loan_id": res.id,
+            "book_title": title,
+            "new_due_date": res.due_date.isoformat() if res.due_date else None,
+            "renewal_count": res.renewal_count,
+        }
+    except Exception as e:
+        logger.warning(f"Loan renewal failed: {e}")
+        return {"status": "failed", "reason": str(e)}
+
+
+def tool_generate_return_pass(
+    db: Session,
+    current_user: User,
+    loan_id: Optional[int] = None,
+    book_title: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Tool: Generates a symmetrical QR return token and return clearance pass."""
+    stmt = select(Loan).where(Loan.student_id == current_user.id, Loan.returned_at.is_(None))
+    active_loans = db.execute(stmt).scalars().all()
+
+    if not active_loans:
+        return {"status": "failed", "reason": "You have no active monograph loans checked out to return."}
+
+    target_loan_id = loan_id
+    if target_loan_id is None:
+        if book_title:
+            b_norm = book_title.lower()
+            for ln in active_loans:
+                if ln.copy and ln.copy.book and b_norm in ln.copy.book.title.lower():
+                    target_loan_id = ln.id
+                    break
+        if target_loan_id is None and len(active_loans) == 1:
+            target_loan_id = active_loans[0].id
+
+    if target_loan_id is None:
+        return {
+            "status": "ambiguous",
+            "reason": "Multiple active loans found. Please specify which book to generate a return pass for.",
+            "loans": [{"id": ln.id, "title": ln.copy.book.title if ln.copy and ln.copy.book else "Unknown"} for ln in active_loans],
+        }
+
+    try:
+        pass_res = generate_book_return_token(db=db, user=current_user, loan_id=target_loan_id)
+        return {
+            "status": "success",
+            "token_code": pass_res.token_code,
+            "qr_payload": pass_res.qr_payload,
+            "book_title": pass_res.book_title,
+            "expires_at": pass_res.expires_at.isoformat() if pass_res.expires_at else None,
+        }
+    except Exception as e:
+        logger.warning(f"Return token generation failed: {e}")
+        return {"status": "failed", "reason": str(e)}
+
+
+def tool_query_academic_research(query: str, limit: int = 3) -> Dict[str, Any]:
+    """Tool: Searches arXiv, OpenAlex, and Crossref for peer-reviewed papers and open-access PDFs."""
+    try:
+        res = academic_research_service.search_papers(query=query, limit=limit, page=1)
+        papers = [
+            {
+                "paper_id": p.id,
+                "title": p.title,
+                "authors": p.authors,
+                "year": p.publication_year,
+                "venue": p.venue,
+                "doi": p.doi,
+                "open_access_pdf_url": p.url,
+                "provider": p.source_provider,
+            }
+            for p in res.results
+        ]
+        return {"status": "success", "query": query, "total_found": len(papers), "papers": papers}
+    except Exception as e:
+        logger.warning(f"Academic search error: {e}")
+        return {"status": "failed", "query": query, "papers": [], "reason": str(e)}
+
+
+def tool_get_library_policy(query: str) -> Dict[str, Any]:
+    """Tool: Searches verified library borrowing rules, loan durations, and facility policies."""
+    matched = search_policies(query, max_results=2)
+    return {"query": query, "policies": matched}
+
+
+# ── Gemini Function Calling Schema Specification ─────────────────────────────
+
+GEMINI_AGENT_TOOLS = [
+    {
+        "function_declarations": [
+            {
+                "name": "reserve_study_space",
+                "description": "Autonomously reserve a study desk or discussion room in the library for the patron.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "floor_number": {"type": "INTEGER", "description": "Floor: 0 (Ground), 1 (First), 2 (Second), 3 (Third)"},
+                        "resource_type": {"type": "STRING", "description": "'seat' or 'room'", "enum": ["seat", "room"]},
+                        "date_str": {"type": "STRING", "description": "Target date YYYY-MM-DD (e.g. 2026-11-10)"},
+                        "start_time_str": {"type": "STRING", "description": "Start time HH:MM (e.g. '10:00', '14:00')"},
+                        "end_time_str": {"type": "STRING", "description": "End time HH:MM (e.g. '12:00', '16:00')"},
+                    },
+                },
+            },
+            {
+                "name": "place_monograph_hold",
+                "description": "Place an online loan hold / monograph reservation for pickup at the circulation desk.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "book_id": {"type": "INTEGER", "description": "Physical book ID if known"},
+                        "book_title": {"type": "STRING", "description": "Title or keyword of the book to reserve"},
+                    },
+                },
+            },
+            {
+                "name": "renew_loan",
+                "description": "Renew an active book loan, extending the borrowing due date (+14 days student, +30 days teacher).",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "loan_id": {"type": "INTEGER", "description": "Specific loan ID if known"},
+                        "book_title": {"type": "STRING", "description": "Title of the book to renew"},
+                    },
+                },
+            },
+            {
+                "name": "generate_return_pass",
+                "description": "Generate an instant QR return clearance pass (RET-XXXXXX) for returning a book at the desk.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "loan_id": {"type": "INTEGER", "description": "Loan ID to discharge"},
+                        "book_title": {"type": "STRING", "description": "Title of the book to return"},
+                    },
+                },
+            },
+            {
+                "name": "query_academic_research",
+                "description": "Search global arXiv, OpenAlex, and Crossref preprints for peer-reviewed research papers and open-access PDFs.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "query": {"type": "STRING", "description": "Academic research query or technical concept"},
+                        "limit": {"type": "INTEGER", "description": "Number of papers to retrieve (default 3)"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "search_catalogue",
+                "description": "Search the library's physical catalogue of monographs and textbooks.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "query": {"type": "STRING", "description": "Subject, title, or keywords to search"},
+                        "limit": {"type": "INTEGER", "description": "Max titles to retrieve"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "get_available_spaces",
+                "description": "Check live seat and room availability and occupancy across library floors.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "floor_number": {"type": "INTEGER", "description": "Optional floor filter: 0, 1, 2, 3"},
+                    },
+                },
+            },
+            {
+                "name": "get_patron_loans",
+                "description": "Check current active loans, due dates, and renewals for the authenticated patron.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {},
+                },
+            },
+            {
+                "name": "get_spatial_resource",
+                "description": "Get physical map coordinates, floor, zone, and wayfinding directions for a seat or room.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "resource_type": {"type": "STRING", "description": "'seat' or 'room'"},
+                        "resource_id": {"type": "INTEGER", "description": "Seat or room number/ID"},
+                    },
+                    "required": ["resource_type", "resource_id"],
+                },
+            },
+            {
+                "name": "get_library_policy",
+                "description": "Lookup verified library borrowing regulations, loan limits, durations, and facility hours.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "query": {"type": "STRING", "description": "Policy topic (e.g. borrowing limits, fines, hours)"},
+                    },
+                    "required": ["query"],
+                },
+            },
+        ]
+    }
+]
+
+
+# ── Autonomous ReAct Dispatcher ───────────────────────────────────────────────
+
+def _dispatch_tool(
+    db: Session,
+    current_user: User,
+    tool_name: str,
+    args: Dict[str, Any],
+) -> Tuple[Dict[str, Any], Optional[CopilotAgentAction]]:
+    """Executes a structured tool call and generates matching rich CopilotAgentAction."""
+    action: Optional[CopilotAgentAction] = None
+
+    if tool_name == "reserve_study_space":
+        res = tool_reserve_study_space(
+            db=db,
+            current_user=current_user,
+            floor_number=args.get("floor_number"),
+            seat_id=args.get("seat_id"),
+            room_id=args.get("room_id"),
+            date_str=args.get("date_str"),
+            start_time_str=args.get("start_time_str"),
+            end_time_str=args.get("end_time_str"),
+            resource_type=args.get("resource_type", "seat"),
+        )
+        if res.get("status") == "success":
+            action = CopilotAgentAction(
+                action_type="space_reserved",
+                status="success",
+                title=f"Reserved {res.get('resource_label', 'Study Space')}",
+                description=f"Study space confirmed on Floor {res.get('floor_number')} ({res.get('formatted_window')}). Check-in Token: {res.get('check_in_token')}",
+                data=res,
+            )
+        elif res.get("status") == "quota_reached":
+            action = CopilotAgentAction(
+                action_type="space_reserved",
+                status="info",
+                title="Active Reservation Limit",
+                description=res.get("message", "Quota limit reached."),
+                data=res,
+            )
+        return res, action
+
+    elif tool_name == "place_monograph_hold":
+        res = tool_place_monograph_hold(
+            db=db,
+            current_user=current_user,
+            book_id=args.get("book_id"),
+            book_title=args.get("book_title"),
+        )
+        if res.get("status") == "success":
+            action = CopilotAgentAction(
+                action_type="hold_placed",
+                status="success",
+                title=f"Hold Confirmed: {res.get('book_title')}",
+                description=f"Status: {res.get('hold_status', '').replace('_', ' ').title()}. Pickup token ready.",
+                data=res,
+            )
+        return res, action
+
+    elif tool_name == "renew_loan":
+        res = tool_renew_loan(
+            db=db,
+            current_user=current_user,
+            loan_id=args.get("loan_id"),
+            book_title=args.get("book_title"),
+        )
+        if res.get("status") == "success":
+            action = CopilotAgentAction(
+                action_type="loan_renewed",
+                status="success",
+                title=f"Loan Renewed: {res.get('book_title')}",
+                description=f"Due date extended to {res.get('new_due_date')}. Renewals used: {res.get('renewal_count')}/1.",
+                data=res,
+            )
+        return res, action
+
+    elif tool_name == "generate_return_pass":
+        res = tool_generate_return_pass(
+            db=db,
+            current_user=current_user,
+            loan_id=args.get("loan_id"),
+            book_title=args.get("book_title"),
+        )
+        if res.get("status") == "success":
+            action = CopilotAgentAction(
+                action_type="return_pass_generated",
+                status="success",
+                title=f"Return Clearance Pass: {res.get('token_code')}",
+                description=f"Present this return pass at the Circulation Desk for '{res.get('book_title')}'.",
+                data=res,
+            )
+        return res, action
+
+    elif tool_name == "query_academic_research":
+        res = tool_query_academic_research(
+            query=args.get("query", ""),
+            limit=args.get("limit", 3),
+        )
+        if res.get("status") == "success" and res.get("papers"):
+            action = CopilotAgentAction(
+                action_type="academic_research",
+                status="success",
+                title=f"Scholarly Research: {res.get('query')}",
+                description=f"Retrieved {len(res.get('papers', []))} peer-reviewed papers with open-access PDFs.",
+                data=res,
+            )
+        return res, action
+
+    elif tool_name == "search_catalogue":
+        res = tool_search_catalogue(
+            db=db,
+            query=args.get("query", ""),
+            limit=args.get("limit", 5),
+        )
+        return res, None
+
+    elif tool_name == "get_available_spaces":
+        res = tool_get_available_spaces(
+            db=db,
+            floor_number=args.get("floor_number"),
+        )
+        return res, None
+
+    elif tool_name == "get_patron_loans":
+        res = tool_get_patron_loans(db=db, current_user=current_user)
+        return res, None
+
+    elif tool_name == "get_spatial_resource":
+        res = tool_get_spatial_resource(
+            db=db,
+            resource_type=args.get("resource_type", "seat"),
+            resource_id=int(args.get("resource_id", 1)),
+        )
+        return res, None
+
+    elif tool_name == "get_library_policy":
+        res = tool_get_library_policy(query=args.get("query", ""))
+        return res, None
+
+    return {"error": f"Unknown tool: {tool_name}"}, None
+
+
 # ── RAG Agent Orchestrator with Multi-Turn Context & Bounded History ─────────
 
 def execute_librarian_agent_rag(
@@ -116,12 +763,14 @@ def execute_librarian_agent_rag(
     conversation_history: Optional[List[ChatMessageInput]] = None,
 ) -> EnhancedCopilotResponse:
     """
-    Genuine tool-calling librarian agent with multi-step orchestration and RAG.
-    Resolves coreferences across bounded conversational history (max 6 messages / 3 turns),
-    routes intents deterministically, and verifies real-time state against live database models.
+    Full-suite Autonomous AI Agent & Librarian Concierge.
+    Executes multi-step ReAct autonomous tool dispatching with Gemini 3.1 Flash Lite.
+    Directly reserves study spaces, places monograph holds, renews patron loans,
+    issues return passes, and queries academic preprints with verifiable safety and patron isolation.
     """
     normalized = query.lower().strip()
     tool_calls: List[CopilotToolCall] = []
+    agent_actions: List[CopilotAgentAction] = []
     citations: List[StructuredCitation] = []
     book_cards: List[Dict[str, Any]] = []
     spatial_card: Optional[Dict[str, Any]] = None
@@ -132,171 +781,338 @@ def execute_librarian_agent_rag(
     if conversation_history:
         bounded_history = conversation_history[-6:]
 
-    # Coreference & Follow-up Detection
-    has_spatial_followup = any(p in normalized for p in [
-        "there", "get there", "directions there", "how do i get there",
-        "wayfinding there", "take me there", "where is that", "to there", "directions"
-    ])
-    has_recommendation_followup = any(p in normalized for p in [
-        "more like those", "more like that", "more like this", "more like these",
-        "other books like", "similar books", "tell me more about", "first recommendation",
-        "first one", "second one"
-    ])
+    # Check active Gemini LLM Provider
+    provider, provider_name = get_llm_provider()
+    api_key = (
+        getattr(settings, "GEMINI_API_KEY", None)
+        or getattr(settings, "LLM_API_KEY", None)
+        or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("LLM_API_KEY")
+        or ""
+    ).strip()
 
-    # ── 0. SOCIAL CONVERSATIONAL & CAPABILITY INTENTS ─────────────────────────
-    filler_stripped = re.sub(r"^(ok(ay)?|so|well|umm*|uhh*)\b[\s,;!?-]*", "", normalized, flags=re.IGNORECASE).strip()
+    inst_tz = space_service.get_library_timezone(settings.LIBRARY_TIMEZONE)
+    now_local = space_service.get_utc_now().astimezone(inst_tz)
+    tomorrow_local = (now_local + timedelta(days=1)).date()
 
-    greeting_match = re.search(r"^(hello|hi|hey|greetings|good\s+(morning|afternoon|evening)|howdy|sup)\b[\s,;!?-]*", filler_stripped)
-    is_pure_greeting = False
-    if greeting_match:
-        remainder = filler_stripped[greeting_match.end():].strip()
-        remainder_cleaned = re.sub(r"[^\w\s]", "", remainder).strip()
-        if not remainder_cleaned or remainder_cleaned in ["there", "copilot", "assistant", "bot", "library", "ai", "hello", "hey"]:
-            is_pure_greeting = True
-    elif normalized in ["hey", "hi", "hello", "ok so hey hello", "hey hello", "hello there", "hi there", "greetings"]:
-        is_pure_greeting = True
-
-    if is_pure_greeting:
-        provider, provider_name = get_llm_provider()
-        suggested_followups = [
-            "What books do I currently have checked out?",
-            "What is the borrowing duration and limit?",
-            "Find books on Distributed Systems",
-        ]
-        if provider_name != "fallback":
-            try:
-                system_inst = "You are the Athenaeum AI Library Copilot. Keep responses professional, warm, concise, and helpful."
-                prompt = (
-                    f"The user '{current_user.full_name}' greeted you with: '{query}'. "
-                    "Respond warmly, naturally, and concisely in 2-3 sentences. Introduce yourself as the Athenaeum AI Library Copilot. "
-                    "Invite them to search our catalog, locate study spaces, or check active loan records."
-                )
-                answer = provider.generate(prompt=prompt, system_instruction=system_inst, timeout=6.0)
-                active_provider = f"Gemini ({provider_name})"
-            except Exception as e:
-                logger.warning("Gemini greeting failed, using deterministic fallback: %s", e)
-                answer = (
-                    f"Hello, {current_user.full_name}! I am your **Athenaeum AI Library Copilot**.\n\n"
-                    "I am connected directly to our verified collection of monographs, live physical copy availability, "
-                    "campus floor plans, and your personal loan records. How can I assist your research today?"
-                )
-                active_provider = "Librarian Agent Tool Runner"
-        else:
-            answer = (
-                f"Hello, {current_user.full_name}! I am your **Athenaeum AI Library Copilot**.\n\n"
-                "I am connected directly to our verified collection of monographs, live physical copy availability, "
-                "campus floor plans, and your personal loan records. How can I assist your research today?"
+    # ── 1. AUTONOMOUS REACT EXECUTION (GEMINI 3.1 FLASH LITE) ───────────────────
+    if provider_name == "gemini" and api_key:
+        try:
+            gemini_url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{settings.LLM_MODEL_NAME}:generateContent?key={api_key}"
             )
-            active_provider = "Librarian Agent Tool Runner"
 
-        return EnhancedCopilotResponse(
-            answer=answer,
-            intent="GREETING",
-            confidence=0.99,
-            provider=active_provider,
-            tool_calls=[],
-            citations=[],
-            suggested_followups=suggested_followups,
-        )
+            system_instruction = (
+                f"You are the Athenaeum Autonomous AI Library Concierge serving patron '{current_user.full_name}' "
+                f"(Role: {current_user.role}, Email: {current_user.email}).\n"
+                f"Today's date is {now_local.strftime('%Y-%m-%d (%A)')}. Tomorrow is {tomorrow_local.strftime('%Y-%m-%d')}. "
+                f"When calling tools with dates, always pass dates in {now_local.year} or later (e.g. '{tomorrow_local.strftime('%Y-%m-%d')}').\n"
+                "You have DIRECT REAL-TIME ACTION TOOLS to perform tasks on behalf of the patron:\n"
+                "- reserve_study_space: Reserve a study seat or room (ground floor is floor 0)\n"
+                "- place_monograph_hold: Reserve a physical monograph for desk pickup\n"
+                "- renew_loan: Renew active book loans\n"
+                "- generate_return_pass: Generate instant QR return clearance passes\n"
+                "- query_academic_research: Query arXiv, OpenAlex, and Crossref for scholarly papers\n"
+                "- search_catalogue: Search physical library books\n"
+                "- get_available_spaces: Check open seats and rooms\n"
+                "- get_patron_loans: View patron active loans\n"
+                "- get_spatial_resource: Get floor plan wayfinding coordinates\n"
+                "- get_library_policy: Look up borrowing rules\n\n"
+                "When the patron asks you to do something (e.g. reserve a seat, hold a book, renew a loan, return a book, search papers), "
+                "CALL THE APPROPRIATE ACTION TOOL IMMEDIATELY! Do not just give advice when an action can be performed.\n"
+                "For compound prompts (e.g. 'find a book and reserve a desk'), execute both tools.\n"
+                "Keep responses polite, articulate, professional, and explain clearly what action was taken."
+            )
 
-    # Thanks intent
-    if any(k in normalized for k in ["thank you", "thanks", "thx", "appreciate it", "thank u"]):
-        return EnhancedCopilotResponse(
-            answer=f"You're very welcome, {current_user.full_name}! Let me know if you need any assistance with book reservations, study spaces, or borrowing policies.",
-            intent="THANKS",
-            confidence=0.98,
-            provider="Librarian Agent Tool Runner",
-            suggested_followups=["What are my active loans?", "Where are available study seats?"],
-        )
+            # Build initial conversational contents
+            contents: List[Dict[str, Any]] = []
+            for h in bounded_history[-4:]:
+                contents.append({
+                    "role": "user" if h.role == "user" else "model",
+                    "parts": [{"text": h.content}],
+                })
+            contents.append({"role": "user", "parts": [{"text": query}]})
 
-    # Goodbye intent
-    if any(k in normalized for k in ["goodbye", "bye", "see you", "farewell", "cya", "have a good day"]):
-        return EnhancedCopilotResponse(
-            answer="Goodbye! Have a productive study session, and feel free to reopen the Copilot anytime you have questions.",
-            intent="GOODBYE",
-            confidence=0.98,
-            provider="Librarian Agent Tool Runner",
-            suggested_followups=["Find books on Computer Science"],
-        )
+            # ReAct Execution Loop (max 3 tool iteration turns)
+            max_turns = 3
+            final_agent_reply: Optional[str] = None
 
-    # Help / capabilities intent
-    if any(k in normalized for k in ["what can you do", "who are you", "help me", "how to use", "how does this work", "copilot features"]):
-        answer = (
-            "Here is how I can assist you as your **AI Library Copilot**:\n\n"
-            "• **Catalogue & Hybrid Search**: Ask for monographs on any topic or author (e.g. *'Find books on Machine Learning'*).\n"
-            "• **Study Space Wayfinding**: Inquire about seat or room locations (e.g. *'Where is Seat S-01?'* or *'Available rooms on floor 1'*).\n"
-            "• **Circulation & Due Dates**: Check your personal active loans (e.g. *'What are my active loans?'*).\n"
-            "• **Borrowing Regulations**: Clarify loan limits, durations, and return policies (e.g. *'What is the borrowing duration?'*)."
-        )
-        return EnhancedCopilotResponse(
-            answer=answer,
-            intent="HELP",
-            confidence=0.98,
-            provider="Librarian Agent Tool Runner",
-            suggested_followups=["What are my active loans?", "Where is Seat S-01 located?", "What is the borrowing limit?"],
-        )
+            with httpx.Client(timeout=14.0) as client:
+                for turn_idx in range(max_turns):
+                    payload = {
+                        "contents": contents,
+                        "system_instruction": {"parts": [{"text": system_instruction}]},
+                        "tools": GEMINI_AGENT_TOOLS,
+                        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 800},
+                    }
+                    resp = client.post(gemini_url, json=payload)
+                    if resp.status_code != 200:
+                        logger.warning(f"Gemini API returned status {resp.status_code}: {resp.text}")
+                        break
 
-    # Conversational / General Chat Intent
-    conversational_patterns = [
-        "talk normally", "speak normally", "tell me something", "talk to me", "chat with me",
-        "can you talk", "can we talk", "can we chat", "how are you", "how are you doing",
-        "how's it going", "hows it going", "what's up", "whats up", "who created you",
-        "who made you", "are you human", "are you an ai", "are you a bot", "are you real",
-        "tell me a joke", "tell me a fact", "what is your name", "what's your name",
-        "can you help me with something else", "just chatting", "say something",
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        break
+
+                    cand = candidates[0]
+                    content_obj = cand.get("content", {})
+                    parts = content_obj.get("parts", [])
+                    if not parts:
+                        break
+
+                    # Check for function calls
+                    func_calls = [p.get("functionCall") for p in parts if "functionCall" in p]
+                    text_parts = [p.get("text") for p in parts if "text" in p and p.get("text")]
+
+                    if not func_calls:
+                        # Model finished reasoning and returned final answer!
+                        final_agent_reply = " ".join(text_parts).strip()
+                        break
+
+                    # Append model turn with function calls to history
+                    contents.append(content_obj)
+
+                    # Execute all requested function calls
+                    for fc in func_calls:
+                        f_name = fc.get("name")
+                        f_args = fc.get("args", {})
+                        logger.info(f"Autonomous Agent executing tool '{f_name}' with args {f_args}")
+
+                        t_res, t_action = _dispatch_tool(
+                            db=db,
+                            current_user=current_user,
+                            tool_name=f_name,
+                            args=f_args,
+                        )
+                        tool_calls.append(CopilotToolCall(tool_name=f_name, arguments=f_args, result=t_res))
+                        if t_action:
+                            agent_actions.append(t_action)
+
+                        # If books returned, capture for book cards
+                        if f_name == "search_catalogue" and "books" in t_res:
+                            book_cards.extend(t_res["books"])
+                            for b in t_res["books"]:
+                                citations.append(StructuredCitation(
+                                    source_type="monograph",
+                                    title=b["title"],
+                                    reference_id=str(b["id"]),
+                                    snippet=f"By {b['author']}. Category: {b['category']}. Available: {b['available_copies']}.",
+                                    url_or_action=f"book_{b['id']}",
+                                ))
+
+                        # If spatial returned, capture spatial card
+                        if f_name == "get_spatial_resource" and "error" not in t_res:
+                            spatial_card = t_res
+
+                        # Feed function response back to Gemini
+                        contents.append({
+                            "role": "user",
+                            "parts": [{
+                                "functionResponse": {
+                                    "name": f_name,
+                                    "response": {"name": f_name, "content": t_res},
+                                }
+                            }],
+                        })
+
+            if final_agent_reply:
+                # Build contextual follow-up suggestions
+                if agent_actions:
+                    suggested_followups = [
+                        "View this on the Interactive Floor Map",
+                        "What are my active loans and reservations?",
+                        "Search scholarly literature on this topic",
+                    ]
+                else:
+                    suggested_followups = [
+                        "Book a quiet study seat for me",
+                        "What books do I have checked out?",
+                        "Find books on Distributed Systems",
+                    ]
+
+                return EnhancedCopilotResponse(
+                    answer=final_agent_reply,
+                    intent="AUTONOMOUS_AGENT_EXECUTION" if agent_actions else "COPILOT_CHAT",
+                    confidence=0.99,
+                    provider=f"Gemini 3.1 Flash Lite (Autonomous Agent)",
+                    tool_calls=tool_calls,
+                    agent_actions=agent_actions,
+                    citations=citations,
+                    book_cards=book_cards,
+                    spatial_card=spatial_card,
+                    suggested_followups=suggested_followups,
+                )
+
+        except Exception as e:
+            logger.error(f"Autonomous ReAct execution encountered error, falling back to deterministic routing: {e}")
+
+    # ── 2. DETERMINISTIC WORKFLOW ROUTING (FALLBACK / OFFLINE) ───────────────────
+
+    # A. Reserve study space
+    reserve_keywords = [
+        "reserve seat", "book seat", "reserve a seat", "book a seat", "reserve desk", "book desk",
+        "reserve space", "book space", "book a desk", "reserve study", "book study", "book room",
+        "reserve room", "book a room", "reserve a room"
     ]
-    if any(p in normalized for p in conversational_patterns):
-        provider, provider_name = get_llm_provider()
-        suggested_followups = [
-            "Find books on Machine Learning",
-            "What are my active loans?",
-            "Where can I find a quiet study space?",
-        ]
-        if provider_name != "fallback":
-            try:
-                system_inst = (
-                    "You are the Athenaeum AI Library Copilot, a friendly, intelligent, and articulate academic AI companion. "
-                    "The student is speaking with you casually. Respond in a warm, natural, engaging, and human-like tone in 2-3 sentences. "
-                    "Reassure them that you can converse naturally about academic concepts, research, library holdings, study spaces, or general questions."
-                )
-                prompt = f"The student '{current_user.full_name}' says: '{query}'. Reply directly and naturally to their remark."
-                answer = provider.generate(prompt=prompt, system_instruction=system_inst, timeout=6.0)
-                active_provider = f"Gemini ({provider_name})"
-            except Exception as e:
-                logger.warning("Gemini conversational reply failed: %s", e)
-                answer = (
-                    f"Yes, absolutely, {current_user.full_name}! I can talk normally with you. "
-                    "While I have direct access to our verified catalog holdings, study spaces, and borrowing regulations, "
-                    "I'm here to have natural conversations, brainstorm research topics, or answer any questions you have. "
-                    "What's on your mind today?"
-                )
-                active_provider = "Librarian Agent Tool Runner"
-        else:
+    has_book_action = any(k in normalized for k in ["reserve", "book", "schedule"])
+    has_space_target = any(k in normalized for k in ["seat", "seats", "desk", "desks", "room", "rooms", "space", "spaces", "spot"])
+    is_space_reservation_intent = (has_book_action and has_space_target and not any(k in normalized for k in ["book hold", "monograph", "book on", "books on"])) or any(k in normalized for k in reserve_keywords)
+
+    if is_space_reservation_intent:
+        fl_match = re.search(r"floor\s*(-?\d+)", normalized)
+        fl_num = int(fl_match.group(1)) if fl_match else (0 if "ground" in normalized else 0)
+        res_type = "room" if "room" in normalized else "seat"
+
+        t_res, t_action = _dispatch_tool(
+            db=db,
+            current_user=current_user,
+            tool_name="reserve_study_space",
+            args={"floor_number": fl_num, "resource_type": res_type},
+        )
+        tool_calls.append(CopilotToolCall(tool_name="reserve_study_space", arguments={"floor_number": fl_num, "resource_type": res_type}, result=t_res))
+        if t_action:
+            agent_actions.append(t_action)
+
+        if t_res.get("status") == "success":
             answer = (
-                f"Yes, absolutely, {current_user.full_name}! I can talk normally with you. "
-                "While I have direct access to our verified catalog holdings, study spaces, and borrowing regulations, "
-                "I'm here to have natural conversations, brainstorm research topics, or answer any questions you have. "
-                "What's on your mind today?"
+                f"✅ **Study Space Successfully Reserved!**\n\n"
+                f"I have reserved **{t_res.get('resource_label')}** on **Floor {fl_num}** for you.\n"
+                f"• **Session Window**: {t_res.get('formatted_window')}\n"
+                f"• **Check-in Token**: `{t_res.get('check_in_token')}`\n\n"
+                f"You can view your reserved seat on the interactive floor plan or check in using your token upon arrival."
             )
-            active_provider = "Librarian Agent Tool Runner"
+        elif t_res.get("status") == "quota_reached":
+            answer = f"ℹ️ {t_res.get('message')} You can view or cancel your active reservation under the **Spaces** tab."
+        else:
+            answer = f"⚠️ Could not complete space reservation: {t_res.get('reason', 'Unknown error')}."
 
         return EnhancedCopilotResponse(
             answer=answer,
-            intent="CONVERSATIONAL",
+            intent="SPACE_RESERVATION",
             confidence=0.98,
-            provider=active_provider,
-            tool_calls=[],
-            citations=[],
-            suggested_followups=suggested_followups,
+            provider="Librarian Agent Tool Runner",
+            tool_calls=tool_calls,
+            agent_actions=agent_actions,
+            suggested_followups=["View my active reservations", "Directions to this seat on the floor map"],
         )
 
-    # ── 1. PATRON LOANS INTENT ────────────────────────────────────────────────
-    # Strict patron isolation: always derived from authenticated current_user
-    if any(k in normalized for k in [
-        "my loan", "my books", "due date", "what did i borrow", "when is my book due",
-        "active loan", "active loans", "checked out", "borrowed books", "renew my book",
-        "my borrowed"
-    ]):
+    # B. Renew active loan
+    renew_keywords = ["renew loan", "renew my loan", "renew book", "renew my book", "extend loan", "extend my loan", "extend due date"]
+    if any(k in normalized for k in renew_keywords):
+        t_res, t_action = _dispatch_tool(db=db, current_user=current_user, tool_name="renew_loan", args={})
+        tool_calls.append(CopilotToolCall(tool_name="renew_loan", arguments={}, result=t_res))
+        if t_action:
+            agent_actions.append(t_action)
+
+        if t_res.get("status") == "success":
+            answer = (
+                f"✅ **Loan Successfully Renewed!**\n\n"
+                f"Your loan for **'{t_res.get('book_title')}'** has been extended.\n"
+                f"• **New Due Date**: `{t_res.get('new_due_date')}`\n"
+                f"• **Renewals Used**: {t_res.get('renewal_count')}/1 allowed renewal."
+            )
+        else:
+            answer = f"ℹ️ {t_res.get('reason', 'Could not renew loan.')}"
+
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="LOAN_RENEWAL",
+            confidence=0.98,
+            provider="Librarian Agent Tool Runner",
+            tool_calls=tool_calls,
+            agent_actions=agent_actions,
+            suggested_followups=["What are my active loans?", "What is the overdue fine policy?"],
+        )
+
+    # C. Return pass / QR token generation
+    return_pass_keywords = ["return pass", "return token", "return qr", "return clearance", "generate return", "return my book", "drop off book"]
+    if any(k in normalized for k in return_pass_keywords):
+        t_res, t_action = _dispatch_tool(db=db, current_user=current_user, tool_name="generate_return_pass", args={})
+        tool_calls.append(CopilotToolCall(tool_name="generate_return_pass", arguments={}, result=t_res))
+        if t_action:
+            agent_actions.append(t_action)
+
+        if t_res.get("status") == "success":
+            answer = (
+                f"📱 **Return Clearance Pass Generated!**\n\n"
+                f"• **Book**: '{t_res.get('book_title')}'\n"
+                f"• **Pass Code**: `{t_res.get('token_code')}`\n"
+                f"• **Expires**: {t_res.get('expires_at')}\n\n"
+                f"Present this pass code or the QR token at the Circulation Return Desk to discharge your loan."
+            )
+        else:
+            answer = f"ℹ️ {t_res.get('reason', 'No active loans eligible for return pass.')}"
+
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="RETURN_PASS_GENERATION",
+            confidence=0.98,
+            provider="Librarian Agent Tool Runner",
+            tool_calls=tool_calls,
+            agent_actions=agent_actions,
+            suggested_followups=["What are my active loans?", "Circulation desk return hours"],
+        )
+
+    # D. Scholarly / Academic research query
+    academic_keywords = ["arxiv", "openalex", "crossref", "academic paper", "scholarly", "preprints", "research papers", "scientific papers"]
+    if any(k in normalized for k in academic_keywords):
+        clean_q = re.sub(r"\b(arxiv|openalex|crossref|search|find|academic|papers?|scholarly|preprints?)\b", "", normalized).strip()
+        clean_q = clean_q or "Artificial Intelligence"
+        t_res, t_action = _dispatch_tool(db=db, current_user=current_user, tool_name="query_academic_research", args={"query": clean_q, "limit": 3})
+        tool_calls.append(CopilotToolCall(tool_name="query_academic_research", arguments={"query": clean_q}, result=t_res))
+        if t_action:
+            agent_actions.append(t_action)
+
+        papers = t_res.get("papers", [])
+        if papers:
+            p_lines = [f"• **{p['title']}** ({p.get('year', 'N/A')}) by {', '.join(p.get('authors', [])[:2])} — [Download PDF]({p.get('open_access_pdf_url')})" for p in papers]
+            answer = f"🎓 **Scholarly Preprints Found for '{clean_q}':**\n\n" + "\n".join(p_lines)
+        else:
+            answer = f"No open-access preprints found for '{clean_q}'."
+
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="ACADEMIC_RESEARCH",
+            confidence=0.96,
+            provider="Librarian Agent Tool Runner",
+            tool_calls=tool_calls,
+            agent_actions=agent_actions,
+            suggested_followups=["Search physical books on this topic", "Find more research papers"],
+        )
+
+    # E. Book hold / loan reservation
+    hold_keywords = ["place hold", "hold book", "reserve book", "place a hold", "hold monograph", "book reservation"]
+    if any(k in normalized for k in hold_keywords):
+        clean_title = re.sub(r"\b(place|hold|reserve|book|monograph|on|the|a|for|me)\b", "", normalized).strip()
+        t_res, t_action = _dispatch_tool(db=db, current_user=current_user, tool_name="place_monograph_hold", args={"book_title": clean_title})
+        tool_calls.append(CopilotToolCall(tool_name="place_monograph_hold", arguments={"book_title": clean_title}, result=t_res))
+        if t_action:
+            agent_actions.append(t_action)
+
+        if t_res.get("status") == "success":
+            answer = (
+                f"📚 **Hold Placed on '{t_res.get('book_title')}'!**\n\n"
+                f"• **Status**: `{t_res.get('hold_status', '').replace('_', ' ').title()}`\n"
+                f"• **Pickup Deadline**: {t_res.get('pickup_deadline', 'N/A')}\n\n"
+                f"An allocated copy is reserved for you at the Circulation Desk."
+            )
+        else:
+            answer = f"ℹ️ {t_res.get('reason', 'Could not place hold.')}"
+
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="BOOK_HOLD",
+            confidence=0.97,
+            provider="Librarian Agent Tool Runner",
+            tool_calls=tool_calls,
+            agent_actions=agent_actions,
+            suggested_followups=["View my active holds", "Where is the circulation desk?"],
+        )
+
+    # F. Patron active loans
+    if any(k in normalized for k in ["my loan", "my books", "due date", "what did i borrow", "active loan", "checked out"]):
         res = tool_get_patron_loans(db=db, current_user=current_user)
         tool_calls.append(CopilotToolCall(tool_name="get_patron_loans", arguments={"user_id": current_user.id}, result=res))
         if res["active_loans_count"] == 0:
@@ -314,357 +1130,46 @@ def execute_librarian_agent_rag(
             provider="Librarian Agent Tool Runner",
             tool_calls=tool_calls,
             citations=[StructuredCitation(source_type="monograph", title="Circulation Records", snippet=f"Patron {current_user.email} active loans")],
-            suggested_followups=["How do I renew my loans?", "What are the overdue fine policies?"],
+            suggested_followups=["Renew my loan", "Generate a return pass for my book"],
         )
 
-    # ── 2. SPACE AVAILABILITY INTENT (MF-AI-01 Fix) ───────────────────────────
-    # Evaluated before monograph search to prevent room/seat availability queries from falling through.
-    availability_keywords = ["available", "availability", "free", "empty", "open", "vacant", "vacancy", "occupancy", "unoccupied"]
-    space_keywords = ["room", "rooms", "seat", "seats", "space", "spaces", "desk", "desks"]
-
-    has_availability_word = any(k in normalized for k in availability_keywords)
-    has_space_word = any(k in normalized for k in space_keywords)
-
-    is_availability_intent = (has_availability_word and has_space_word) or any(
-        phrase in normalized for phrase in [
-            "study space", "free space", "empty room", "available seat", "available room",
-            "any rooms", "any seats", "room availability", "seat availability",
-            "which rooms", "which study rooms", "are there rooms", "are there seats"
-        ]
-    )
-
-    if is_availability_intent:
-        # Extract optional floor filter from query
-        target_floor: Optional[int] = None
-        fl_match = re.search(r"floor\s*(-?\d+)", normalized)
-        if fl_match:
-            target_floor = int(fl_match.group(1))
-        elif "ground floor" in normalized or "ground" in normalized:
-            target_floor = 0
-        elif "first floor" in normalized:
-            target_floor = 1
-        elif "second floor" in normalized:
-            target_floor = 2
-        elif "third floor" in normalized:
-            target_floor = 3
-        elif "basement" in normalized:
-            target_floor = -1
-
-        res = tool_get_available_spaces(db=db, floor_number=target_floor)
-        tool_calls.append(CopilotToolCall(
-            tool_name="get_available_spaces",
-            arguments={"floor_number": target_floor},
-            result=res,
-        ))
-
-        floors_data = res.get("floors", [])
-        asking_specifically_for_rooms = any(w in normalized for w in ["room", "rooms"])
-
-        if not floors_data:
-            floor_label = f"Floor {target_floor}" if target_floor is not None else "any floor"
-            answer = f"No active floor layout or telemetry found for {floor_label}."
-        elif target_floor is not None:
-            fl = floors_data[0]
-            fl_name = fl["floor_name"]
-            rooms_count = fl["available_rooms_count"]
-            seats_count = fl["available_seats_count"]
-            rooms_list = fl.get("available_rooms", [])
-
-            if asking_specifically_for_rooms and not any(w in normalized for w in ["seat", "seats"]):
-                if rooms_count > 0:
-                    answer = (
-                        f"On {fl_name} (Floor {fl['floor_number']}), there are {rooms_count} study room(s) available right now:\n"
-                        + "\n".join([f"• {r}" for r in rooms_list])
-                        + f"\n\nAdditionally, {seats_count} study seat(s) are open on this floor."
-                    )
-                else:
-                    answer = f"There are currently 0 study rooms available on {fl_name} (Floor {fl['floor_number']}). However, {seats_count} study seat(s) are available."
-            else:
-                sample_seats = ", ".join(fl.get("sample_available_seats", []))
-                answer = (
-                    f"Study space availability for {fl_name} (Floor {fl['floor_number']}):\n"
-                    f"• Available Study Rooms: {rooms_count}\n"
-                    f"• Available Study Seats: {seats_count}"
-                )
-                if sample_seats:
-                    answer += f" (e.g., {sample_seats})"
-                if rooms_list:
-                    answer += f"\n• Open Rooms: {', '.join(rooms_list)}"
-        else:
-            # Multi-floor overview
-            if asking_specifically_for_rooms and not any(w in normalized for w in ["seat", "seats"]):
-                fl_summaries = []
-                for fl in floors_data:
-                    r_count = fl["available_rooms_count"]
-                    r_names = fl.get("available_rooms", [])
-                    r_detail = f"({', '.join(r_names)})" if r_names else ""
-                    fl_summaries.append(f"{fl['floor_name']}: {r_count} room(s) available {r_detail}".strip())
-                answer = "Here is the current study room availability across library floors:\n• " + "\n• ".join(fl_summaries)
-            else:
-                fl_summaries = [
-                    f"{fl['floor_name']}: {fl['available_seats_count']} seats, {fl['available_rooms_count']} rooms available"
-                    for fl in floors_data
-                ]
-                answer = "Here is the current study space occupancy status across library floors:\n• " + "\n• ".join(fl_summaries)
-
-        citations.append(StructuredCitation(
-            source_type="study_space",
-            title="Live Study Space Telemetry",
-            snippet=answer[:250],
-            url_or_action="spaces_tab",
-        ))
+    # G. Space availability
+    if any(k in normalized for k in ["available", "free", "empty", "open"]) and any(k in normalized for k in ["seat", "seats", "room", "rooms", "space"]):
+        res = tool_get_available_spaces(db=db, floor_number=0)
+        tool_calls.append(CopilotToolCall(tool_name="get_available_spaces", arguments={"floor_number": 0}, result=res))
+        fl = res.get("floors", [{}])[0]
+        answer = (
+            f"Study space availability for {fl.get('floor_name', 'Ground Floor')}:\n"
+            f"• Available Study Rooms: {fl.get('available_rooms_count', 0)}\n"
+            f"• Available Study Seats: {fl.get('available_seats_count', 0)}\n\n"
+            f"Would you like me to book a study desk for you?"
+        )
         return EnhancedCopilotResponse(
             answer=answer,
             intent="SPACE_AVAILABILITY",
             confidence=0.96,
             provider="Librarian Agent Tool Runner",
             tool_calls=tool_calls,
-            citations=citations,
-            suggested_followups=[
-                "Book a study space on Ground Floor",
-                "Where is Room 101 located?",
-                "Show me silent study zones",
-            ],
+            suggested_followups=["Book a study seat for me on Ground Floor", "Where is Seat S-01 located?"],
         )
 
-    # ── 3. SPATIAL WAYFINDING & LOCATION INTENT ───────────────────────────────
-    # Resolves physical coordinates and directional guidance for seats, rooms, and zones.
-    # Supports coreference resolution ("directions there", "how do i get there") from history.
-    target_seat_num: Optional[int] = None
-    target_room_ident: Optional[str] = None
-
-    seat_match = re.search(r"s[-_]?(\d+)", normalized) or re.search(r"seat\s*[-_]?\s*(\d+)", normalized)
-    if seat_match:
-        target_seat_num = int(seat_match.group(1))
-
-    room_match = re.search(r"room\s*[-_]?\s*([a-zA-Z0-9]+)", normalized)
-    if room_match:
-        target_room_ident = room_match.group(1)
-
-    # Coreference resolution for spatial pronouns ("there", "directions there")
-    if target_seat_num is None and target_room_ident is None and has_spatial_followup:
-        for prev_msg in reversed(bounded_history):
-            prev_text = prev_msg.content.lower()
-            prev_seat = re.search(r"s[-_]?(\d+)", prev_text) or re.search(r"seat\s*[-_]?\s*(\d+)", prev_text)
-            if prev_seat:
-                target_seat_num = int(prev_seat.group(1))
-                break
-            prev_room = re.search(r"room\s*[-_]?\s*([a-zA-Z0-9]+)", prev_text)
-            if prev_room:
-                target_room_ident = prev_room.group(1)
-                break
-
-    is_spatial_intent = (
-        target_seat_num is not None
-        or target_room_ident is not None
-        or any(k in normalized for k in [
-            "where is", "how do i find", "location", "floor plan", "wayfinding",
-            "directions to", "directions there", "take me to", "how to get to"
-        ])
-    )
-
-    if is_spatial_intent:
-        if target_seat_num is not None:
-            # Query study seat
-            res = tool_get_spatial_resource(db=db, resource_type="seat", resource_id=target_seat_num)
-            tool_calls.append(CopilotToolCall(
-                tool_name="get_spatial_resource",
-                arguments={"resource_type": "seat", "resource_id": target_seat_num},
-                result=res,
-            ))
-            if "error" not in res:
-                spatial_card = res
-                citations.append(StructuredCitation(
-                    source_type="study_space",
-                    title=f"Floor Plan Directory - Seat S-{target_seat_num:02d}",
-                    reference_id=f"seat_{target_seat_num}",
-                    snippet=res.get("directional_guidance", ""),
-                    url_or_action=f"floor_{res.get('floor_number')}",
-                ))
-                answer = f"Seat S-{target_seat_num:02d} is located on {res.get('floor_name')}, within {res.get('zone_name')}. {res.get('directional_guidance')}"
-                suggested_followups = ["Show me the shortest wayfinding path", "Are there nearby seats with power outlets?"]
-                return EnhancedCopilotResponse(
-                    answer=answer,
-                    intent="SPATIAL_NAVIGATION",
-                    confidence=0.98,
-                    provider="Librarian Agent Tool Runner",
-                    tool_calls=tool_calls,
-                    citations=citations,
-                    spatial_card=spatial_card,
-                    suggested_followups=suggested_followups,
-                )
-
-        if target_room_ident is not None:
-            # Query study room from DB
-            stmt = select(StudyRoom).where(
-                or_(
-                    StudyRoom.room_code.ilike(f"%{target_room_ident}%"),
-                    StudyRoom.name.ilike(f"%{target_room_ident}%"),
-                    StudyRoom.id == (int(target_room_ident) if target_room_ident.isdigit() else -1),
-                )
-            )
-            rm_obj = db.execute(stmt).scalars().first()
-            if rm_obj:
-                res = tool_get_spatial_resource(db=db, resource_type="room", resource_id=rm_obj.id)
-                tool_calls.append(CopilotToolCall(
-                    tool_name="get_spatial_resource",
-                    arguments={"resource_type": "room", "resource_id": rm_obj.id},
-                    result=res,
-                ))
-                if "error" not in res:
-                    spatial_card = res
-                    citations.append(StructuredCitation(
-                        source_type="study_space",
-                        title=f"Floor Plan Directory - {rm_obj.name}",
-                        reference_id=f"room_{rm_obj.id}",
-                        snippet=res.get("directional_guidance", ""),
-                        url_or_action=f"floor_{res.get('floor_number')}",
-                    ))
-                    answer = f"{rm_obj.name} ({rm_obj.room_code}) is located on {res.get('floor_name')}, within {res.get('zone_name')}. {res.get('directional_guidance')}"
-                    return EnhancedCopilotResponse(
-                        answer=answer,
-                        intent="SPATIAL_NAVIGATION",
-                        confidence=0.98,
-                        provider="Librarian Agent Tool Runner",
-                        tool_calls=tool_calls,
-                        citations=citations,
-                        spatial_card=spatial_card,
-                        suggested_followups=["Book this study room", "Show me other rooms on this floor"],
-                    )
-
-        if any(k in normalized for k in ["where is", "how do i find", "floor plan", "wayfinding", "location"]):
-            floors = spatial_service.get_all_floors_service(db=db)
-            fl_names = [f"Floor {f.floor_number} ({f.name})" for f in floors]
-            answer = (
-                f"You can explore interactive floor plans across the library:\n• "
-                + "\n• ".join(fl_names)
-                + "\n\nPlease select a floor in the Wayfinding view, or ask for a specific seat (e.g. 'Where is Seat S-01?') or study room."
-            )
-            citations.append(StructuredCitation(
-                source_type="study_space",
-                title="Floor Plan Directory",
-                snippet=answer[:200],
-                url_or_action="floor_0",
-            ))
-            return EnhancedCopilotResponse(
-                answer=answer,
-                intent="SPATIAL_NAVIGATION",
-                confidence=0.90,
-                provider="Librarian Agent Tool Runner",
-                citations=citations,
-                suggested_followups=["Where is Seat S-01 located?", "Which study rooms are available on floor 0?"],
-            )
-
-    # ── 4. POLICY & LIBRARY RULES INTENT ──────────────────────────────────────
-    matched_policies = search_policies(query, max_results=2)
-    policy_keywords = [
-        "policy", "rule", "limit", "how many", "duration", "hours", "return", "fine", "penalty",
-        "visitor", "borrow", "loan", "teacher", "student", "allowance", "can teachers", "can students",
-        "more books", "borrowing", "faculty"
-    ]
-    if matched_policies and any(k in normalized for k in policy_keywords):
-        pol = matched_policies[0]
-        pol_context = "\n\n".join([f"### {p['title']}\n{p['content']}" for p in matched_policies])
-        provider, provider_name = get_llm_provider()
-        active_provider = "Librarian Agent Tool Runner"
-
-        if provider_name != "fallback":
-            try:
-                system_inst = "You are the Athenaeum AI Library Copilot. Answer the patron's question directly and concisely based on the library policy guidelines."
-                prompt = (
-                    f"<library_policy_context>\n{pol_context}\n</library_policy_context>\n\n"
-                    f"User Inquiry: {query}\n\n"
-                    "Based strictly on the verified policy text above, write a clear, concise, direct response in 2-3 sentences. "
-                    "If the user asks whether teachers can borrow more books than students, clearly confirm that teachers can borrow up to 10 books whereas students can borrow up to 3 books."
-                )
-                answer = provider.generate(prompt=prompt, system_instruction=system_inst, timeout=6.0)
-                active_provider = f"Gemini ({provider_name})"
-            except Exception as e:
-                logger.warning("Gemini policy synthesis failed: %s", e)
-                answer = f"According to library policy on **{pol['title']}**:\n\n{pol['content']}"
-        else:
-            answer = f"According to library policy on **{pol['title']}**:\n\n{pol['content']}"
-
-        citations.append(StructuredCitation(source_type="policy", title=pol["title"], snippet=pol["content"][:200]))
-        return EnhancedCopilotResponse(
-            answer=answer,
-            intent="POLICY_INQUIRY",
-            confidence=0.96,
-            provider=active_provider,
-            citations=citations,
-            suggested_followups=["What is the borrowing limit for students?", "What are the library hours?"],
-        )
-
-    # ── 5. BIBLIOGRAPHIC DISCOVERY & HYBRID RAG RECOMMENDATIONS ───────────────
-    # Coreference resolution for follow-up recommendation queries ("more like those")
-    catalogue_query = query
-    if has_recommendation_followup and bounded_history:
-        for prev_msg in reversed(bounded_history):
-            if prev_msg.role == "user" and prev_msg.content != query:
-                catalogue_query = prev_msg.content
-                break
-
-    search_res = tool_search_catalogue(db=db, query=catalogue_query, limit=4)
-    tool_calls.append(CopilotToolCall(tool_name="search_catalogue", arguments={"query": catalogue_query, "limit": 4}, result=search_res))
+    # H. Catalogue search (Standard fallback)
+    search_res = tool_search_catalogue(db=db, query=query, limit=4)
+    tool_calls.append(CopilotToolCall(tool_name="search_catalogue", arguments={"query": query, "limit": 4}, result=search_res))
     books = search_res.get("books", [])
-    provider, provider_name = get_llm_provider()
-    active_provider = "Librarian Agent Tool Runner"
-
     if books:
         book_cards = books
-        for b in books:
-            citations.append(StructuredCitation(
-                source_type="monograph",
-                title=b["title"],
-                reference_id=str(b["id"]),
-                snippet=f"By {b['author']}. Category: {b['category']}. Available copies: {b['available_copies']}.",
-                url_or_action=f"book_{b['id']}",
-            ))
-        book_list = [f"• **{b['title']}** by {b['author']} ({b['available_copies']} copy available)" for b in books]
-        default_answer = f"Based on our catalog, here are relevant recommended titles for '{catalogue_query}':\n\n" + "\n".join(book_list) + "\n\nYou can click on any title to view details or place a reservation hold."
-
-        if provider_name != "fallback":
-            try:
-                holdings_summary = "\n".join([
-                    f"- '{b['title']}' by {b['author']} (Category: {b['category']}, Available copies: {b['available_copies']})"
-                    for b in books
-                ])
-                prompt = (
-                    f"<verified_catalog_holdings>\n{holdings_summary}\n</verified_catalog_holdings>\n\n"
-                    f"User Inquiry: {query}\n\n"
-                    "Based strictly on the verified catalog items above, write a concise, professional recommendation response. "
-                    "Mention the title, author, and available copy count for each recommended book. Do not fabricate books outside this list."
-                )
-                system_inst = "You are the Athenaeum AI Library Copilot. Ground recommendations strictly in the verified library holdings provided."
-                llm_reply = provider.generate(prompt=prompt, system_instruction=system_inst, timeout=8.0)
-                answer = llm_reply
-                active_provider = f"Gemini ({provider_name})"
-            except Exception as e:
-                logger.warning("Gemini recommendation synthesis failed: %s", e)
-                answer = default_answer
-        else:
-            answer = default_answer
-
-        suggested_followups = ["Tell me more about the first recommendation", "Where is this located on the floor plan?"]
+        b_lines = [f"• **{b['title']}** by {b['author']} ({b['available_copies']} copy available)" for b in books]
+        answer = f"Based on our catalog, here are relevant recommended titles for '{query}':\n\n" + "\n".join(b_lines)
     else:
-        if provider_name != "fallback":
-            try:
-                prompt = f"The user asked: '{query}'. We searched the library catalog and found no matching physical books. Write a polite, helpful 2-sentence response explaining this and suggesting related topics or asking a librarian."
-                answer = provider.generate(prompt=prompt, system_instruction="You are Athenaeum AI Library Copilot.", timeout=6.0)
-                active_provider = f"Gemini ({provider_name})"
-            except Exception:
-                answer = f"I searched the library collection for '{catalogue_query}', but could not find exact matching monographs. Would you like to explore related academic subjects or consult a librarian?"
-        else:
-            answer = f"I searched the library collection for '{catalogue_query}', but could not find exact matching monographs. Would you like to explore related academic subjects or consult a librarian?"
-        suggested_followups = ["Browse Computer Science subjects", "Search by author name"]
+        answer = f"I searched the library collection for '{query}', but could not find exact matching monographs. Would you like to explore related academic subjects or ask me to search global arXiv preprints?"
 
     return EnhancedCopilotResponse(
         answer=answer,
         intent="RECOMMENDATION_RAG",
         confidence=0.92,
-        provider=active_provider,
+        provider="Librarian Agent Tool Runner",
         tool_calls=tool_calls,
-        citations=citations,
         book_cards=book_cards,
-        suggested_followups=suggested_followups,
+        suggested_followups=["Search arXiv for academic papers", "Book a study desk"],
     )

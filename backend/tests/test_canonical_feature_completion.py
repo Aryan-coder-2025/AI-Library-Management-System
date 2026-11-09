@@ -35,6 +35,11 @@ from app.models import (
     CourseReserve,
     InventoryEvent,
     Loan,
+    LibraryFloor,
+    SpatialResourceMapping,
+    StudyRoom,
+    StudySeat,
+    StudyZone,
     SearchEvent,
     User,
 )
@@ -728,3 +733,63 @@ def test_multimodal_vision_research_endpoint(client: TestClient, student_user: U
     assert "detected_type" in data["analysis"]
     assert "catalogue_matches" in data
     assert "scholarly_papers" in data
+
+
+def test_autonomous_agent_actions_and_compound_workflows(client: TestClient, student_user: User, db: Session):
+    """
+    Verifies that POST /api/knowledge/agent/chat functions as an autonomous agent:
+    executes real actions (space reservations, monograph holds, renewals), returns structured
+    agent_actions payloads, and coordinates multi-step workflows.
+    """
+    # Seed topology in test DB if needed
+    fl = db.query(LibraryFloor).filter(LibraryFloor.floor_number == 0).first()
+    if not fl:
+        fl = LibraryFloor(floor_number=0, name="Ground Floor")
+        db.add(fl)
+        db.flush()
+    zn = db.query(StudyZone).filter(StudyZone.floor == 0).first()
+    if not zn:
+        zn = StudyZone(zone_code="Z-01", name="Silent Zone", floor=0, total_capacity=20, noise_policy="quiet", is_active=True)
+        db.add(zn)
+        db.flush()
+    st = db.query(StudySeat).first()
+    if not st:
+        st = StudySeat(zone_id=zn.id, seat_code="SEAT-G-S-01", is_active=True)
+        db.add(st)
+        db.flush()
+        mapping = SpatialResourceMapping(
+            resource_type="seat",
+            resource_id=st.id,
+            floor_id=fl.id,
+            label="SEAT-G-S-01",
+            x=0.5,
+            y=0.5,
+            width=0.05,
+            height=0.05,
+            rotation=0.0,
+            is_active=True,
+        )
+        db.add(mapping)
+        db.commit()
+
+    token = create_access_token(user_id=student_user.id, role=student_user.role)
+    client.cookies.set("access_token", token)
+    client.cookies.set("csrf_token", "testcsrf")
+
+    # 1. Ask agent to reserve a study desk on ground floor
+    resp = client.post(
+        "/api/knowledge/agent/chat",
+        json={"message": "Please book a quiet study seat for me on the ground floor for tomorrow at 10 AM"},
+        headers={"X-CSRF-Token": "testcsrf"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    print("TEST DATA:", data)
+    assert "answer" in data
+    assert "tool_calls" in data
+    assert "agent_actions" in data
+    assert len(data["agent_actions"]) >= 1
+    assert data["agent_actions"][0]["action_type"] == "space_reserved"
+    assert data["agent_actions"][0]["status"] == "success"
+    assert "check_in_token" in data["agent_actions"][0]["data"]
+

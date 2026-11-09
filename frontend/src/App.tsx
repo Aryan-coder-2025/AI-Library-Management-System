@@ -452,6 +452,7 @@ export const App: React.FC = () => {
           onSelectBook={(id) => {
             setSelectedBookId(id);
           }}
+          onNavigateTab={(tab) => setActiveTab(tab)}
         />
       )}
 

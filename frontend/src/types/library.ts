@@ -181,6 +181,20 @@ export interface CopilotSource {
   total_copies?: number | null;
 }
 
+export interface CopilotAgentAction {
+  action_type: 'space_reserved' | 'hold_placed' | 'loan_renewed' | 'return_pass_generated' | 'academic_research';
+  status: 'success' | 'failed' | 'info';
+  title: string;
+  description: string;
+  data: Record<string, any>;
+}
+
+export interface CopilotToolExecution {
+  tool_name: string;
+  arguments: Record<string, any>;
+  result?: Record<string, any>;
+}
+
 export interface CopilotMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -189,6 +203,8 @@ export interface CopilotMessage {
   provider?: string;
   is_fallback?: boolean;
   sources?: CopilotSource[];
+  agent_actions?: CopilotAgentAction[];
+  tool_calls?: CopilotToolExecution[];
   suggested_followups?: string[];
 }
 

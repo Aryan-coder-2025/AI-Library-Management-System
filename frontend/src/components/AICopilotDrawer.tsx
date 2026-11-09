@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { CopilotMessage, CopilotSource, UserProfile } from '../types/library';
+import type { CopilotAgentAction, CopilotMessage, CopilotSource, CopilotToolExecution, UserProfile } from '../types/library';
 import { VisionSearchModal } from './VisionSearchModal';
 
 interface AICopilotDrawerProps {
@@ -9,6 +9,7 @@ interface AICopilotDrawerProps {
   onClose: () => void;
   onOpen: () => void;
   onSelectBook: (bookId: number) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 const getContextualLoadingStages = (query: string): string[] => {
@@ -113,6 +114,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   onClose,
   onOpen,
   onSelectBook,
+  onNavigateTab,
 }) => {
   const [messages, setMessages] = useState<CopilotMessage[]>(() => [
     {
@@ -243,6 +245,8 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
           snippet: c.snippet,
           url_or_action: c.url_or_action,
         })),
+        agent_actions: resp.agent_actions,
+        tool_calls: resp.tool_calls,
         suggested_followups: resp.suggested_followups,
       };
 
@@ -322,28 +326,188 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
     );
   };
 
-  const renderPolicyAndLoanSources = (sources: CopilotSource[]) => {
-    const nonBookSources = sources.filter((s) => s.type !== 'book');
-    if (nonBookSources.length === 0) return null;
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
+  const handleCopy = (token: string) => {
+    navigator.clipboard.writeText(token);
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(null), 2500);
+  };
+
+  const renderToolCallsTrace = (toolCalls?: CopilotToolExecution[]) => {
+    if (!toolCalls || toolCalls.length === 0) return null;
     return (
-      <div className="copilot-sources-block">
-        <div className="copilot-sources-label">Verified Policy & Loan Records:</div>
-        <div className="copilot-sources-chips">
-          {nonBookSources.map((s, idx) => (
-            <span
-              key={idx}
-              className={`copilot-source-chip copilot-source-${s.type}`}
-              title={s.snippet || ''}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '3px' }}>
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-              {s.title}
-            </span>
+      <details className="copilot-tool-trace">
+        <summary className="copilot-tool-trace-summary">
+          <span>⚙️ Agent Action Trace ({toolCalls.length} tool{toolCalls.length > 1 ? 's' : ''} executed)</span>
+        </summary>
+        <div className="copilot-tool-trace-body">
+          {toolCalls.map((tc, idx) => (
+            <div key={idx} className="copilot-tool-trace-item">
+              <span className="copilot-tool-name">{tc.tool_name}</span>
+              <span className="copilot-tool-args">{JSON.stringify(tc.arguments)}</span>
+            </div>
           ))}
         </div>
+      </details>
+    );
+  };
+
+  const renderAgentActions = (actions?: CopilotAgentAction[]) => {
+    if (!actions || actions.length === 0) return null;
+
+    return (
+      <div className="copilot-agent-actions-stack">
+        {actions.map((act, idx) => {
+          const isSuccess = act.status === 'success';
+          return (
+            <div
+              key={idx}
+              className={`copilot-action-card copilot-action-${act.action_type} ${isSuccess ? 'card-success' : 'card-info'}`}
+            >
+              <div className="copilot-action-card-header">
+                <span className="copilot-action-type-badge">
+                  {act.action_type === 'space_reserved' && '🪑 STUDY DESK CONFIRMED'}
+                  {act.action_type === 'hold_placed' && '📚 MONOGRAPH HOLD READY'}
+                  {act.action_type === 'loan_renewed' && '✅ LOAN RENEWED'}
+                  {act.action_type === 'return_pass_generated' && '📱 RETURN CLEARANCE PASS'}
+                  {act.action_type === 'academic_research' && '🎓 SCHOLARLY PREPRINTS'}
+                </span>
+                <span className="copilot-action-status-pill">{act.status.toUpperCase()}</span>
+              </div>
+
+              <div className="copilot-action-card-title">{act.title}</div>
+              <div className="copilot-action-card-desc">{act.description}</div>
+
+              {/* Action-Specific Interactive Payloads */}
+              {act.action_type === 'space_reserved' && act.data && (
+                <div className="copilot-action-payload">
+                  {act.data.check_in_token && (
+                    <div className="copilot-token-row">
+                      <span className="token-label">Check-in Token:</span>
+                      <code className="token-val">
+                        {act.data.check_in_token.length > 20
+                          ? `${act.data.check_in_token.slice(0, 14)}...`
+                          : act.data.check_in_token}
+                      </code>
+                      <button
+                        type="button"
+                        className="btn-copy-token"
+                        onClick={() => handleCopy(act.data.check_in_token)}
+                      >
+                        {copiedToken === act.data.check_in_token ? '✓ Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  )}
+                  <div className="copilot-action-buttons">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => {
+                        onNavigateTab?.('spaces');
+                        onClose();
+                      }}
+                    >
+                      View on Floor Map 📍
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {act.action_type === 'hold_placed' && act.data && (
+                <div className="copilot-action-buttons" style={{ marginTop: '0.5rem' }}>
+                  {act.data.book_id && (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => onSelectBook(act.data.book_id)}
+                    >
+                      View Monograph Details 📖
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      onNavigateTab?.('catalogue');
+                      onClose();
+                    }}
+                  >
+                    Open Catalogue
+                  </button>
+                </div>
+              )}
+
+              {act.action_type === 'loan_renewed' && (
+                <div className="copilot-action-buttons" style={{ marginTop: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      onNavigateTab?.('loans');
+                      onClose();
+                    }}
+                  >
+                    View Active Loans Desk 📋
+                  </button>
+                </div>
+              )}
+
+              {act.action_type === 'return_pass_generated' && act.data && (
+                <div className="copilot-action-payload">
+                  {act.data.token_code && (
+                    <div className="copilot-token-row">
+                      <span className="token-label">Pass Code:</span>
+                      <code className="token-val">{act.data.token_code}</code>
+                      <button
+                        type="button"
+                        className="btn-copy-token"
+                        onClick={() => handleCopy(act.data.token_code)}
+                      >
+                        {copiedToken === act.data.token_code ? '✓ Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  )}
+                  <div className="copilot-action-buttons">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => {
+                        onNavigateTab?.('loans');
+                        onClose();
+                      }}
+                    >
+                      View in Loans Desk 📲
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {act.action_type === 'academic_research' && act.data && act.data.papers && (
+                <div className="copilot-research-papers-list">
+                  {act.data.papers.map((p: any, pIdx: number) => (
+                    <div key={pIdx} className="copilot-research-paper-item">
+                      <div className="paper-item-title">{p.title}</div>
+                      <div className="paper-item-meta">
+                        {p.authors?.slice(0, 2).join(', ')} • {p.venue || p.year}
+                      </div>
+                      {p.open_access_pdf_url && (
+                        <a
+                          href={p.open_access_pdf_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-oa-pdf"
+                        >
+                          Open PDF ↗
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -435,9 +599,15 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                   </div>
                 )}
                 <div className="copilot-bubble-content">
+                  {/* Render Agent Execution Activity Trace */}
+                  {m.tool_calls && renderToolCallsTrace(m.tool_calls)}
+
                   <div className="copilot-bubble-text" style={{ whiteSpace: 'pre-line' }}>
                     {m.content}
                   </div>
+
+                  {/* Render Autonomous Agent Executed Action Cards */}
+                  {m.agent_actions && renderAgentActions(m.agent_actions)}
 
                   {/* Render Structured Book Result Cards */}
                   {m.sources && renderBookCards(m.sources)}

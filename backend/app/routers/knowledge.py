@@ -88,7 +88,7 @@ def search_knowledge(
 @router.post("/agent/chat", response_model=EnhancedCopilotResponse)
 def agent_chat(
     payload: AgentChatRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_write_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """

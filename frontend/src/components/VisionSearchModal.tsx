@@ -590,3 +590,4 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
     </div>
   );
 };
+

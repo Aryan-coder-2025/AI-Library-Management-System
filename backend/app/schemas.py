@@ -1465,6 +1465,14 @@ class StructuredCitation(BaseModel):
     url_or_action: Optional[str] = None
 
 
+class CopilotAgentAction(BaseModel):
+    action_type: str  # 'space_reserved', 'hold_placed', 'loan_renewed', 'return_pass_generated', 'academic_research'
+    status: str       # 'success', 'failed', 'info'
+    title: str
+    description: str
+    data: Dict[str, Any] = Field(default_factory=dict)
+
+
 class EnhancedCopilotResponse(BaseModel):
     answer: str
     intent: str
@@ -1474,6 +1482,7 @@ class EnhancedCopilotResponse(BaseModel):
     citations: List[StructuredCitation] = []
     spatial_card: Optional[Dict[str, Any]] = None
     book_cards: List[Dict[str, Any]] = []
+    agent_actions: List[CopilotAgentAction] = []
     suggested_followups: List[str] = []
 
 
