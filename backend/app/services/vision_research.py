@@ -189,7 +189,7 @@ def _call_gemini_multimodal(
         }
 
         try:
-            with httpx.Client(timeout=28.0) as client:
+            with httpx.Client(timeout=15.0) as client:
                 resp = client.post(url, json=payload)
                 if resp.status_code == 200:
                     data = resp.json()
