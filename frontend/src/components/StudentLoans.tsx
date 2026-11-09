@@ -2,6 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../services/apiClient';
 import type { BookHold, BookHoldListResponse, Loan, LoanPaginationResponse, UserProfile } from '../types/library';
 import { QRCollectionModal } from './QRCollectionModal';
+import { QRReturnModal } from './QRReturnModal';
+import { ReturnReceiptModal } from './ReturnReceiptModal';
+import { ClearanceCertificateModal } from './ClearanceCertificateModal';
 
 interface StudentLoansProps {
   currentUser?: UserProfile | null;
@@ -18,6 +21,9 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [renewingLoanId, setRenewingLoanId] = useState<number | null>(null);
+  const [selectedLoanForReturn, setSelectedLoanForReturn] = useState<{ id: number; book_title: string; copy_code?: string } | null>(null);
+  const [selectedLoanForReceipt, setSelectedLoanForReceipt] = useState<number | null>(null);
+  const [showClearanceModal, setShowClearanceModal] = useState<boolean>(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'overdue' | 'returned'>('all');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -137,7 +143,7 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
 
   return (
     <div>
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div className="page-title-group">
           <h1>My Borrowing History & Active Loans</h1>
           <p className="page-subtitle">
@@ -146,6 +152,16 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
               : 'Track borrowed items, return dates, and circulation status'}
           </p>
         </div>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => setShowClearanceModal(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(56, 189, 248, 0.1)', borderColor: 'rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
+          title="Inspect institutional circulation clearance & No-Dues certificate status"
+        >
+          <span>🎓</span>
+          <span style={{ fontWeight: 600 }}>Library Clearance & No-Dues</span>
+        </button>
       </div>
 
       <div className="alert alert-info" style={{ marginBottom: '1.25rem' }}>
@@ -431,26 +447,53 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
                       </td>
                       <td>
                         {isReturned ? (
-                          <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Completed</span>
-                        ) : isOverdue ? (
-                          <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 500 }} title="Overdue loans must be returned to the circulation desk">
-                            Overdue (Visit Desk)
-                          </span>
-                        ) : hasRenewed ? (
-                          <span style={{ fontSize: '0.8rem', color: '#64748b' }} title="Maximum 1 renewal limit reached">
-                            Renewed (Limit 1)
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 500 }}>Completed</span>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => setSelectedLoanForReceipt(loan.id)}
+                              style={{ padding: '0.2rem 0.55rem', fontSize: '0.75rem', borderColor: 'rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
+                              title="View official return discharge receipt"
+                            >
+                              📄 Receipt
+                            </button>
+                          </div>
                         ) : (
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            disabled={isRenewing}
-                            onClick={() => handleRenewLoan(loan.id)}
-                            style={{ whiteSpace: 'nowrap' }}
-                            title={`Extend due date by ${renewalDays} days`}
-                          >
-                            {isRenewing ? 'Renewing...' : `Renew (+${renewalDays}d)`}
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => setSelectedLoanForReturn({ id: loan.id, book_title: loan.book_title, copy_code: loan.copy_code })}
+                              style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', background: '#2563eb', whiteSpace: 'nowrap' }}
+                              title="Generate Return Clearance Pass & QR code for librarian check-in"
+                            >
+                              ↩ Return Pass
+                            </button>
+
+                            {!isOverdue && !hasRenewed && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                disabled={isRenewing}
+                                onClick={() => handleRenewLoan(loan.id)}
+                                style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                                title={`Extend due date by ${renewalDays} days`}
+                              >
+                                {isRenewing ? 'Renewing...' : `Renew (+${renewalDays}d)`}
+                              </button>
+                            )}
+                            {hasRenewed && !isOverdue && (
+                              <span style={{ fontSize: '0.75rem', color: '#64748b' }} title="Maximum 1 renewal limit reached">
+                                Renewed (Max 1)
+                              </span>
+                            )}
+                            {isOverdue && (
+                              <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 600 }}>
+                                Overdue
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -497,6 +540,39 @@ export const StudentLoans: React.FC<StudentLoansProps> = ({ currentUser }) => {
         setSelectedHoldForQR(null);
         fetchMyHolds();
         fetchMyLoans();
+      }}
+    />
+  )}
+
+  {selectedLoanForReturn && (
+    <QRReturnModal
+      loanId={selectedLoanForReturn.id}
+      bookTitle={selectedLoanForReturn.book_title}
+      copyCode={selectedLoanForReturn.copy_code}
+      onClose={() => {
+        setSelectedLoanForReturn(null);
+        fetchMyLoans();
+      }}
+      onCancelled={() => {
+        setSelectedLoanForReturn(null);
+        fetchMyLoans();
+      }}
+    />
+  )}
+
+  {selectedLoanForReceipt !== null && (
+    <ReturnReceiptModal
+      loanId={selectedLoanForReceipt}
+      onClose={() => setSelectedLoanForReceipt(null)}
+    />
+  )}
+
+  {showClearanceModal && (
+    <ClearanceCertificateModal
+      onClose={() => setShowClearanceModal(false)}
+      onInitiateReturn={(loanId, bookTitle, copyCode) => {
+        setShowClearanceModal(false);
+        setSelectedLoanForReturn({ id: loanId, book_title: bookTitle, copy_code: copyCode });
       }}
     />
   )}

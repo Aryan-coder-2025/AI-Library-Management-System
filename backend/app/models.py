@@ -837,6 +837,28 @@ class BookCollectionToken(Base):
     user = relationship("User")
 
 
+class BookReturnToken(Base):
+    __tablename__ = "book_return_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    loan_id = Column(Integer, ForeignKey("loans.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    raw_code = Column(String(32), nullable=False, index=True)  # e.g. "RET-849201"
+    receipt_code = Column(String(32), nullable=True, index=True)  # e.g. "REC-849201"
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    is_used = Column(Boolean, default=False, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    condition = Column(String(32), default="good", nullable=True)  # 'good', 'maintenance'
+    condition_notes = Column(Text, nullable=True)
+    discharged_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    loan = relationship("Loan")
+    user = relationship("User", foreign_keys=[user_id])
+    discharged_by = relationship("User", foreign_keys=[discharged_by_id])
+
+
 class AcquisitionRequest(Base):
     __tablename__ = "acquisition_requests"
 

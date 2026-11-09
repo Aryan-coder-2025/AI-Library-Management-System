@@ -1,6 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { BookCollectionVerifyResult, Loan, LoanPaginationResponse } from '../types/library';
+import type {
+  BookCollectionVerifyResult,
+  BookReturnDischargeResult,
+  BookReturnTokenItem,
+  Loan,
+  LoanPaginationResponse,
+} from '../types/library';
 
 export const LibrarianCirculation: React.FC = () => {
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -30,6 +36,16 @@ export const LibrarianCirculation: React.FC = () => {
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrResult, setQrResult] = useState<BookCollectionVerifyResult | null>(null);
 
+  // Return Clearance Verification & Loan Discharge
+  const [returnToken, setReturnToken] = useState('');
+  const [returnCondition, setReturnCondition] = useState<'good' | 'damaged'>('good');
+  const [returnNotes, setReturnNotes] = useState('');
+  const [discharging, setDischarging] = useState(false);
+  const [dischargeError, setDischargeError] = useState<string | null>(null);
+  const [dischargeResult, setDischargeResult] = useState<BookReturnDischargeResult | null>(null);
+  const [pendingReturnTokens, setPendingReturnTokens] = useState<BookReturnTokenItem[]>([]);
+  const [loadingPendingReturns, setLoadingPendingReturns] = useState(false);
+
   const fetchLoans = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -57,9 +73,22 @@ export const LibrarianCirculation: React.FC = () => {
     }
   }, [page, statusFilter, studentIdFilter]);
 
+  const fetchPendingReturnTokens = useCallback(async () => {
+    setLoadingPendingReturns(true);
+    try {
+      const data = await apiFetch<BookReturnTokenItem[]>('/api/circulation/qr-return/pending');
+      setPendingReturnTokens(data);
+    } catch (err: unknown) {
+      console.error('Failed to load pending return passes', err);
+    } finally {
+      setLoadingPendingReturns(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchLoans();
-  }, [fetchLoans]);
+    fetchPendingReturnTokens();
+  }, [fetchLoans, fetchPendingReturnTokens]);
 
   const handleIssueLoan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,6 +166,40 @@ export const LibrarianCirculation: React.FC = () => {
       setQrError(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setQrVerifying(false);
+    }
+  };
+
+  const handleDischargeReturn = async (e?: React.FormEvent, overrideToken?: string) => {
+    if (e) e.preventDefault();
+    const tokenToProcess = (overrideToken || returnToken).trim();
+    if (!tokenToProcess) return;
+
+    setDischarging(true);
+    setDischargeError(null);
+    setDischargeResult(null);
+
+    try {
+      const res = await apiFetch<BookReturnDischargeResult>('/api/circulation/qr-return/discharge', {
+        method: 'POST',
+        body: JSON.stringify({
+          token: tokenToProcess,
+          condition: returnCondition,
+          condition_notes: returnNotes.trim() || undefined,
+        }),
+      });
+      setDischargeResult(res);
+      setReturnToken('');
+      setReturnNotes('');
+      setActionSuccess(
+        `Return Discharged! "${res.book_title}" (Barcode: ${res.copy_code}) checked in from ${res.patron_name}. Official Receipt: ${res.receipt_code}`
+      );
+      fetchLoans();
+      fetchPendingReturnTokens();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Return discharge failed';
+      setDischargeError(msg.replace(/^\d+:\s*/, ''));
+    } finally {
+      setDischarging(false);
     }
   };
 
@@ -228,6 +291,158 @@ export const LibrarianCirculation: React.FC = () => {
             {qrVerifying ? 'Approving...' : '✓ Approve & Issue Loan'}
           </button>
         </form>
+      </div>
+
+      {/* Book Return & Loan Discharge Desk (CIRC-04) */}
+      <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: '4px solid #10b981' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+          <h3 style={{ fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>📥</span>
+            <span>Book Return & Loan Discharge Desk</span>
+          </h3>
+          <span className="badge badge-success">Token & QR Return Check-In</span>
+        </div>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+          When a student returns a physical book copy, verify their unique return token or scan their return QR pass. Assess copy condition and immediately discharge the loan with an official receipt.
+        </p>
+
+        {dischargeError && (
+          <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+            <span>{dischargeError}</span>
+          </div>
+        )}
+
+        {dischargeResult && (
+          <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
+            <div>
+              <strong>✅ Loan Successfully Discharged & Return Verified!</strong>
+              <div>Monograph: <strong>{dischargeResult.book_title}</strong> (Barcode: <code>{dischargeResult.copy_code}</code>)</div>
+              <div>Patron: <strong>{dischargeResult.patron_name}</strong> | Official Receipt: <code>{dischargeResult.receipt_code}</code></div>
+              <div style={{ fontSize: '0.8rem', marginTop: '0.25rem', color: '#10b981' }}>
+                Inventory condition logged as <strong>{dischargeResult.condition.toUpperCase()}</strong>. Patrons waitlist checked and reallocated if applicable.
+              </div>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={(e) => handleDischargeReturn(e)} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr)) 180px 200px', gap: '0.75rem', alignItems: 'end', marginBottom: '1.25rem' }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" htmlFor="return-token-input">
+              Return Token or Scanned QR Code *
+              <span className="form-label-hint">(e.g. RET-849201, 849201, or scanned QR)</span>
+            </label>
+            <input
+              id="return-token-input"
+              type="text"
+              className="form-input"
+              placeholder="Enter student return code or scan QR..."
+              value={returnToken}
+              onChange={(e) => setReturnToken(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" htmlFor="return-condition-select">
+              Monograph Condition *
+            </label>
+            <select
+              id="return-condition-select"
+              className="form-input"
+              value={returnCondition}
+              onChange={(e) => setReturnCondition(e.target.value as 'good' | 'damaged')}
+            >
+              <option value="good">🟢 Good / Available</option>
+              <option value="damaged">⚠️ Damaged / Maintenance</option>
+            </select>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" htmlFor="return-notes-input">
+              Condition Notes <span className="form-label-hint">(Optional)</span>
+            </label>
+            <input
+              id="return-notes-input"
+              type="text"
+              className="form-input"
+              placeholder="e.g. Clean pages, no wear"
+              value={returnNotes}
+              onChange={(e) => setReturnNotes(e.target.value)}
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ height: '38px', whiteSpace: 'nowrap', backgroundColor: '#10b981', borderColor: '#059669' }}
+            disabled={discharging || !returnToken.trim()}
+          >
+            {discharging ? 'Discharging...' : '✓ Confirm & Discharge'}
+          </button>
+        </form>
+
+        {/* Pending Return Clearance Passes Awaiting Check-in */}
+        {pendingReturnTokens.length > 0 && (
+          <div style={{ marginTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '0.85rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f8fafc' }}>
+                📦 Active Return Clearance Passes Awaiting Front Desk Check-In ({pendingReturnTokens.length})
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={fetchPendingReturnTokens}
+                disabled={loadingPendingReturns}
+                style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+              >
+                {loadingPendingReturns ? 'Refreshing...' : '🔄 Refresh'}
+              </button>
+            </div>
+            <div className="table-responsive" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+              <table className="data-table" style={{ fontSize: '0.82rem' }}>
+                <thead>
+                  <tr>
+                    <th>Token Code</th>
+                    <th>Book Title</th>
+                    <th>Barcode</th>
+                    <th>Student Patron</th>
+                    <th>Expires In</th>
+                    <th style={{ textAlign: 'right' }}>Quick Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingReturnTokens.map((item) => (
+                    <tr key={item.id}>
+                      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#38bdf8' }}>
+                        {item.raw_code}
+                      </td>
+                      <td style={{ fontWeight: 500 }}>{item.book_title}</td>
+                      <td style={{ fontFamily: 'var(--font-mono)' }}>{item.copy_code || '—'}</td>
+                      <td>
+                        {item.patron_name} <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>(Patron #{item.patron_id})</span>
+                      </td>
+                      <td style={{ color: '#f59e0b' }}>
+                        {item.expires_at ? new Date(item.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10b981', color: '#10b981', padding: '0.2rem 0.6rem' }}
+                          disabled={discharging}
+                          onClick={() => handleDischargeReturn(undefined, item.raw_code)}
+                          title="Quickly discharge this loan in Good condition"
+                        >
+                          ⚡ Quick Discharge
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Quick Issue Panel */}

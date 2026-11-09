@@ -1623,6 +1623,87 @@ class BookCollectionVerifyResponse(BaseModel):
     due_date: date
 
 
+# ── Return Clearance & Loan Discharge Schemas ─────────────────────────────────
+
+class BookReturnPassResponse(BaseModel):
+    loan_id: int
+    copy_id: int
+    copy_code: str
+    book_id: int
+    book_title: str
+    book_author: Optional[str] = None
+    patron_id: int
+    patron_name: str
+    raw_code: str
+    token: str
+    qr_payload: str
+    expires_at: datetime
+
+
+class BookReturnDischargeRequest(BaseModel):
+    token: str = Field(..., min_length=3, description="Return clearance token or numeric code")
+    condition: str = Field("good", description="'good' or 'maintenance'")
+    condition_notes: Optional[str] = Field(None, max_length=500, description="Condition or damage remarks")
+
+
+class BookReturnDischargeResponse(BaseModel):
+    success: bool
+    message: str
+    receipt_code: str
+    loan_id: int
+    book_title: str
+    copy_code: str
+    patron_name: str
+    returned_at: datetime
+    condition: str
+    waitlist_advanced: bool = False
+
+
+class BookReturnTokenItemResponse(BaseModel):
+    id: int
+    loan_id: int
+    patron_id: int
+    patron_name: str
+    book_title: str
+    copy_code: str
+    raw_code: str
+    created_at: datetime
+    expires_at: datetime
+
+
+class BookReturnReceiptResponse(BaseModel):
+    receipt_code: str
+    institution_name: str = "Athenaeum Academic Library"
+    loan_id: int
+    patron_id: int
+    patron_name: str
+    patron_email: Optional[str] = None
+    book_title: str
+    book_author: Optional[str] = None
+    copy_code: str
+    issued_at: datetime
+    due_date: date
+    returned_at: datetime
+    discharged_by_name: Optional[str] = None
+    condition: str = "good"
+    condition_notes: Optional[str] = None
+    status: str = "CLEARED & DISCHARGED"
+
+
+class CirculationClearanceResponse(BaseModel):
+    patron_id: int
+    patron_name: str
+    patron_role: str
+    active_loans_count: int
+    overdue_loans_count: int
+    is_fully_cleared: bool
+    status_headline: str
+    advisory_message: str
+    can_export_certificate: bool
+    generated_at: datetime
+    active_items: List[dict] = []
+
+
 # 4. Lost & Damaged Processing & Audit History (CIRC-07)
 class CopyStatusUpdateRequest(BaseModel):
     status: str = Field(..., description="'available', 'maintenance', 'lost', 'damaged', 'retired'")

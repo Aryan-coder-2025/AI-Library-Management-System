@@ -692,3 +692,84 @@ export interface AcquisitionRequestItem {
   updated_at: string;
 }
 
+// ── Return Clearance & Loan Discharge Types ──────────────────────────────────
+
+export interface BookReturnPass {
+  loan_id: number;
+  copy_id: number;
+  copy_code: string;
+  book_id: number;
+  book_title: string;
+  book_author?: string | null;
+  patron_id: number;
+  patron_name: string;
+  raw_code: string;
+  token: string;
+  qr_payload: string;
+  expires_at: string;
+}
+
+export interface BookReturnDischargeResult {
+  success: boolean;
+  message: string;
+  receipt_code: string;
+  loan_id: number;
+  book_title: string;
+  copy_code: string;
+  patron_name: string;
+  returned_at: string;
+  condition: string;
+  waitlist_advanced: boolean;
+}
+
+export interface BookReturnTokenItem {
+  id: number;
+  loan_id: number;
+  patron_id: number;
+  patron_name: string;
+  book_title: string;
+  copy_code: string;
+  raw_code: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface BookReturnReceipt {
+  receipt_code: string;
+  institution_name: string;
+  loan_id: number;
+  patron_id: number;
+  patron_name: string;
+  patron_email?: string | null;
+  book_title: string;
+  book_author?: string | null;
+  copy_code: string;
+  issued_at: string;
+  due_date: string;
+  returned_at: string;
+  discharged_by_name?: string | null;
+  condition: string;
+  condition_notes?: string | null;
+  status: string;
+}
+
+export interface CirculationClearanceStatus {
+  patron_id: number;
+  patron_name: string;
+  patron_role: string;
+  active_loans_count: number;
+  overdue_loans_count: number;
+  is_fully_cleared: boolean;
+  status_headline: string;
+  advisory_message: string;
+  can_export_certificate: boolean;
+  generated_at: string;
+  active_items: Array<{
+    loan_id: number;
+    book_title: string;
+    copy_code: string;
+    due_date: string;
+    is_overdue: boolean;
+  }>;
+}
+

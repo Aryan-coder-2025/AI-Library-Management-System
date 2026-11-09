@@ -408,6 +408,77 @@ def test_qr_collection_verify_via_numeric_token_number(
     assert verify_resp.json()["copy_code"] == physics_copies[1].copy_code
 
 
+def test_qr_book_return_lifecycle_and_clearance_advisory(
+    client: TestClient,
+    db: Session,
+    student_user: User,
+    librarian_admin: User,
+    physics_monograph: Book,
+    physics_copies: list[BookCopy],
+):
+    # 1. Issue an active loan to student
+    db.info["_in_atomic_write"] = True
+    with atomic_write(db):
+        loan = Loan(
+            student_id=student_user.id,
+            copy_id=physics_copies[0].id,
+            issued_by_id=librarian_admin.id,
+            issued_at=datetime.utcnow() - timedelta(days=3),
+            due_date=(datetime.utcnow() + timedelta(days=11)).date(),
+        )
+        db.add(loan)
+
+    # 2. Check patron clearance advisory: should show 1 active loan and non-punitive notice
+    student_hdrs = make_headers(client, student_user.id, "student")
+    clearance_resp = client.get("/api/circulation/clearance/my-status", headers=student_hdrs)
+    assert clearance_resp.status_code == 200
+    c_data = clearance_resp.json()
+    assert c_data["active_loans_count"] == 1
+    assert c_data["is_fully_cleared"] is False
+    assert "does not restrict your academic exams" in c_data["advisory_message"]
+
+    # 3. Student initiates return: generates Return Pass with token
+    ret_pass_resp = client.post(f"/api/circulation/qr-return/pass/{loan.id}", headers=student_hdrs)
+    assert ret_pass_resp.status_code == 200
+    ret_data = ret_pass_resp.json()
+    assert ret_data["raw_code"].startswith("RET-")
+    assert ret_data["token"].startswith("ATN-RETURN-")
+
+    # 4. Librarian sees pending return queue
+    lib_hdrs = make_headers(client, librarian_admin.id, "librarian")
+    pending_resp = client.get("/api/circulation/qr-return/pending", headers=lib_hdrs)
+    assert pending_resp.status_code == 200
+    pending_items = pending_resp.json()
+    assert any(item["loan_id"] == loan.id for item in pending_items)
+
+    # 5. Librarian discharges loan using token code (e.g. "RET-XXXXXX")
+    discharge_resp = client.post(
+        "/api/circulation/qr-return/discharge",
+        json={"token": ret_data["raw_code"], "condition": "good"},
+        headers=lib_hdrs,
+    )
+    assert discharge_resp.status_code == 200
+    d_data = discharge_resp.json()
+    assert d_data["success"] is True
+    assert d_data["receipt_code"].startswith("REC-")
+
+    # 6. Student requests official digital return receipt
+    student_hdrs = make_headers(client, student_user.id, "student")
+    receipt_resp = client.get(f"/api/circulation/receipt/{loan.id}", headers=student_hdrs)
+    assert receipt_resp.status_code == 200
+    r_data = receipt_resp.json()
+    assert r_data["receipt_code"] == d_data["receipt_code"]
+    assert r_data["status"] == "CLEARED & DISCHARGED"
+
+    # 7. Check clearance again: now 0 active loans and full clearance certificate eligible
+    clearance_after = client.get("/api/circulation/clearance/my-status", headers=student_hdrs)
+    assert clearance_after.status_code == 200
+    ca_data = clearance_after.json()
+    assert ca_data["active_loans_count"] == 0
+    assert ca_data["is_fully_cleared"] is True
+    assert ca_data["can_export_certificate"] is True
+
+
 # ── 4. CIRC-07: Lost & Damaged Copy Processing (Zero Monetary Fines) ─────────
 
 def test_copy_operational_status_audit_and_reinstatement(
