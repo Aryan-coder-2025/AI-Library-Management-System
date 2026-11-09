@@ -35,8 +35,11 @@ def calculate_two_week_demand_forecast(db: Session) -> TwoWeekDemandForecastResp
     daily_counts = [0] * sample_window_days
     dow_counts = {i: [] for i in range(7)}  # 0=Monday .. 6=Sunday
 
-    for loan in loans:
-        day_offset = (loan.issued_at.date() - start_history).days
+    for issued_dt in loans:
+        dt_val = issued_dt if isinstance(issued_dt, (datetime, date)) else getattr(issued_dt, "issued_at", issued_dt)
+        if isinstance(dt_val, datetime):
+            dt_val = dt_val.date()
+        day_offset = (dt_val - start_history).days
         if 0 <= day_offset < sample_window_days:
             daily_counts[day_offset] += 1
 
