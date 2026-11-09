@@ -58,6 +58,7 @@ class LoginRequest(BaseModel):
     email: Optional[str] = Field(None, min_length=1, max_length=255, description="Email address or username (alias)")
     username: Optional[str] = Field(None, min_length=1, max_length=255, description="Username or email (alias)")
     password: str = Field(..., min_length=1, description="Account password")
+    is_public_device: bool = Field(False, description="Whether login is on a shared or public kiosk computer")
 
     @model_validator(mode="after")
     def resolve_login_identifier(self) -> "LoginRequest":

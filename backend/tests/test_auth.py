@@ -998,6 +998,29 @@ def test_institutional_librarian_invitation_flow(client, test_users, db):
     assert reg_res.json()["role"] == "teacher"
 
 
+def test_public_workstation_session_cookie(client, test_users):
+    """
+    Verifies that logging in with is_public_device=True sets session-only cookies
+    (omits Max-Age/Expires) so the session terminates upon closing the browser.
+    """
+    res = client.post(
+        "/api/auth/login",
+        json={
+            "email": "active_student@university.edu",
+            "password": "StudentPass123!",
+            "is_public_device": True,
+        },
+    )
+    assert res.status_code == 200
+    # In raw Set-Cookie headers, check that access_token does not specify Max-Age
+    set_cookie_headers = res.headers.get_list("set-cookie") if hasattr(res.headers, "get_list") else [res.headers.get("set-cookie", "")]
+    auth_cookies = [h for h in set_cookie_headers if "access_token" in h]
+    assert len(auth_cookies) > 0
+    for ac in auth_cookies:
+        assert "Max-Age=" not in ac
+
+
+
 
 
 

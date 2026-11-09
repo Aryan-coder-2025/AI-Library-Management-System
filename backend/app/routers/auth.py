@@ -140,7 +140,12 @@ def login(
         )
 
     # 4. Set secure session cookies (HttpOnly access_token + non-HttpOnly csrf_token)
-    set_auth_cookies(response, user_id=user.id, role=user.role)
+    set_auth_cookies(
+        response,
+        user_id=user.id,
+        role=user.role,
+        is_public_device=bool(credentials.is_public_device),
+    )
 
     # 5. Return user profile without password or token
     return user

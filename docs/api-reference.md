@@ -49,9 +49,11 @@ Authenticates user credentials and issues session cookies.
   ```json
   {
     "email": "demo_student@library.local",
-    "password": "StudentDemo123!"
+    "password": "StudentDemo123!",
+    "is_public_device": false
   }
   ```
+- **Public Kiosk Mode:** When `"is_public_device": true`, the issued `access_token` and `csrf_token` cookies omit `Max-Age` and `Expires`, restricting lifetime to the active browser session so cookies are deleted immediately on browser close.
 - **Response `200 OK`:** Sets `access_token` (`HttpOnly`) and `csrf_token` cookies.
   ```json
   {

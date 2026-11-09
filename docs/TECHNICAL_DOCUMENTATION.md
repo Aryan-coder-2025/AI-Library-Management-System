@@ -286,7 +286,9 @@ Athenaeum enforces strict patron identity verification:
 ## 7.3 Session Tokens & Transport Security
 - **Stateless JWT**: Sessions are governed by JSON Web Tokens signed with HMAC-SHA256 (`HS256`). Tokens encode the user's `sub` (user ID), username, role, and an `exp` expiration timestamp (default: 8 hours / 480 minutes).
 - **HttpOnly Cookies**: JWTs are transmitted in `HttpOnly`, `SameSite=Lax` cookies named `access_token`. This prevents cross-site scripting (XSS) attacks from exfiltrating authentication tokens.
-- **CSRF & CORS Controls**: The API whitelist in `ALLOWED_ORIGINS` rejects incoming requests originating from unauthorized domains.
+- **Campus Workstation Isolation (`is_public_device`)**: When logging in on shared library terminals or campus computer labs, patrons can designate the session as a public device. The backend omits `Max-Age` and `Expires` directives, creating a non-persistent session cookie that is purged immediately upon closing the browser tab or window.
+- **Client-Side Inactivity Monitor**: An active listener (`InactivityMonitor.tsx`) tracks patron engagement across mouse movements, keypresses, and touch events. Following 25 minutes of inactivity, a security dialog is displayed warning of impending session termination; at 30 minutes, an automated zero-trust logout is executed, revoking credentials and clearing portal context.
+- **CSRF & CORS Controls**: The API whitelist in `ALLOWED_ORIGINS` rejects incoming requests originating from unauthorized domains. Double-submit `csrf_token` headers are enforced on all mutative state operations.
 
 ---
 

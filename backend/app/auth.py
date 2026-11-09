@@ -112,22 +112,25 @@ def decode_access_token(token: str) -> Dict[str, Any]:
     return payload
 
 
-def set_auth_cookies(response: Response, user_id: int, role: str) -> str:
+def set_auth_cookies(response: Response, user_id: int, role: str, is_public_device: bool = False) -> str:
     """
     Sets the secure HttpOnly access_token cookie and the non-HttpOnly csrf_token cookie.
+    When is_public_device is True (shared library kiosks / lab computers), max_age and expires
+    are omitted so the browser retains cookies only for the duration of the browser session.
     Returns the generated csrf_token.
     """
     token = create_access_token(user_id=user_id, role=role)
     csrf_token = secrets.token_urlsafe(32)
-    max_age = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    cookie_max_age = None if is_public_device else (settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+    cookie_expires = None if is_public_device else cookie_max_age
 
     # 1. HttpOnly access_token cookie
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        max_age=max_age,
-        expires=max_age,
+        max_age=cookie_max_age,
+        expires=cookie_expires,
         samesite=settings.COOKIE_SAMESITE,
         secure=settings.COOKIE_SECURE,
         domain=settings.COOKIE_DOMAIN or None,
@@ -139,8 +142,8 @@ def set_auth_cookies(response: Response, user_id: int, role: str) -> str:
         key=CSRF_COOKIE_NAME,
         value=csrf_token,
         httponly=False,
-        max_age=max_age,
-        expires=max_age,
+        max_age=cookie_max_age,
+        expires=cookie_expires,
         samesite=settings.COOKIE_SAMESITE,
         secure=settings.COOKIE_SECURE,
         domain=settings.COOKIE_DOMAIN or None,

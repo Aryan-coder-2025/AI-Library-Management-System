@@ -25,6 +25,7 @@ import { KnowledgeExplorer } from './components/knowledge/KnowledgeExplorer';
 import { ModelComparisonStudio } from './components/knowledge/ModelComparisonStudio';
 import { TeacherPortal } from './components/TeacherPortal';
 import { LibrarianIntelligenceCenter } from './components/intelligence/LibrarianIntelligenceCenter';
+import { InactivityMonitor } from './components/InactivityMonitor';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -117,14 +118,18 @@ export const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  const handleLogin = async (email: string, pass: string) => {
+  const handleLogin = async (email: string, pass: string, isPublicDevice?: boolean) => {
     setIsLoggingIn(true);
     setLoginError(null);
 
     try {
       const user = await apiFetch<UserProfile>('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password: pass }),
+        body: JSON.stringify({
+          email,
+          password: pass,
+          is_public_device: Boolean(isPublicDevice),
+        }),
       });
       setCurrentUser(user);
       setActiveTab('dashboard');
@@ -494,6 +499,14 @@ export const App: React.FC = () => {
           }}
         />
       )}
+
+      {/* Campus Workstation Inactivity & Session Auto-Logout Monitor */}
+      <InactivityMonitor
+        isActive={!!currentUser}
+        onLogout={handleLogout}
+        timeoutMinutes={30}
+        warningMinutes={25}
+      />
     </div>
   );
 };

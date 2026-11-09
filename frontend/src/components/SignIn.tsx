@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 interface SignInProps {
-  onLogin: (email: string, pass: string) => Promise<void>;
+  onLogin: (email: string, pass: string, isPublicDevice?: boolean) => Promise<void>;
   loading: boolean;
   error: string | null;
   onSwitchToRegister?: () => void;
@@ -18,11 +18,12 @@ export const SignIn: React.FC<SignInProps> = ({
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isPublicDevice, setIsPublicDevice] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier.trim() || !password) return;
-    await onLogin(identifier.trim(), password);
+    await onLogin(identifier.trim(), password, isPublicDevice);
   };
 
   return (
@@ -171,6 +172,46 @@ export const SignIn: React.FC<SignInProps> = ({
                   🏛️ Librarian
                 </button>
               </div>
+            </div>
+
+            {/* Public / Shared Workstation Toggle */}
+            <div
+              style={{
+                marginTop: '0.85rem',
+                marginBottom: '0.65rem',
+                padding: '0.5rem 0.65rem',
+                borderRadius: '6px',
+                background: isPublicDevice ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
+                border: isPublicDevice ? '1px solid rgba(56, 189, 248, 0.25)' : '1px solid transparent',
+                transition: 'all 0.15s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+              }}
+            >
+              <input
+                id="public-device-checkbox"
+                type="checkbox"
+                checked={isPublicDevice}
+                onChange={(e) => setIsPublicDevice(e.target.checked)}
+                style={{ cursor: 'pointer', accentColor: 'var(--brand-secondary, #38bdf8)' }}
+              />
+              <label
+                htmlFor="public-device-checkbox"
+                style={{
+                  fontSize: '0.78rem',
+                  color: isPublicDevice ? 'var(--text-primary, #F8FAFC)' : 'var(--text-secondary, #94A3B8)',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  margin: 0,
+                  lineHeight: 1.3,
+                }}
+              >
+                <strong>Public / Shared computer</strong>
+                <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted, #64748B)' }}>
+                  Clears login credentials as soon as browser is closed
+                </span>
+              </label>
             </div>
 
             <button
