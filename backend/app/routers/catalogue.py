@@ -96,6 +96,7 @@ def get_book_detail(
         book_id=book_id,
         is_librarian=is_librarian,
         is_guest=is_guest,
+        user=current_user,
     )
 
 

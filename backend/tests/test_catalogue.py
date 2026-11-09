@@ -704,3 +704,29 @@ def test_transaction_rollback_on_failed_write(client, auth_librarian, seed_catal
     # Verify database state was untouched
     count_after = db.execute(select(BookCopy).where(BookCopy.book_id == book_id)).scalars().all()
     assert len(count_after) == count_before
+
+
+def test_get_book_detail_detects_user_active_loan(client, auth_student, auth_librarian, seed_catalogue, db: Session):
+    """When a student has an active loan for a book, detail endpoint marks user_has_active_loan True."""
+    book_id = seed_catalogue["b1_id"]
+    copy_id = seed_catalogue["c1_id"]
+    student_id = auth_student["user_id"]
+
+    # Issue loan to the student as librarian
+    resp = client.post(
+        "/api/loans",
+        json={"student_id": student_id, "copy_id": copy_id},
+        headers=auth_librarian["headers"],
+    )
+    assert resp.status_code == 201
+
+    # Switch cookie back to student
+    student_token = create_access_token(user_id=student_id, role="student")
+    client.cookies.set("access_token", student_token)
+
+    # Student fetches book detail
+    detail_resp = client.get(f"/api/books/{book_id}", headers=auth_student["headers"])
+    assert detail_resp.status_code == 200
+    data = detail_resp.json()
+    assert data["user_has_active_loan"] is True
+    assert data["user_active_loan_due_date"] is not None

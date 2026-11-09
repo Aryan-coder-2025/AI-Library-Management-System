@@ -35,6 +35,11 @@ export interface BookCopy {
 
 export interface BookDetail extends Book {
   copies: BookCopy[];
+  user_has_active_loan?: boolean;
+  user_active_loan_due_date?: string | null;
+  user_has_active_hold?: boolean;
+  user_active_hold_id?: number | null;
+  user_active_hold_status?: 'waiting' | 'ready_for_pickup' | null;
 }
 
 export interface BookPaginationResponse {

@@ -435,6 +435,10 @@ export const App: React.FC = () => {
           bookId={selectedBookId}
           onClose={() => setSelectedBookId(null)}
           onSelectBook={(id) => setSelectedBookId(id)}
+          onNavigateToLoans={() => {
+            setSelectedBookId(null);
+            setActiveTab('loans');
+          }}
         />
       )}
 

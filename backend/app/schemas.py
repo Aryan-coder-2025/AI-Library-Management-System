@@ -346,6 +346,12 @@ class BookCopyResponse(BaseModel):
 
 class BookDetailResponse(BookResponse):
     copies: List[BookCopyResponse] = []
+    user_has_active_loan: bool = False
+    user_active_loan_due_date: Optional[date] = None
+    user_has_active_hold: bool = False
+    user_active_hold_id: Optional[int] = None
+    user_active_hold_status: Optional[str] = None
+    user_active_hold_token: Optional[str] = None
 
 
 # ── Loan Circulation Schemas ──────────────────────────────────────────────────

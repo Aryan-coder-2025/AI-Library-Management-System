@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.crud import catalogue as crud
 from app.database import atomic_write
-from app.models import BookCopy, Loan
+from app.models import BookCopy, BookHold, Loan, User
 from app.schemas import (
     BookCreate,
     BookDetailResponse,
@@ -103,10 +103,12 @@ def get_book_detail_service(
     book_id: int,
     is_librarian: bool = False,
     is_guest: bool = False,
+    user: Optional[User] = None,
 ) -> BookDetailResponse:
     """
     Retrieves detailed metadata and copy inventory for a specific book.
     Returns 404 if the book is missing or if archived and requested by a non-librarian.
+    Includes patron active loan and reservation state for the book if authenticated.
     """
     book = crud.get_book(db, book_id)
     if not book:
@@ -147,6 +149,40 @@ def get_book_detail_service(
                 )
             )
 
+    # Check current authenticated user's active loan and hold status for this book
+    user_has_active_loan = False
+    user_active_loan_due_date = None
+    user_has_active_hold = False
+    user_active_hold_id = None
+    user_active_hold_status = None
+
+    if user and getattr(user, "is_active", False):
+        active_loan = db.execute(
+            select(Loan)
+            .join(BookCopy, Loan.copy_id == BookCopy.id)
+            .where(
+                Loan.student_id == user.id,
+                Loan.returned_at.is_(None),
+                BookCopy.book_id == book_id,
+            )
+        ).scalars().first()
+        if active_loan:
+            user_has_active_loan = True
+            user_active_loan_due_date = active_loan.due_date
+
+        active_hold = db.execute(
+            select(BookHold)
+            .where(
+                BookHold.user_id == user.id,
+                BookHold.book_id == book_id,
+                BookHold.status.in_(["waiting", "ready_for_pickup"]),
+            )
+        ).scalars().first()
+        if active_hold:
+            user_has_active_hold = True
+            user_active_hold_id = active_hold.id
+            user_active_hold_status = active_hold.status
+
     return BookDetailResponse(
         id=book.id,
         title=book.title,
@@ -160,6 +196,11 @@ def get_book_detail_service(
         created_at=book.created_at,
         updated_at=book.updated_at,
         copies=copy_responses,
+        user_has_active_loan=user_has_active_loan,
+        user_active_loan_due_date=user_active_loan_due_date,
+        user_has_active_hold=user_has_active_hold,
+        user_active_hold_id=user_active_hold_id,
+        user_active_hold_status=user_active_hold_status,
     )
 
 

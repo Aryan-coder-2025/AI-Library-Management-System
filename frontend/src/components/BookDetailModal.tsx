@@ -8,12 +8,14 @@ interface BookDetailModalProps {
   bookId: number | null;
   onClose: () => void;
   onSelectBook?: (id: number) => void;
+  onNavigateToLoans?: () => void;
 }
 
 export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   bookId,
   onClose,
   onSelectBook,
+  onNavigateToLoans,
 }) => {
   const [detail, setDetail] = useState<BookDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -171,7 +173,99 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                     {detail.description || 'No extended summary provided in the catalogue entry.'}
                   </p>
 
-                  {!detail.is_archived && (
+                  {!detail.is_archived && detail.user_has_active_loan ? (
+                    <div
+                      style={{
+                        marginTop: '0.85rem',
+                        padding: '1rem 1.15rem',
+                        borderRadius: '10px',
+                        background: 'rgba(37, 99, 235, 0.08)',
+                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '1.25rem' }}>📖</span>
+                            <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                              Active Loan in Progress
+                            </strong>
+                            <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
+                              Currently Borrowed by You
+                            </span>
+                          </div>
+                          <p style={{ margin: '0.35rem 0 0', fontSize: '0.825rem', color: 'var(--text-secondary)', maxWidth: '480px' }}>
+                            You currently have an active physical copy of this monograph checked out to your patron account{detail.user_active_loan_due_date ? ` (Due date: ${new Date(detail.user_active_loan_due_date).toLocaleDateString()})` : ''}.
+                            Under library circulation rules, duplicate loans of the same monograph are restricted. Please return your current copy at the circulation desk before borrowing again.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            if (onNavigateToLoans) {
+                              onNavigateToLoans();
+                            } else {
+                              onClose();
+                              (document.querySelector('[data-tour="nav-loans"]') as HTMLButtonElement)?.click();
+                            }
+                          }}
+                          style={{ whiteSpace: 'nowrap' }}
+                        >
+                          View in My Loans →
+                        </button>
+                      </div>
+                    </div>
+                  ) : !detail.is_archived && detail.user_has_active_hold && !createdHold ? (
+                    <div
+                      style={{
+                        marginTop: '0.85rem',
+                        padding: '1rem 1.15rem',
+                        borderRadius: '10px',
+                        background: detail.user_active_hold_status === 'ready_for_pickup' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(234, 179, 8, 0.08)',
+                        border: `1px solid ${detail.user_active_hold_status === 'ready_for_pickup' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(234, 179, 8, 0.35)'}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '1.25rem' }}>🔖</span>
+                            <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                              {detail.user_active_hold_status === 'ready_for_pickup'
+                                ? 'Monograph Reserved & Ready for Collection'
+                                : 'You are on the Waitlist for this Monograph'}
+                            </strong>
+                            <span
+                              className={`badge ${detail.user_active_hold_status === 'ready_for_pickup' ? 'badge-success' : 'badge-warning'}`}
+                              style={{ fontSize: '0.7rem' }}
+                            >
+                              {detail.user_active_hold_status === 'ready_for_pickup' ? 'Awaiting Desk Collection' : 'In Waitlist Queue'}
+                            </span>
+                          </div>
+                          <p style={{ margin: '0.35rem 0 0', fontSize: '0.825rem', color: 'var(--text-secondary)', maxWidth: '480px' }}>
+                            {detail.user_active_hold_status === 'ready_for_pickup'
+                              ? 'An available physical copy is held for you at the front desk. Present your collection token or QR code to the librarian to approve your loan.'
+                              : 'You already have an active waitlist reservation for this monograph. You will receive an in-app notification the moment a copy is returned.'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            if (onNavigateToLoans) {
+                              onNavigateToLoans();
+                            } else {
+                              onClose();
+                              (document.querySelector('[data-tour="nav-loans"]') as HTMLButtonElement)?.click();
+                            }
+                          }}
+                          style={{ whiteSpace: 'nowrap' }}
+                        >
+                          View in My Holds →
+                        </button>
+                      </div>
+                    </div>
+                  ) : !detail.is_archived && (
                     <div
                       style={{
                         marginTop: '0.85rem',
