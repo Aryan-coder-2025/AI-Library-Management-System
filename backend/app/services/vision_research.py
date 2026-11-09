@@ -202,6 +202,9 @@ def _call_gemini_multimodal(
                         return parsed
                 else:
                     logger.warning(f"Model {model_name} returned status {resp.status_code}: {resp.text[:120]}")
+                    # Stop failover if client error (corrupt media or invalid payload)
+                    if 400 <= resp.status_code < 500 and resp.status_code != 429:
+                        break
         except Exception as e:
             logger.warning(f"Error calling {model_name}: {e}")
 
