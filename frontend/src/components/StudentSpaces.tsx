@@ -221,34 +221,38 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
         </div>
 
         {/* View Switcher */}
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', background: 'rgba(15, 23, 42, 0.6)', padding: '5px', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
           <button
             type="button"
-            className={`btn ${activeSubTab === 'my_reservations' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-sm ${activeSubTab === 'my_reservations' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setActiveSubTab('my_reservations')}
+            style={{ fontWeight: activeSubTab === 'my_reservations' ? 700 : 500 }}
           >
-            My Reservations
+            📋 My Reservations
           </button>
           <button
             type="button"
-            className={`btn ${activeSubTab === 'book_space' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-sm ${activeSubTab === 'book_space' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setActiveSubTab('book_space')}
+            style={{ fontWeight: activeSubTab === 'book_space' ? 700 : 500 }}
           >
-            + Reserve Space
+            ⚡ Reserve Space
           </button>
           <button
             type="button"
-            className={`btn ${activeSubTab === 'floor_plans' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-sm ${activeSubTab === 'floor_plans' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setActiveSubTab('floor_plans')}
+            style={{ fontWeight: activeSubTab === 'floor_plans' ? 700 : 500 }}
           >
             🗺️ Interactive Floor Plan
           </button>
           <button
             type="button"
-            className={`btn ${activeSubTab === 'occupancy' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-sm ${activeSubTab === 'occupancy' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setActiveSubTab('occupancy')}
+            style={{ fontWeight: activeSubTab === 'occupancy' ? 700 : 500 }}
           >
-            📊 Occupancy & Live Capacity
+            📊 Live Occupancy
           </button>
         </div>
       </div>
@@ -445,7 +449,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
                   </label>
                   <input
                     type="date"
-                    className="form-control"
+                    className="form-input"
                     value={bookingDate}
                     onChange={(e) => setBookingDate(e.target.value)}
                     required
@@ -458,7 +462,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
                   </label>
                   <input
                     type="time"
-                    className="form-control"
+                    className="form-input"
                     value={bookingStartTime}
                     onChange={(e) => setBookingStartTime(e.target.value)}
                     required
@@ -471,7 +475,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
                   </label>
                   <input
                     type="time"
-                    className="form-control"
+                    className="form-input"
                     value={bookingEndTime}
                     onChange={(e) => setBookingEndTime(e.target.value)}
                     required
@@ -485,7 +489,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
                     Resource Type:
                   </label>
                   <select
-                    className="form-control"
+                    className="form-input"
                     value={resourceTypeFilter}
                     onChange={(e) => setResourceTypeFilter(e.target.value as 'seat' | 'room')}
                   >
@@ -499,7 +503,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
                     Zone (Optional):
                   </label>
                   <select
-                    className="form-control"
+                    className="form-input"
                     value={selectedZoneId}
                     onChange={(e) => setSelectedZoneId(e.target.value ? Number(e.target.value) : '')}
                   >
@@ -519,7 +523,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
                     </label>
                     <input
                       type="number"
-                      className="form-control"
+                      className="form-input"
                       min={1}
                       max={12}
                       value={expectedAttendees}
@@ -658,7 +662,7 @@ export const StudentSpaces: React.FC<StudentSpacesProps> = ({ currentUser }) => 
               </label>
               <input
                 type="number"
-                className="form-control"
+                className="form-input"
                 min={1}
                 max={12}
                 value={actualAttendeesInput}

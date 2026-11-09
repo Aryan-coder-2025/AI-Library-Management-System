@@ -171,14 +171,15 @@ export const StudentFloorPlan: React.FC<StudentFloorPlanProps> = ({ onInitiateBo
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '0.75rem',
-          background: '#ffffff',
-          padding: '0.75rem 1rem',
-          borderRadius: '8px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          background: '#0e1626',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>Floor:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8' }}>Floor:</span>
           {floors.map((fl) => (
             <button
               key={fl.id}
@@ -187,7 +188,10 @@ export const StudentFloorPlan: React.FC<StudentFloorPlanProps> = ({ onInitiateBo
               className={`btn btn-sm ${
                 selectedFloorId === fl.id ? 'btn-primary' : 'btn-secondary'
               }`}
-              style={{ fontWeight: selectedFloorId === fl.id ? 700 : 500 }}
+              style={{
+                fontWeight: selectedFloorId === fl.id ? 700 : 500,
+                boxShadow: selectedFloorId === fl.id ? '0 0 12px rgba(37, 99, 235, 0.4)' : 'none',
+              }}
             >
               {fl.name}
             </button>
@@ -218,30 +222,30 @@ export const StudentFloorPlan: React.FC<StudentFloorPlanProps> = ({ onInitiateBo
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '1rem',
+          gap: '1.25rem',
           flexWrap: 'wrap',
           fontSize: '0.85rem',
-          padding: '0.5rem 1rem',
-          background: '#ffffff',
-          borderRadius: '8px',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          padding: '0.65rem 1.25rem',
+          background: '#0e1626',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: '12px',
         }}
       >
-        <span style={{ fontWeight: 600, color: '#475569' }}>Live Availability:</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#22c55e' }} />
+        <span style={{ fontWeight: 600, color: '#f8fafc' }}>Live Availability:</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#4ade80' }}>
+          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }} />
           <strong>{counts.available}</strong> Available
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#d97706' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f59e0b' }} />
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#fbbf24' }}>
+          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 8px #f59e0b' }} />
           <strong>{counts.reserved}</strong> Reserved
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }} />
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#f87171' }}>
+          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 8px #ef4444' }} />
           <strong>{counts.occupied}</strong> Occupied
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#94a3b8' }} />
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#94a3b8' }}>
+          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#64748b' }} />
           <strong>{counts.unavailable}</strong> Unavailable
         </span>
       </div>
@@ -260,16 +264,22 @@ export const StudentFloorPlan: React.FC<StudentFloorPlanProps> = ({ onInitiateBo
           {loading && (
             <div
               style={{
-                height: '400px',
+                height: '420px',
                 display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: '#ffffff',
-                borderRadius: '8px',
-                color: '#64748b',
+                background: '#0e1626',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '12px',
+                color: '#94a3b8',
               }}
             >
-              Loading floor plan layout and resource availability...
+              <div style={{ fontSize: '2.2rem' }}>🏛️</div>
+              <div style={{ fontWeight: 600, color: '#38bdf8', fontSize: '0.95rem' }}>
+                Loading floor plan layout and real-time resource availability...
+              </div>
             </div>
           )}
 
@@ -291,10 +301,12 @@ export const StudentFloorPlan: React.FC<StudentFloorPlanProps> = ({ onInitiateBo
           {!loading && floorDetail && viewMode === 'list' && (
             <div
               style={{
-                background: '#ffffff',
-                borderRadius: '8px',
-                padding: '1rem',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                background: '#0e1626',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '12px',
+                padding: '1.25rem',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+                color: '#f8fafc',
               }}
             >
               <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>

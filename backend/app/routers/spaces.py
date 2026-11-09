@@ -96,27 +96,32 @@ def create_reservation(
 
 
 @router.get("/reservations/my", response_model=ReservationPaginationResponse)
+@router.get("/reservations/me", response_model=ReservationPaginationResponse)
 def get_my_reservations(
     status: Optional[str] = Query(None, pattern="^(active|completed|cancelled|no_show)$"),
+    status_filter: Optional[str] = Query(None, pattern="^(active|completed|cancelled|no_show)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Retrieves paginated reservations for the authenticated patron."""
+    effective_status = status_filter or status
     return space_service.get_my_reservations_service(
         db=db,
         user=current_user,
-        status_filter=status,
+        status_filter=effective_status,
         page=page,
         page_size=page_size,
     )
 
 
 @router.get("/reservations", response_model=ReservationPaginationResponse)
+@router.get("/reservations/all", response_model=ReservationPaginationResponse)
 def list_all_reservations(
     user_id: Optional[int] = Query(None, description="Filter by patron ID"),
     status: Optional[str] = Query(None, pattern="^(active|completed|cancelled|no_show)$"),
+    status_filter: Optional[str] = Query(None, pattern="^(active|completed|cancelled|no_show)$"),
     resource_type: Optional[str] = Query(None, pattern="^(seat|room)$"),
     start_date: Optional[datetime] = Query(None, description="Filter reservations starting on or after"),
     end_date: Optional[datetime] = Query(None, description="Filter reservations ending on or before"),
@@ -128,11 +133,12 @@ def list_all_reservations(
     """
     Lists reservations across all patrons. Restricted to librarians and administrators.
     """
+    effective_status = status_filter or status
     return space_service.get_all_reservations_service(
         db=db,
         user=current_user,
         user_id=user_id,
-        status_filter=status,
+        status_filter=effective_status,
         resource_type=resource_type,
         start_date=start_date,
         end_date=end_date,
