@@ -15,6 +15,8 @@ CSRF_TOKEN_EXEMPT_PATHS = frozenset({
     "/api/auth/register/institutional",
     "/api/auth/forgot-password",
     "/api/auth/reset-password",
+    "/api/copilot/verify-key",
+    "/api/research/vision-search",
 })
 
 

@@ -87,6 +87,15 @@ Provides library directors and operational staff with actionable strategic telem
 
 ---
 
+### 2.6 Bring-Your-Own-Key (BYOK) for Students & Teachers (`PatronProfileModal.tsx`, `test_byok.py`)
+Provides complete privacy and quota sovereignty for students, teachers, and faculty:
+- **Local Browser Storage**: Personal Google Gemini API keys (`AIzaSy...`) are stored exclusively in patron browser `localStorage` (`patron_custom_gemini_key`) and never stored in plaintext on central databases.
+- **Header & Payload Transport**: Injected seamlessly into `X-Gemini-API-Key` HTTP headers by `apiClient.ts` across all Copilot chat and Multimodal Research calls.
+- **Server-Side Validation Probe**: `POST /api/copilot/verify-key` tests key validity against Google's Gemini endpoint with sub-second feedback.
+- **Zero-Disruption Fallback**: When patrons clear their custom key, the system transparently falls back to the campus institutional allocation or offline deterministic synthesis.
+
+---
+
 ## 3. Verification & Quality Assurance Summary
 
 ```
@@ -108,9 +117,10 @@ Provides library directors and operational staff with actionable strategic telem
 | **Patron Self-Service & Profile Management** | `tests/test_patron_self_service.py` | 19 | **PASS** | 7.15s |
 | **Occupancy Telemetry & Heatmap Ingestion** | `tests/test_occupancy_tracking.py` | 19 | **PASS** | 6.38s |
 | **Role-Based Authentication & JWT Hardening** | `tests/test_auth.py` | 21 | **PASS** | 9.02s |
+| **Bring-Your-Own-Key (BYOK) AI Architecture** | `tests/test_byok.py` | 5 | **PASS** | 2.02s |
 | **CSRF Double-Submit & Origin Security** | `tests/test_security.py` | 16 | **PASS** | 4.88s |
 | **Database Integrity & Protected Seeds** | `tests/test_db_integrity.py` | 11 | **PASS** | 3.25s |
-| **Total Automated Suite** | **26 Test Files** | **404** | **100% PASS** | **108.45s** |
+| **Total Automated Suite** | **27 Test Files** | **409** | **100% PASS** | **110.47s** |
 
 ### 3.2 Frontend Compilation & Type Integrity
 - **TypeScript Compiler (`npx tsc -b`)**: **0 errors** across all components.
@@ -123,3 +133,4 @@ Provides library directors and operational staff with actionable strategic telem
 - **Primary Branch (`main`)**: Clean working tree, fully committed, pushed to `origin/main`.
 - **Feature Branch (`feature/ai-agent-upgrade`)**: Fast-forward merged with `main`, fully committed, pushed to `origin/feature/ai-agent-upgrade`.
 - **Head Commit (`f102369`)**: All changes, documentation files, schemas, routers, and test fixes are fully synchronized with remote origin repository.
+

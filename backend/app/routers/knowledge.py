@@ -7,7 +7,7 @@ Provides endpoints for:
 - PILLAR 4: Modern AI Comparison
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db, get_write_db
@@ -90,17 +90,21 @@ def agent_chat(
     payload: AgentChatRequest,
     db: Session = Depends(get_write_db),
     current_user: User = Depends(get_current_active_user),
+    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-API-Key"),
 ):
     """
     Intelligent Librarian Agent endpoint.
     Executes tool-calling, multi-step RAG context ranking, spatial guidance, and grounded recommendations.
     Accepts bounded multi-turn conversation history for coreference resolution and conversational context.
+    Supports Bring-Your-Own-Key (BYOK) for student and teacher Gemini API keys.
     """
+    custom_key = payload.custom_api_key or x_gemini_api_key
     return execute_librarian_agent_rag(
         db=db,
         query=payload.message,
         current_user=current_user,
         conversation_history=payload.conversation_history,
+        custom_api_key=custom_key,
     )
 
 

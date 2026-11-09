@@ -21,6 +21,14 @@ export async function apiFetch<T>(
   const method = (options.method ?? 'GET').toUpperCase();
   const headers = new Headers(options.headers || {});
 
+  // Inject patron BYOK custom Gemini key if configured
+  if (typeof window !== 'undefined') {
+    const customKey = localStorage.getItem('patron_custom_gemini_key');
+    if (customKey && !headers.has('X-Gemini-API-Key')) {
+      headers.set('X-Gemini-API-Key', customKey.trim());
+    }
+  }
+
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     const csrfToken = getCsrfToken();
     if (csrfToken && !headers.has('X-CSRF-Token')) {

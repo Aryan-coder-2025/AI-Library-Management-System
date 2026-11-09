@@ -31,6 +31,59 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
   const [pwdLoading, setPwdLoading] = useState<boolean>(false);
   const [pwdMessage, setPwdMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // BYOK (Bring Your Own Key) State for Students & Teachers
+  const [customKey, setCustomKey] = useState<string>(() => {
+    return typeof window !== 'undefined' ? (localStorage.getItem('patron_custom_gemini_key') || '') : '';
+  });
+  const [keyTesting, setKeyTesting] = useState<boolean>(false);
+  const [keyMessage, setKeyMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isKeySaved, setIsKeySaved] = useState<boolean>(() => {
+    return typeof window !== 'undefined' ? Boolean(localStorage.getItem('patron_custom_gemini_key')) : false;
+  });
+
+  const handleTestKey = async () => {
+    if (!customKey.trim()) {
+      setKeyMessage({ type: 'error', text: 'Please enter a Gemini API Key to test.' });
+      return;
+    }
+    setKeyTesting(true);
+    setKeyMessage(null);
+    try {
+      const res = await apiFetch<{ valid: boolean; provider: string; message: string }>('/api/copilot/verify-key', {
+        method: 'POST',
+        body: JSON.stringify({ api_key: customKey.trim(), provider: 'gemini' }),
+      });
+      if (res.valid) {
+        setKeyMessage({ type: 'success', text: `Key verified successfully! (${res.message})` });
+      } else {
+        setKeyMessage({ type: 'error', text: res.message });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to test key';
+      setKeyMessage({ type: 'error', text: msg.replace(/^\d+:\s*/, '') });
+    } finally {
+      setKeyTesting(false);
+    }
+  };
+
+  const handleSaveKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customKey.trim()) {
+      setKeyMessage({ type: 'error', text: 'API key cannot be empty.' });
+      return;
+    }
+    localStorage.setItem('patron_custom_gemini_key', customKey.trim());
+    setIsKeySaved(true);
+    setKeyMessage({ type: 'success', text: 'Personal Gemini API key saved! Used for all Copilot and Multimodal searches.' });
+  };
+
+  const handleRemoveKey = () => {
+    localStorage.removeItem('patron_custom_gemini_key');
+    setCustomKey('');
+    setIsKeySaved(false);
+    setKeyMessage({ type: 'success', text: 'Personal API key cleared. Reverted to institutional default.' });
+  };
+
   if (!isOpen) return null;
 
   const handleUpdateName = async (e: React.FormEvent) => {
@@ -520,6 +573,95 @@ export const PatronProfileModal: React.FC<PatronProfileModalProps> = ({
               >
                 {pwdLoading ? 'Updating Password...' : 'Update Password'}
               </button>
+            </div>
+          </form>
+
+          {/* Section 4: Bring Your Own Key (BYOK) - AI Preferences */}
+          <form onSubmit={handleSaveKey}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                🔑 Custom AI Key (BYOK)
+              </h3>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontWeight: 600,
+                  backgroundColor: isKeySaved ? 'rgba(34, 197, 94, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                  color: isKeySaved ? '#22c55e' : 'var(--accent-cyan)',
+                }}
+              >
+                {isKeySaved ? '● Personal Key Active' : '● Institutional Default'}
+              </span>
+            </div>
+
+            <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: 1.4 }}>
+              Students and teachers can use their personal Google Gemini API key for AI Copilot conversations and Multimodal Research Discovery. Keys are stored locally in your browser and never saved in plaintext on central servers.
+            </p>
+
+            {keyMessage && (
+              <div
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '6px',
+                  marginBottom: '0.75rem',
+                  fontSize: '0.85rem',
+                  backgroundColor: keyMessage.type === 'success' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: keyMessage.type === 'success' ? '#22c55e' : '#ef4444',
+                  border: `1px solid ${keyMessage.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                }}
+              >
+                {keyMessage.text}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <input
+                id="custom-key-input"
+                type="password"
+                value={customKey}
+                onChange={(e) => setCustomKey(e.target.value)}
+                placeholder="AIzaSy... (Google Gemini API Key)"
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid var(--card-border)',
+                  borderRadius: '8px',
+                  fontSize: '0.9rem',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  boxSizing: 'border-box',
+                  fontFamily: 'monospace',
+                }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="submit"
+                  disabled={!customKey.trim()}
+                  className="btn btn-primary btn-sm"
+                >
+                  Save Personal Key
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTestKey}
+                  disabled={keyTesting || !customKey.trim()}
+                  className="btn btn-secondary btn-sm"
+                >
+                  {keyTesting ? 'Testing Key...' : '⚡ Test Key'}
+                </button>
+                {isKeySaved && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveKey}
+                    className="btn btn-outline btn-sm"
+                    style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+                  >
+                    Clear & Use Default
+                  </button>
+                )}
+              </div>
             </div>
           </form>
         </div>

@@ -294,10 +294,11 @@ class DeterministicFallbackProvider(BaseLLMProvider):
         return prompt
 
 
-def get_llm_provider() -> Tuple[BaseLLMProvider, str]:
-    """Selects the active LLM provider based on configuration."""
+def get_llm_provider(custom_api_key: Optional[str] = None) -> Tuple[BaseLLMProvider, str]:
+    """Selects the active LLM provider based on configuration or patron BYOK key."""
     api_key = (
-        settings.LLM_API_KEY
+        custom_api_key
+        or settings.LLM_API_KEY
         or getattr(settings, "GEMINI_API_KEY", None)
         or getattr(settings, "GOOGLE_API_KEY", None)
         or os.environ.get("LLM_API_KEY")
@@ -546,6 +547,7 @@ def process_copilot_chat(
     db: Session,
     user: User,
     request: CopilotChatRequest,
+    custom_api_key: Optional[str] = None,
 ) -> CopilotChatResponse:
     """
     Main copilot handler:
@@ -575,8 +577,9 @@ def process_copilot_chat(
             suggested_followups=["Show books on Artificial Intelligence", "What is the borrowing limit?"],
         )
 
+    effective_key = custom_api_key or getattr(request, "custom_api_key", None)
     intent = classify_intent(clean_message)
-    provider, provider_name = get_llm_provider()
+    provider, provider_name = get_llm_provider(custom_api_key=effective_key)
     is_fallback = provider_name == "fallback"
 
     # 1. Social Conversational Intents (Zero Unsolicited Book Dumps)

@@ -3,7 +3,7 @@ Academic Research Discovery Router.
 Serves external scholarly research querying across OpenAlex, arXiv, and Crossref.
 """
 from typing import List, Optional
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -83,6 +83,7 @@ async def vision_research_search(
     query: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-API-Key"),
 ):
     """
     Analyzes multimodal academic media (diagrams, whiteboard math, audio lecture clips,
@@ -141,5 +142,6 @@ async def vision_research_search(
         image_bytes=image_bytes,
         mime_type=effective_mime,
         user_prompt=query,
+        custom_api_key=x_gemini_api_key,
     )
 

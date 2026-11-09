@@ -107,10 +107,12 @@ def _call_gemini_multimodal(
     file_bytes: bytes,
     mime_type: str,
     user_prompt: Optional[str] = None,
+    custom_api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Sends multimodal data (image, audio, PDF, or Office doc) to Gemini API."""
     api_key = (
-        getattr(settings, "GEMINI_API_KEY", None)
+        custom_api_key
+        or getattr(settings, "GEMINI_API_KEY", None)
         or getattr(settings, "LLM_API_KEY", None)
         or os.environ.get("GEMINI_API_KEY")
         or os.environ.get("LLM_API_KEY")
@@ -227,6 +229,7 @@ def analyze_academic_image_service(
     image_bytes: bytes,
     mime_type: str,
     user_prompt: Optional[str] = None,
+    custom_api_key: Optional[str] = None,
 ) -> VisionResearchResponse:
     """
     Main orchestration service for Multimodal Omnichannel Research.
@@ -235,12 +238,14 @@ def analyze_academic_image_service(
     1. Sends to Gemini Multimodal Engine for conceptual and speech decomposition.
     2. Runs hybrid search on library catalogue to surface matching monographs.
     3. Concurrently queries arXiv, OpenAlex, and Crossref for real peer-reviewed papers.
+    Supports Bring-Your-Own-Key (BYOK) for student and teacher Gemini API keys.
     """
     # 1. Multimodal analysis
     media_analysis = _call_gemini_multimodal(
         file_bytes=image_bytes,
         mime_type=mime_type,
         user_prompt=user_prompt,
+        custom_api_key=custom_api_key,
     )
 
     # Determine broad media format

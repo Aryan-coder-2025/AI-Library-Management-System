@@ -837,3 +837,145 @@ def test_post_book_review(client, authenticated_student_cookie):
     assert response.status_code == 201
     assert response.json()["rating"] == 5
 ```
+
+
+---
+
+# Chapter 10 — Autonomous ReAct Agent Architecture & The 10-Tool Arsenal
+
+## 10.1 ReAct Reasoning and Tool Dispatch Engine
+The Athenaeum Autonomous Copilot uses a Reasoning + Acting (ReAct) paradigm powered by Google Gemini (with deterministic offline fallback). Rather than behaving as a static text completion bot, the agent parses patron intent, formulates hypotheses, executes database or external API tools, inspects intermediate tool outputs, and synthesizes a grounded response with structured UI action cards.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Patron as Student / Teacher Patron
+    participant UI as AICopilotDrawer (React)
+    participant Router as /api/knowledge/agent/chat
+    participant Agent as CopilotAgent Orchestrator
+    participant Tools as 10-Tool Arsenal
+    participant Gemini as Gemini 3.1 Flash Lite / BYOK
+    participant DB as SQLite WAL / Vector Index
+
+    Patron->>UI: "Can you renew my overdue loan and book a study desk tomorrow?"
+    UI->>Router: POST /api/knowledge/agent/chat (Bearer + X-Gemini-API-Key)
+    Router->>Agent: execute_librarian_agent_rag(query, patron, history)
+    Agent->>Gemini: Prompt + 10 Tool Declarations
+    Gemini-->>Agent: ToolCall: check_personal_loans(patron_id=4)
+    Agent->>Tools: execute(check_personal_loans)
+    Tools->>DB: Query active patron loans
+    DB-->>Tools: Loan #14 (Distributed Systems Engineering)
+    Tools-->>Agent: Intermediate observation: Loan #14 eligible for renewal
+    Agent->>Gemini: Intermediate Observation
+    Gemini-->>Agent: ToolCall: renew_loan(loan_id=14)
+    Agent->>Tools: execute(renew_loan)
+    Tools->>DB: Advance due_date +14 days
+    DB-->>Tools: Renewed successfully to 2026-11-23
+    Tools-->>Agent: Success
+    Agent->>Gemini: Intermediate Observation
+    Gemini-->>Agent: ToolCall: reserve_study_seat(desk_id=12, start_time="...")
+    Agent->>Tools: execute(reserve_study_seat)
+    Tools->>DB: Create reservation entry
+    DB-->>Tools: Reservation #88 confirmed
+    Tools-->>Agent: Reservation confirmed
+    Agent->>Gemini: Synthesize final user response
+    Gemini-->>Agent: Final patron response with structured actions
+    Agent-->>Router: EnhancedCopilotResponse (answer, agent_actions, cards, citations)
+    Router-->>UI: Render message bubble + Interactive Action Cards
+```
+
+## 10.2 The 10-Tool Arsenal Specification
+
+| # | Tool Name | Scope & Purpose | Required Arguments & Types | Permission Boundary | Service Function |
+|---|---|---|---|---|---|
+| **1** | `search_catalogue` | Hybrid lexical/dense vector search over library holdings. | `query` (str), `limit` (int = 5) | Public / All Patrons | `catalogue_service.hybrid_search` |
+| **2** | `get_book_details` | Detailed monograph metadata, copy breakdown, and shelf location. | `book_id` (int) | Public / All Patrons | `catalogue_service.get_book_by_id` |
+| **3** | `check_personal_loans` | Retrieves active borrowings, due dates, and renewal eligibility. | *None* (Bound to `current_user.id`) | Authenticated Patron Only (Multi-tenant isolation) | `loans_service.get_user_loans` |
+| **4** | `renew_loan` | Extends eligible physical monograph borrowings by standard loan term. | `loan_id` (int) | Authenticated Patron (Self-owned only) | `loans_service.renew_loan` |
+| **5** | `check_seat_availability` | Queries vacant study carrels and group rooms by floor/date. | `floor` (int), `target_date` (str YYYY-MM-DD) | All Patrons | `space_service.get_available_spaces` |
+| **6** | `reserve_study_seat` | Autonomously books a study desk or collaborative room. | `space_id` (int), `start_time` (ISO), `duration_hours` (int) | Authenticated Patron (Student/Teacher quota) | `space_service.create_reservation` |
+| **7** | `get_patron_clearance` | Evaluates zero-fine non-punitive graduation/term clearance. | `student_id` (int) | Self (Student) or Librarian / Admin | `circulation_ops_service.get_clearance` |
+| **8** | `get_course_reserves` | Fetches academic course syllabus reading lists & reserved copies. | `course_code` (str) | Public / All Patrons | `courses_service.get_reserves_by_code` |
+| **9** | `search_preprints` | Live federated scholarly retrieval over arXiv, OpenAlex & Crossref. | `query` (str), `max_results` (int = 5) | Public / All Patrons | `academic_research_service.search_papers` |
+| **10** | `calculate_two_week_demand_forecast` | 14-day Holt-Winters time-series circulation demand projection. | *None* | Librarian / Teacher / System | `forecasting_service.get_two_week_forecast` |
+
+---
+
+# Chapter 11 — Multimodal Omnichannel Research Discovery
+
+## 11.1 Supported Media Ingestion Formats
+Athenaeum integrates full multimodal research discovery via the Gemini 3.5 Flash Lite engine. Patrons can submit non-textual research inputs directly through the drag-and-drop / clipboard-paste modal:
+
+1. **Spoken Audio & Lecture Clips** (`.mp3`, `.wav`, `.m4a`, `.webm`, `.ogg`):
+   - Ingested via browser Web Audio API / `MediaRecorder` or file upload up to 25MB.
+   - Decoded and tokenized directly by Gemini multimodal audio layers.
+   - Extracts verbatim transcripts, speaker tone, core academic queries, and thematic concepts.
+2. **Academic Research Papers** (`.pdf`):
+   - Parsed with `pypdf` stream processing + Gemini document comprehension.
+   - Automatically extracts abstract, methodology, LaTeX mathematical formulas, and bibliographical citations.
+3. **Microsoft Office Documents** (`.docx`, `.pptx`):
+   - Word documents decomposed via `python-docx` into paragraph and table trees.
+   - PowerPoint slides decomposed via `python-pptx` extracting slide titles, bullet points, speaker notes, and diagram annotations.
+4. **Handwritten Whiteboard Math & Diagrams** (`.png`, `.jpg`, `.jpeg`, `.webp`):
+   - Direct vision analysis extracting LaTeX mathematical equations (e.g. `\nabla \times \mathbf{E} = -\frac{\partial \mathbf{B}}{\partial t}`).
+   - Optical character recognition of handwritten whiteboard notes.
+   - Structural diagram flow extraction (DAGs, circuit schematics, UML models).
+
+## 11.2 Dual-Index Retrieval Pipeline
+Upon extracting academic topics and terminology from uploaded media, Athenaeum executes parallel retrieval:
+- **Local Physical Monograph Retrieval**: Queries local library catalog using 384-dimensional dense semantic vectors combined with BM25 lexical ranking.
+- **Global Open-Access Scholarly Retrieval**: Queries arXiv preprints and OpenAlex open metadata API, deduplicating by DOI/arXiv ID.
+
+---
+
+# Chapter 12 — Bring-Your-Own-Key (BYOK) AI Architecture
+
+## 12.1 Student & Teacher Privacy Model
+To provide students and faculty complete control over AI quotas, model choices, and data privacy, Athenaeum implements a zero-trust **Bring-Your-Own-Key (BYOK)** pattern:
+
+```mermaid
+flowchart LR
+    subgraph Client ["Client Browser (Student/Teacher)"]
+        INPUT["Patron Profile Modal\nEnter Gemini Key (AIzaSy...)"]
+        LS[("localStorage\npatron_custom_gemini_key")]
+        HTTP["apiFetch Wrapper\nX-Gemini-API-Key Header"]
+        INPUT --> LS
+        LS --> HTTP
+    end
+
+    subgraph Backend ["Athenaeum FastAPI Server"]
+        MW["Security Middleware\n(CSRF & Origin Whitelist)"]
+        ROUTER["Routers\n/api/copilot/chat\n/api/knowledge/agent/chat\n/api/research/vision-search"]
+        RESOLVER{"Key Resolution\nHierarchy"}
+        
+        HTTP --> MW --> ROUTER --> RESOLVER
+        
+        RESOLVER -->|"1. Patron BYOK Key Present"| LIVE_KEY["Use Patron Key\n(Bypasses Campus Quota)"]
+        RESOLVER -->|"2. No Patron Key"| ENV_KEY["Use Campus GEMINI_API_KEY\n(Institutional Default)"]
+        RESOLVER -->|"3. Offline / No Keys"| FALLBACK["Deterministic Offline Engine\n(Factual DB Synthesis)"]
+    end
+
+    subgraph Google ["Google Generative AI"]
+        API["Gemini 3.5 Flash Lite API"]
+        LIVE_KEY --> API
+        ENV_KEY --> API
+    end
+```
+
+## 12.2 Security Guarantees
+- **No Plaintext Key Storage**: Personal API keys are stored exclusively in the patron's browser `localStorage` and sent over TLS. They are never written to the SQLite database or persisted in server logs.
+- **Instant Validation**: Patrons can click **"⚡ Test Key"** in the Patron Profile Modal to execute a sub-second live verification probe via `POST /api/copilot/verify-key`.
+- **Immediate Reversion**: Clicking **"Clear & Use Default"** instantly removes the personal key and reverts the patron to the campus institutional allocation.
+
+---
+
+# Chapter 13 — Non-Punitive Academic Circulation & Physical Logistics
+
+## 13.1 Non-Punitive Clearance System
+In accordance with ethical academic library standards, Athenaeum implements a strictly non-punitive zero-fine circulation policy:
+- Overdue monographs do not accrue financial penalties or late fines.
+- Circulation privileges are temporarily paused only while physical items remain unreturned past due dates.
+- Graduation and end-of-term clearance certificates (`/api/circulation/clearance/certificate/{student_id}`) are generated as cryptographic SHA-256 verified digital credentials certifying complete return of institutional physical assets.
+
+## 13.2 Rapid QR Return Kiosks
+Patrons return books at contactless kiosks using encrypted QR collection passes (`/api/circulation/returns/qr-process`). Scanning the physical book barcode or patron token instantly discharges the loan, transitions the copy back to available inventory, and issues an immutable digital receipt.

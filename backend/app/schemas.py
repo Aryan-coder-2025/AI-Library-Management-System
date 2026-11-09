@@ -525,6 +525,18 @@ class CopilotSource(BaseModel):
 class CopilotChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=500)
     conversation_history: List[ChatMessage] = Field(default_factory=list, max_length=20)
+    custom_api_key: Optional[str] = Field(None, max_length=255, description="Optional patron personal Gemini/LLM API key (BYOK)")
+
+
+class VerifyKeyRequest(BaseModel):
+    api_key: str = Field(..., min_length=10, max_length=255, description="Google Gemini or OpenAI API key to validate")
+    provider: str = Field("gemini", description="AI provider to test ('gemini' or 'openai')")
+
+
+class VerifyKeyResponse(BaseModel):
+    valid: bool
+    provider: str
+    message: str
 
 
 class CopilotChatResponse(BaseModel):
@@ -1513,6 +1525,7 @@ class AgentChatRequest(BaseModel):
         default_factory=list,
         description="Prior conversation history bounded to user and assistant turns (max 6 messages retained)",
     )
+    custom_api_key: Optional[str] = Field(None, max_length=255, description="Optional patron personal Gemini/LLM API key (BYOK)")
 
 
 # ── Stage 12.14 Schemas: Canonical Feature Completion ────────────────────────

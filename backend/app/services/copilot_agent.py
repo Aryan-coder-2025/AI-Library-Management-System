@@ -761,12 +761,14 @@ def execute_librarian_agent_rag(
     query: str,
     current_user: User,
     conversation_history: Optional[List[ChatMessageInput]] = None,
+    custom_api_key: Optional[str] = None,
 ) -> EnhancedCopilotResponse:
     """
     Full-suite Autonomous AI Agent & Librarian Concierge.
     Executes multi-step ReAct autonomous tool dispatching with Gemini 3.1 Flash Lite.
     Directly reserves study spaces, places monograph holds, renews patron loans,
     issues return passes, and queries academic preprints with verifiable safety and patron isolation.
+    Supports Bring-Your-Own-Key (BYOK) for personal patron Gemini API keys.
     """
     normalized = query.lower().strip()
     tool_calls: List[CopilotToolCall] = []
@@ -781,15 +783,18 @@ def execute_librarian_agent_rag(
     if conversation_history:
         bounded_history = conversation_history[-6:]
 
-    # Check active Gemini LLM Provider
-    provider, provider_name = get_llm_provider()
+    # Check active Gemini LLM Provider (BYOK prioritized over system default)
+    provider, provider_name = get_llm_provider(custom_api_key=custom_api_key)
     api_key = (
-        getattr(settings, "GEMINI_API_KEY", None)
+        custom_api_key
+        or getattr(settings, "GEMINI_API_KEY", None)
         or getattr(settings, "LLM_API_KEY", None)
         or os.environ.get("GEMINI_API_KEY")
         or os.environ.get("LLM_API_KEY")
         or ""
     ).strip()
+    if custom_api_key and api_key:
+        provider_name = "gemini"
 
     inst_tz = space_service.get_library_timezone(settings.LIBRARY_TIMEZONE)
     now_local = space_service.get_utc_now().astimezone(inst_tz)
@@ -949,6 +954,83 @@ def execute_librarian_agent_rag(
             logger.error(f"Autonomous ReAct execution encountered error, falling back to deterministic routing: {e}")
 
     # ── 2. DETERMINISTIC WORKFLOW ROUTING (FALLBACK / OFFLINE) ───────────────────
+
+    # 0. Conversational Social Intents (No unsolicited book searches)
+    is_greeting = any(re.search(rf"\b{g}\b", normalized) for g in ["hello", "hi", "hey"])
+    is_thanks = any(re.search(rf"\b{t}\b", normalized) for t in ["thank", "thanks"])
+    is_help = any(h in normalized for h in ["what can you do", "help me", "how can you help"])
+    is_chat = any(c in normalized for c in ["talk normally", "talk to me", "how are you", "who created you"])
+    has_actionable = any(a in normalized for a in ["reserve", "book", "renew", "loan", "where is", "find", "search", "hold", "available", "free"])
+
+    if is_thanks and not has_actionable:
+        return EnhancedCopilotResponse(
+            answer=f"You are very welcome, {current_user.full_name}! Please let me know if you need any assistance with book borrowings, renewals, or study spaces.",
+            intent="THANKS",
+            confidence=0.99,
+            provider="Librarian Concierge",
+            suggested_followups=["What are my active loans?", "Show available study seats"],
+        )
+
+    if is_help and not has_actionable:
+        return EnhancedCopilotResponse(
+            answer="I am your Athenaeum AI Library Concierge. I can assist you with searching the monograph catalogue, reserving study seats, renewing loans, checking space availability, and generating return passes.",
+            intent="HELP",
+            confidence=0.99,
+            provider="Librarian Concierge",
+            suggested_followups=["Find books on Computer Science", "Reserve a study desk"],
+        )
+
+    if is_chat and not has_actionable:
+        return EnhancedCopilotResponse(
+            answer="I'm doing well, thank you! As your academic library assistant, I'm always available to help you navigate our physical collections, spaces, and digital research.",
+            intent="CONVERSATIONAL",
+            confidence=0.98,
+            provider="Librarian Concierge",
+            suggested_followups=["What are my active loans?", "Where is Seat S-01 located?"],
+        )
+
+    if is_greeting and not has_actionable:
+        return EnhancedCopilotResponse(
+            answer=f"Hello {current_user.full_name}! I am your AI Library Concierge. How can I assist you today with library books, study spaces, or active loans?",
+            intent="GREETING",
+            confidence=0.99,
+            provider="Librarian Concierge",
+            suggested_followups=["What books are available on Machine Learning?", "Reserve a study seat for me"],
+        )
+
+    # 0b. Spatial Navigation & Coreference
+    is_spatial = any(k in normalized for k in ["where is", "how do i find", "location of", "directions to", "where can i find"]) or "seat s-" in normalized or "room r-" in normalized
+    if not is_spatial and bounded_history:
+        last_turn = (bounded_history[-1].content or "").lower()
+        if any(w in last_turn for w in ["seat", "room", "s-", "r-", "floor"]) and any(w in normalized for w in ["where", "locate", "directions", "floor map", "find it", "tell me"]):
+            is_spatial = True
+
+    if is_spatial and not any(k in normalized for k in ["reserve", "book a", "schedule"]):
+        res_type = "room" if "room" in normalized else "seat"
+        num_match = re.search(r"[sr]-?(\d+)", normalized)
+        res_id = int(num_match.group(1)) if num_match else 1
+        s_res, _ = _dispatch_tool(db=db, current_user=current_user, tool_name="get_spatial_resource", args={"resource_type": res_type, "resource_id": res_id})
+        tool_calls.append(CopilotToolCall(tool_name="get_spatial_resource", arguments={"resource_type": res_type, "resource_id": res_id}, result=s_res))
+        
+        lbl = s_res.get("resource_label", f"{res_type.title()} S-{res_id:02d}")
+        fl_name = s_res.get("floor_name", "Ground Floor")
+        citations.append(StructuredCitation(
+            source_type="study_space",
+            title=lbl,
+            snippet=f"Located on {fl_name} (Floor {s_res.get('floor_number', 0)})",
+            url_or_action="/spaces",
+        ))
+        answer = f"{lbl} is located on {fl_name}. You can view its real-time occupancy and turn-by-turn directions on the interactive floor map."
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="SPATIAL_NAVIGATION",
+            confidence=0.98,
+            provider="Librarian Agent Spatial Guide",
+            tool_calls=tool_calls,
+            spatial_card=s_res,
+            citations=citations,
+            suggested_followups=["Reserve this study space", "What other spaces are available on this floor?"],
+        )
 
     # A. Reserve study space
     reserve_keywords = [
@@ -1144,12 +1226,19 @@ def execute_librarian_agent_rag(
             f"• Available Study Seats: {fl.get('available_seats_count', 0)}\n\n"
             f"Would you like me to book a study desk for you?"
         )
+        citations.append(StructuredCitation(
+            source_type="study_space",
+            title=f"{fl.get('floor_name', 'Ground Floor')} Study Spaces",
+            snippet="Live availability for study seats and rooms",
+            url_or_action="/spaces",
+        ))
         return EnhancedCopilotResponse(
             answer=answer,
             intent="SPACE_AVAILABILITY",
             confidence=0.96,
             provider="Librarian Agent Tool Runner",
             tool_calls=tool_calls,
+            citations=citations,
             suggested_followups=["Book a study seat for me on Ground Floor", "Where is Seat S-01 located?"],
         )
 
