@@ -132,6 +132,29 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     }
   };
 
+  const handleClearAll = async () => {
+    try {
+      await apiFetch('/api/notifications/clear-all', { method: 'DELETE' });
+      setNotifications([]);
+      setUnreadCount(0);
+      setActionMessage('All notifications cleared.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error clearing notifications';
+      setActionMessage(msg.replace(/^\d+:\s*/, ''));
+    }
+  };
+
+  const handleDeleteNotification = async (id: number) => {
+    try {
+      await apiFetch(`/api/notifications/${id}`, { method: 'DELETE' });
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      setUnreadCount((c) => Math.max(0, c - 1));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error deleting notification';
+      setActionMessage(msg.replace(/^\d+:\s*/, ''));
+    }
+  };
+
   const handleTriggerSweep = async () => {
     try {
       setLoading(true);
@@ -222,7 +245,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
             <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary, #F5F6FF)' }}>
               Notifications {unreadCount > 0 && <span style={{ color: '#FB7185' }}>({unreadCount} unread)</span>}
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
               {unreadCount > 0 && (
                 <button
                   type="button"
@@ -237,6 +260,23 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                   }}
                 >
                   Mark all read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    color: '#f87171',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                  }}
+                  title="Clear all alerts from inbox"
+                >
+                  🗑️ Clear all
                 </button>
               )}
               {currentUser.role === 'librarian' && (
@@ -349,24 +389,43 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                           {n.title}
                         </span>
                       </div>
-                      {!n.is_read && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {!n.is_read && (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkRead(n.id)}
+                            style={{
+                              border: 'none',
+                              background: 'none',
+                              color: 'var(--color-secondary-violet, #38BDF8)',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer',
+                              padding: '0 2px',
+                              whiteSpace: 'nowrap',
+                              fontWeight: 500,
+                            }}
+                          >
+                            Mark read
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleMarkRead(n.id)}
+                          onClick={() => handleDeleteNotification(n.id)}
                           style={{
                             border: 'none',
                             background: 'none',
-                            color: 'var(--color-secondary-violet, #38BDF8)',
-                            fontSize: '0.75rem',
+                            color: '#94a3b8',
+                            fontSize: '0.85rem',
                             cursor: 'pointer',
-                            padding: '0 2px',
-                            whiteSpace: 'nowrap',
-                            fontWeight: 500,
+                            padding: '0 4px',
+                            lineHeight: 1,
                           }}
+                          title="Dismiss notification"
+                          aria-label="Dismiss notification"
                         >
-                          Mark read
+                          ✕
                         </button>
-                      )}
+                      </div>
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #A9B2CC)', lineHeight: 1.45 }}>
                       {n.message}

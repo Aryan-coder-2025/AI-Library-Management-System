@@ -156,6 +156,38 @@ def mark_all_notifications_read_service(
         return {"updated_count": result.rowcount}
 
 
+def delete_notification_service(
+    db: Session,
+    notification_id: int,
+    current_user: User,
+) -> Dict[str, Any]:
+    with atomic_write(db):
+        stmt = select(Notification).where(Notification.id == notification_id)
+        notification = db.execute(stmt).scalars().first()
+        if not notification:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Notification #{notification_id} not found.",
+            )
+        if notification.user_id != current_user.id and current_user.role != "librarian":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to delete this notification.",
+            )
+        db.delete(notification)
+        return {"success": True, "deleted_id": notification_id}
+
+
+def clear_all_user_notifications_service(
+    db: Session,
+    user_id: int,
+) -> Dict[str, Any]:
+    with atomic_write(db):
+        stmt = Notification.__table__.delete().where(Notification.user_id == user_id)
+        result = db.execute(stmt)
+        return {"success": True, "cleared_count": result.rowcount}
+
+
 def sweep_and_generate_overdue_notifications(
     db: Session,
     as_of_date: Optional[date] = None,

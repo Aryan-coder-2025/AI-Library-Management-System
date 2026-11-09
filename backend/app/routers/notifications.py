@@ -101,6 +101,44 @@ def mark_all_notifications_read(
     )
 
 
+@router.delete(
+    "/clear-all",
+    response_model=Dict[str, Any],
+    summary="Delete all notifications for current user",
+)
+def clear_all_notifications(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_write_db),
+):
+    """
+    Clears / deletes all notifications for the caller.
+    """
+    return notifications_service.clear_all_user_notifications_service(
+        db=db,
+        user_id=current_user.id,
+    )
+
+
+@router.delete(
+    "/{notification_id}",
+    response_model=Dict[str, Any],
+    summary="Delete a specific notification",
+)
+def delete_notification(
+    notification_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_write_db),
+):
+    """
+    Deletes a notification belonging to the caller.
+    """
+    return notifications_service.delete_notification_service(
+        db=db,
+        notification_id=notification_id,
+        current_user=current_user,
+    )
+
+
 @router.post(
     "/sweep",
     response_model=SweepNotificationResponse,
