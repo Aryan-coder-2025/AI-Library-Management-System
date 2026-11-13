@@ -163,6 +163,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   // Two-Way Spoken Voice Concierge State
   const [isVoiceEnabled, setIsVoiceEnabled] = useState<boolean>(false);
   const [isListening, setIsListening] = useState<boolean>(false);
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
 
   const speakText = (text: string) => {
@@ -649,7 +650,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
       {/* Slide-out Copilot Drawer */}
       {isOpen && (
         <aside
-          className="copilot-drawer"
+          className={`copilot-drawer ${isExpanded ? 'copilot-drawer-expanded' : ''}`.trim()}
           aria-label="AI Library Copilot"
           role="region"
         >
@@ -696,6 +697,29 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                 }}
               >
                 {isVoiceEnabled ? '🔊' : '🔇'}
+              </button>
+              <button
+                type="button"
+                className="copilot-btn-icon"
+                onClick={() => setIsExpanded((prev) => !prev)}
+                title={isExpanded ? 'Collapse drawer to standard width (440px)' : 'Expand drawer to wide canvas view (920px)'}
+                aria-label={isExpanded ? 'Collapse drawer' : 'Expand drawer'}
+                style={{
+                  color: isExpanded ? '#38bdf8' : '#94a3b8',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {isExpanded ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 14h6v6m0-6L3 21m17-7h-6v6m0-6 7 7M4 10h6V4m0 6L3 3m17 7h-6V4m0 6 7-7"/>
+                  </svg>
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 3h6v6m0-6L14 10M9 21H3v-6m0 6 7-7M3 9V3h6M3 3l7 7m11 11v-6h-6m6 6-7-7"/>
+                  </svg>
+                )}
               </button>
               <button
                 type="button"

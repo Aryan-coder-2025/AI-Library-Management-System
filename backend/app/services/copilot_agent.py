@@ -944,6 +944,12 @@ def execute_librarian_agent_rag(
                 "- get_spatial_resource: Get floor plan wayfinding coordinates\n"
                 "- get_library_policy: Look up borrowing rules\n"
                 "- visualize_3d_concept: Generate interactive 3D WebGL models for scientific/engineering concepts (neural networks, distributed clusters, molecules, quantum bloch spheres)\n\n"
+                "When the patron asks conceptual questions about machine learning, neural networks, or transformers:\n"
+                "1. ALWAYS call visualize_3d_concept with concept_type='neural_network'.\n"
+                "2. In your written response, explicitly explain the color-coded 3D model markings: "
+                "Green nodes = Input Embeddings + Positional Encoding; Purple nodes = Multi-Head Self-Attention (Q, K, V); "
+                "Magenta nodes = Feed-Forward Network & LayerNorm; Cyan nodes = Softmax Output Logits.\n"
+                "3. Point the patron to click '⛶ Fullscreen Sandbox' or the drawer expand button for the wide-canvas inspector.\n\n"
                 "When the patron asks you to do something (e.g. reserve a seat, hold a book, renew a loan, return a book, search papers), "
                 "CALL THE APPROPRIATE ACTION TOOL IMMEDIATELY! Do not just give advice when an action can be performed.\n"
                 "For compound prompts (e.g. 'find a book and reserve a desk'), execute both tools.\n"
@@ -1142,15 +1148,38 @@ def execute_librarian_agent_rag(
                 description=f"Interactive 3D structural model illustrating {query.strip()}."
             )
 
-        return EnhancedCopilotResponse(
-            answer=(
+        if concept_type == "neural_network":
+            custom_answer = (
+                f"### 🧠 Transformer & Neural Network Architecture Explained\n\n"
+                f"A **Transformer** is an attention-based deep neural network architecture that processes all input tokens in parallel, "
+                f"replacing traditional sequential recurrence (RNNs/LSTMs) with **Multi-Head Self-Attention**.\n\n"
+                f"#### 🎨 Color-Coded 3D Architectural Markings:\n"
+                f"In the **Interactive 3D WebGL Model** initialized above (click **⛶ Fullscreen Sandbox** or expand the drawer for the wide inspector view):\n\n"
+                f"1. 🟢 **Green Nodes (Input Layer)**:\n"
+                f"   - **Token Embeddings & Positional Encoding**: $\\mathbf{{x}}_i = \\text{{Embedding}}(t_i) + \\text{{PE}}_{{(pos, 2i)}}$\n"
+                f"   - Maps discrete text tokens into continuous vectors and superimposes sinusoidal positional coordinates so the model knows word order.\n\n"
+                f"2. 🟣 **Purple Nodes (Hidden Layer 1 — Attention)**:\n"
+                f"   - **Multi-Head Self-Attention**: $\\text{{Attention}}(Q, K, V) = \\text{{softmax}}\\left(\\frac{{QK^T}}{{\\sqrt{{d_k}}}}\\right)V$\n"
+                f"   - Projects representations into Queries, Keys, and Values across parallel heads to calculate cross-token affinity scores in $O(1)$ operations.\n\n"
+                f"3. 🌺 **Magenta Nodes (Hidden Layer 2 — Feed-Forward)**:\n"
+                f"   - **Position-Wise Feed-Forward & Residual Norm**: $\\text{{FFN}}(x) = \\max(0, xW_1 + b_1)W_2 + b_2$\n"
+                f"   - Dense non-linear mapping coupled with residual skip connections ($\\text{{LayerNorm}}(x + \\text{{Sublayer}}(x))$) for gradient stability.\n\n"
+                f"4. 🔵 **Cyan Nodes (Output Layer)**:\n"
+                f"   - **Linear Projection & Softmax Logits**: $P(w_t \\mid w_{{<t}}) = \\text{{softmax}}(W_{{\\text{{vocab}}}} h_t)$\n"
+                f"   - Projects the final hidden states to the vocabulary size, producing a normalized probability distribution for the next predicted token.\n\n"
+                f"💡 *Tip: Hover or click any colored node in the 3D model to inspect its parameters, or click **⛶ Fullscreen Sandbox** to explore in full-screen.*"
+            )
+        else:
+            custom_answer = (
                 f"### Academic Concept Overview: {query.strip()}\n\n"
                 f"**Architectural Foundation:**\n"
                 f"The architecture incorporates multi-layered representations connected through high-dimensional mappings. "
-                f"In modern deep learning and distributed systems, computational states are propagated through parameterized matrices "
-                f"and attention mechanisms, eliminating recurrent sequential bottlenecks.\n\n"
+                f"Computational states are propagated through parameterized matrices and attention mechanisms, eliminating recurrent bottlenecks.\n\n"
                 f"I have initialized an Interactive 3D WebGL concept model in the panel above for you to explore the structural components in real time."
-            ),
+            )
+
+        return EnhancedCopilotResponse(
+            answer=custom_answer,
             intent="ACADEMIC_CONCEPTUAL_INQUIRY",
             confidence=0.95,
             provider="Athenaeum Academic Engine",

@@ -1348,9 +1348,9 @@ p {
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
-  width: 420px;
+  width: 440px;
   max-width: calc(100vw - 2rem);
-  height: 600px;
+  height: 620px;
   max-height: calc(100vh - 3rem);
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -1360,7 +1360,13 @@ p {
   flex-direction: column;
   z-index: 999;
   overflow: hidden;
+  transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1), height 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   animation: copilotFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.copilot-drawer.copilot-drawer-expanded {
+  width: min(920px, calc(100vw - 2.5rem));
+  height: min(860px, calc(100vh - 2.5rem));
 }
 
 @keyframes copilotFadeIn {

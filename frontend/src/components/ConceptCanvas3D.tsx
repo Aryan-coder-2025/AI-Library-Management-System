@@ -7,70 +7,180 @@ export interface Concept3DProps {
   description?: string;
 }
 
+interface LayerMetadata {
+  id: string;
+  title: string;
+  shortName: string;
+  color: string;
+  hexColor: number;
+  math: string;
+  role: string;
+  details: string;
+}
+
+const NEURAL_LAYERS: LayerMetadata[] = [
+  {
+    id: 'layer-0',
+    title: 'Input Embeddings & Positional Encoding',
+    shortName: 'Input [E+P]',
+    color: '#10B981',
+    hexColor: 0x10b981,
+    math: 'x_i = Embedding(t_i) + PE(pos, 2i)',
+    role: 'Vector Tokenization',
+    details: 'Translates raw input tokens into dense d-dimensional embeddings (e.g. 512-dim). Injects sinusoidal positional encodings so the model understands token order without recurrence.',
+  },
+  {
+    id: 'layer-1',
+    title: 'Multi-Head Self-Attention Mechanism',
+    shortName: 'Self-Attention [Q,K,V]',
+    color: '#8B5CF6',
+    hexColor: 0x8b5cf6,
+    math: 'Attention(Q,K,V) = softmax(Q K^T / sqrt(d_k)) V',
+    role: 'Contextual Head Attention',
+    details: 'Projects representations into Queries, Keys, and Values across parallel heads. Computes pairwise dot-product compatibility scores to capture dynamic grammatical and semantic dependencies.',
+  },
+  {
+    id: 'layer-2',
+    title: 'Position-Wise Feed-Forward & Add/Norm',
+    shortName: 'Feed-Forward [FFN]',
+    color: '#EC4899',
+    hexColor: 0xec4899,
+    math: 'FFN(x) = max(0, x W_1 + b_1) W_2 + b_2',
+    role: 'Non-Linear Abstraction',
+    details: 'Two dense affine linear transformations with GELU/ReLU non-linearity, bracketed by residual skip connections and LayerNorm (LayerNorm(x + SubLayer(x))) to guarantee stable gradient flow.',
+  },
+  {
+    id: 'layer-3',
+    title: 'Linear Projection & Softmax Logits',
+    shortName: 'Softmax Output',
+    color: '#38BDF8',
+    hexColor: 0x38bdf8,
+    math: 'P(w_t | w_<t) = softmax(W_vocab h_t)',
+    role: 'Vocabulary Probability',
+    details: 'Unembeds final hidden representations back into vocabulary logits, passing through a softmax temperature function to generate output next-token probability distributions.',
+  },
+];
+
+const CLUSTER_ROLES: LayerMetadata[] = [
+  {
+    id: 'raft-leader',
+    title: 'Raft Cluster Leader (Active Term 4)',
+    shortName: 'Leader Node',
+    color: '#F59E0B',
+    hexColor: 0xf59e0b,
+    math: 'Heartbeat Period: 50ms • Quorum >= 3/5',
+    role: 'Consensus Coordinator',
+    details: 'Receives all write commands from patrons, appends log entries, replicates them to follower nodes, and commits when a majority acknowledges.',
+  },
+  {
+    id: 'raft-follower',
+    title: 'Follower Replicas (Active Quorum)',
+    shortName: 'Follower Quorum',
+    color: '#38BDF8',
+    hexColor: 0x38bdf8,
+    math: 'Election Timeout: 150-300ms randomized',
+    role: 'Distributed Replicas',
+    details: 'Passive nodes that respond to leader heartbeats and log entries. If a heartbeat is missed, a follower steps up to Candidate state.',
+  },
+];
+
+const BLOCH_STATES: LayerMetadata[] = [
+  {
+    id: 'state-zero',
+    title: 'Ground State |0⟩ (North Pole)',
+    shortName: '|0⟩ State',
+    color: '#38BDF8',
+    hexColor: 0x38bdf8,
+    math: '|0⟩ = [1, 0]^T',
+    role: 'Computational Basis',
+    details: 'Eigenstate of the Pauli-Z operator corresponding to spin-up or classical binary 0.',
+  },
+  {
+    id: 'state-one',
+    title: 'Excited State |1⟩ (South Pole)',
+    shortName: '|1⟩ State',
+    color: '#8B5CF6',
+    hexColor: 0x8b5cf6,
+    math: '|1⟩ = [0, 1]^T',
+    role: 'Computational Basis',
+    details: 'Eigenstate of the Pauli-Z operator corresponding to spin-down or classical binary 1.',
+  },
+  {
+    id: 'state-psi',
+    title: 'Superposition State Vector |ψ⟩',
+    shortName: '|ψ⟩ Vector',
+    color: '#F43F5E',
+    hexColor: 0xf43f5e,
+    math: '|ψ⟩ = cos(θ/2)|0⟩ + e^(iφ)sin(θ/2)|1⟩',
+    role: 'Quantum Coherence',
+    details: 'Represents a pure state vector on the sphere surface parameterized by polar angle θ and azimuthal phase angle φ.',
+  },
+];
+
 export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
   conceptType = 'neural_network',
   title,
   description,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
+  const fullscreenMountRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [selectedLayer, setSelectedLayer] = useState<LayerMetadata | null>(
+    conceptType === 'neural_network' ? NEURAL_LAYERS[0] : null
+  );
   const [activeNodeInfo, setActiveNodeInfo] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState<boolean>(true);
 
-  useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount) return;
+  // Setup Three.js scene builder
+  const setupThreeScene = (container: HTMLDivElement, isModal: boolean) => {
+    const width = container.clientWidth || (isModal ? 800 : 400);
+    const height = container.clientHeight || (isModal ? 520 : 280);
 
-    // Dimensions
-    const width = mount.clientWidth || 400;
-    const height = 280;
-
-    // 1. Scene, Camera, Renderer
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a101f); // Midnight Oxford Navy
+    scene.background = new THREE.Color(0x060a17);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.set(0, 0, 18);
+    camera.position.set(0, 0, isModal ? 19 : 17);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    mount.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
 
-    // 2. Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
     scene.add(ambientLight);
 
-    const pointLight = new THREE.PointLight(0x38bdf8, 2, 50); // Cyan glow
-    pointLight.position.set(10, 10, 10);
-    scene.add(pointLight);
+    const pointLight1 = new THREE.PointLight(0x38bdf8, 2, 60);
+    pointLight1.position.set(12, 12, 12);
+    scene.add(pointLight1);
 
-    const purpleLight = new THREE.PointLight(0xa855f7, 1.5, 50); // Violet rim light
-    purpleLight.position.set(-10, -10, -10);
-    scene.add(purpleLight);
+    const pointLight2 = new THREE.PointLight(0xa855f7, 1.8, 60);
+    pointLight2.position.set(-12, -12, -12);
+    scene.add(pointLight2);
 
-    // Group for all interactive geometries
     const mainGroup = new THREE.Group();
     scene.add(mainGroup);
-
     const interactiveObjects: THREE.Object3D[] = [];
 
-    // 3. Build Concept-Specific Geometry
+    // Geometry Construction
     if (conceptType === 'neural_network') {
-      // 3D Multi-Layer Perceptron (Input, 2 Hidden, Output)
-      const layers = [3, 4, 4, 2];
-      const layerSpacing = 3.5;
-      const nodeSpacing = 2.0;
+      const layerCounts = [3, 4, 4, 2];
+      const layerSpacing = 3.8;
+      const nodeSpacing = 2.1;
       const nodePositions: THREE.Vector3[][] = [];
+      const nodeGeo = new THREE.SphereGeometry(0.38, 20, 20);
 
-      const nodeGeo = new THREE.SphereGeometry(0.35, 16, 16);
-      const inputMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0284c7, shininess: 80 });
-      const hiddenMat = new THREE.MeshPhongMaterial({ color: 0xa855f7, emissive: 0x7e22ce, shininess: 80 });
-      const outputMat = new THREE.MeshPhongMaterial({ color: 0x22c55e, emissive: 0x15803d, shininess: 80 });
-
-      layers.forEach((count, lIdx) => {
+      NEURAL_LAYERS.forEach((meta, lIdx) => {
+        const count = layerCounts[lIdx];
         const layerNodes: THREE.Vector3[] = [];
-        const x = (lIdx - (layers.length - 1) / 2) * layerSpacing;
-        const mat = lIdx === 0 ? inputMat : lIdx === layers.length - 1 ? outputMat : hiddenMat;
+        const x = (lIdx - (layerCounts.length - 1) / 2) * layerSpacing;
+        const mat = new THREE.MeshPhongMaterial({
+          color: meta.hexColor,
+          emissive: meta.hexColor,
+          emissiveIntensity: 0.35,
+          shininess: 90,
+        });
 
         for (let i = 0; i < count; i++) {
           const y = (i - (count - 1) / 2) * nodeSpacing;
@@ -79,137 +189,105 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
 
           const mesh = new THREE.Mesh(nodeGeo, mat);
           mesh.position.copy(pos);
-          const typeName = lIdx === 0 ? 'Input Feature' : lIdx === layers.length - 1 ? 'Output Logit' : 'Hidden ReLU Neuron';
-          mesh.userData = { label: `${typeName} [L${lIdx}, N${i + 1}]` };
+          mesh.userData = {
+            layerId: meta.id,
+            label: `${meta.title} (Node ${i + 1}/${count})`,
+            meta,
+          };
           mainGroup.add(mesh);
           interactiveObjects.push(mesh);
         }
         nodePositions.push(layerNodes);
       });
 
-      // Synapse Connections (Cylinders)
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.5 });
+      // Synapse Connections with glow opacity
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.55 });
       for (let l = 0; l < nodePositions.length - 1; l++) {
         for (const p1 of nodePositions[l]) {
           for (const p2 of nodePositions[l + 1]) {
-            const points = [p1, p2];
-            const geo = new THREE.BufferGeometry().setFromPoints(points);
+            const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
             const line = new THREE.Line(geo, lineMat);
             mainGroup.add(line);
           }
         }
       }
     } else if (conceptType === 'distributed_cluster') {
-      // 3D Raft Distributed Consensus Cluster
-      // Center: Gold Leader Node
-      const leaderGeo = new THREE.SphereGeometry(0.7, 24, 24);
-      const leaderMat = new THREE.MeshPhongMaterial({ color: 0xf59e0b, emissive: 0xb45309, shininess: 100 });
+      const leaderGeo = new THREE.SphereGeometry(0.85, 28, 28);
+      const leaderMat = new THREE.MeshPhongMaterial({ color: 0xf59e0b, emissive: 0xb45309, emissiveIntensity: 0.5, shininess: 100 });
       const leader = new THREE.Mesh(leaderGeo, leaderMat);
-      leader.userData = { label: 'Raft Leader Node (Active Term 4)' };
+      leader.userData = { label: 'Raft Leader Node (Active Term 4)', meta: CLUSTER_ROLES[0] };
       mainGroup.add(leader);
       interactiveObjects.push(leader);
 
-      // Orbital Follower Nodes
       const followerCount = 5;
-      const radius = 4.5;
-      const followerGeo = new THREE.SphereGeometry(0.45, 16, 16);
-      const followerMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0284c7, shininess: 70 });
+      const radius = 4.8;
+      const followerGeo = new THREE.SphereGeometry(0.48, 20, 20);
+      const followerMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.4, shininess: 80 });
 
       for (let i = 0; i < followerCount; i++) {
         const angle = (i / followerCount) * Math.PI * 2;
-        const fx = Math.cos(angle) * radius;
-        const fy = Math.sin(angle) * radius * 0.7;
-        const fz = Math.sin(angle) * 1.5;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        const fMesh = new THREE.Mesh(followerGeo, followerMat);
+        fMesh.position.set(x, y, 0);
+        fMesh.userData = { label: `Raft Follower Node #${i + 1} (Quorum Active)`, meta: CLUSTER_ROLES[1] };
+        mainGroup.add(fMesh);
+        interactiveObjects.push(fMesh);
 
-        const follower = new THREE.Mesh(followerGeo, followerMat);
-        follower.position.set(fx, fy, fz);
-        follower.userData = { label: `Follower Node #${i + 1} (Heartbeat OK)` };
-        mainGroup.add(follower);
-        interactiveObjects.push(follower);
-
-        // Heartbeat connection beam
-        const pts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(fx, fy, fz)];
-        const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.6 });
-        const beam = new THREE.Line(lineGeo, lineMat);
-        mainGroup.add(beam);
+        // Heartbeat lines
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), fMesh.position]);
+        const lineMat = new THREE.LineDashedMaterial({ color: 0x38bdf8, dashSize: 0.3, gapSize: 0.2 });
+        const line = new THREE.Line(lineGeo, lineMat);
+        line.computeLineDistances();
+        mainGroup.add(line);
       }
     } else if (conceptType === 'quantum_bloch') {
-      // 3D Quantum Bloch Sphere
-      const sphereGeo = new THREE.SphereGeometry(4, 24, 24);
-      const wireMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.25 });
+      const sphereGeo = new THREE.SphereGeometry(4.2, 24, 24);
+      const wireMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.22 });
       const sphere = new THREE.Mesh(sphereGeo, wireMat);
       mainGroup.add(sphere);
 
-      // Axes: X, Y, Z
+      // Axes
       const axesHelper = new THREE.AxesHelper(5.5);
       mainGroup.add(axesHelper);
 
-      // Quantum State Vector |psi>
-      const dir = new THREE.Vector3(1, 1, 1).normalize();
-      const origin = new THREE.Vector3(0, 0, 0);
-      const arrowHelper = new THREE.ArrowHelper(dir, origin, 4.2, 0xef4444, 0.6, 0.3);
-      arrowHelper.userData = { label: 'Quantum State Vector |ψ⟩ = α|0⟩ + β|1⟩' };
+      // Poles
+      const poleGeo = new THREE.SphereGeometry(0.35, 16, 16);
+      const northMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0284c7 });
+      const northPole = new THREE.Mesh(poleGeo, northMat);
+      northPole.position.set(0, 4.2, 0);
+      northPole.userData = { label: 'State |0⟩ (North Pole)', meta: BLOCH_STATES[0] };
+      mainGroup.add(northPole);
+      interactiveObjects.push(northPole);
+
+      const southMat = new THREE.MeshPhongMaterial({ color: 0x8b5cf6, emissive: 0x6d28d9 });
+      const southPole = new THREE.Mesh(poleGeo, southMat);
+      southPole.position.set(0, -4.2, 0);
+      southPole.userData = { label: 'State |1⟩ (South Pole)', meta: BLOCH_STATES[1] };
+      mainGroup.add(southPole);
+      interactiveObjects.push(southPole);
+
+      // Superposition Vector
+      const stateVector = new THREE.Vector3(2.8, 2.8, 1.4).normalize().multiplyScalar(4.2);
+      const arrowHelper = new THREE.ArrowHelper(stateVector.clone().normalize(), new THREE.Vector3(0, 0, 0), 4.2, 0xf43f5e, 0.6, 0.3);
+      arrowHelper.userData = { label: 'Qubit State Vector |ψ⟩', meta: BLOCH_STATES[2] };
       mainGroup.add(arrowHelper);
-
-      // North Pole |0> and South Pole |1>
-      const poleGeo = new THREE.SphereGeometry(0.3, 16, 16);
-      const northMat = new THREE.MeshPhongMaterial({ color: 0x22c55e });
-      const north = new THREE.Mesh(poleGeo, northMat);
-      north.position.set(0, 4, 0);
-      north.userData = { label: 'Basis State |0⟩ (North Pole)' };
-      mainGroup.add(north);
-      interactiveObjects.push(north);
-
-      const southMat = new THREE.MeshPhongMaterial({ color: 0xa855f7 });
-      const south = new THREE.Mesh(poleGeo, southMat);
-      south.position.set(0, -4, 0);
-      south.userData = { label: 'Basis State |1⟩ (South Pole)' };
-      mainGroup.add(south);
-      interactiveObjects.push(south);
+      interactiveObjects.push(arrowHelper);
     } else {
-      // Molecule: Benzene Ring (C6H6)
-      const ringRadius = 3.5;
-      const carbonGeo = new THREE.SphereGeometry(0.5, 16, 16);
-      const carbonMat = new THREE.MeshPhongMaterial({ color: 0x64748b, emissive: 0x334155, shininess: 60 });
-      const hydrogenGeo = new THREE.SphereGeometry(0.25, 16, 16);
-      const hydrogenMat = new THREE.MeshPhongMaterial({ color: 0xf1f5f9, shininess: 90 });
-
+      // Molecule or Generic fallback
+      const cGeo = new THREE.SphereGeometry(0.6, 20, 20);
+      const cMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0369a1 });
       for (let i = 0; i < 6; i++) {
-        const angle = (i / 6) * Math.PI * 2;
-        const cx = Math.cos(angle) * ringRadius;
-        const cy = Math.sin(angle) * ringRadius;
-
-        const cMesh = new THREE.Mesh(carbonGeo, carbonMat);
-        cMesh.position.set(cx, cy, 0);
-        cMesh.userData = { label: `Carbon Atom C-${i + 1} (sp² hybridized)` };
-        mainGroup.add(cMesh);
-        interactiveObjects.push(cMesh);
-
-        // Hydrogen attached
-        const hx = Math.cos(angle) * (ringRadius + 1.8);
-        const hy = Math.sin(angle) * (ringRadius + 1.8);
-        const hMesh = new THREE.Mesh(hydrogenGeo, hydrogenMat);
-        hMesh.position.set(hx, hy, 0);
-        hMesh.userData = { label: `Hydrogen Atom H-${i + 1}` };
-        mainGroup.add(hMesh);
-        interactiveObjects.push(hMesh);
-
-        // Bond lines
-        const nextAngle = ((i + 1) / 6) * Math.PI * 2;
-        const ncx = Math.cos(nextAngle) * ringRadius;
-        const ncy = Math.sin(nextAngle) * ringRadius;
-        const bondGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(cx, cy, 0), new THREE.Vector3(ncx, ncy, 0)]);
-        const bondLine = new THREE.Line(bondGeo, new THREE.LineBasicMaterial({ color: 0x94a3b8 }));
-        mainGroup.add(bondLine);
-
-        const chBondGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(cx, cy, 0), new THREE.Vector3(hx, hy, 0)]);
-        const chBondLine = new THREE.Line(chBondGeo, new THREE.LineBasicMaterial({ color: 0xcfd8dc }));
-        mainGroup.add(chBondLine);
+        const ang = (i / 6) * Math.PI * 2;
+        const mesh = new THREE.Mesh(cGeo, cMat);
+        mesh.position.set(Math.cos(ang) * 3.5, Math.sin(ang) * 3.5, 0);
+        mesh.userData = { label: `Benzene Carbon-C${i + 1} (sp² hybridized)` };
+        mainGroup.add(mesh);
+        interactiveObjects.push(mesh);
       }
     }
 
-    // 4. Mouse Drag & Orbit Interaction
+    // Interaction Handlers
     let isDragging = false;
     let prevMousePos = { x: 0, y: 0 };
 
@@ -222,14 +300,11 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
       if (isDragging) {
         const deltaX = e.clientX - prevMousePos.x;
         const deltaY = e.clientY - prevMousePos.y;
-
         mainGroup.rotation.y += deltaX * 0.01;
         mainGroup.rotation.x += deltaY * 0.01;
-
         prevMousePos = { x: e.clientX, y: e.clientY };
       }
 
-      // Raycast for hover tooltips
       const rect = renderer.domElement.getBoundingClientRect();
       const mouse = new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -240,8 +315,12 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
       raycaster.setFromCamera(mouse, camera);
       const intersects = raycaster.intersectObjects(interactiveObjects, true);
 
-      if (intersects.length > 0 && intersects[0].object.userData?.label) {
-        setActiveNodeInfo(intersects[0].object.userData.label);
+      if (intersects.length > 0 && intersects[0].object.userData.label) {
+        const target = intersects[0].object;
+        setActiveNodeInfo(target.userData.label);
+        if (target.userData.meta) {
+          setSelectedLayer(target.userData.meta);
+        }
       } else if (!isDragging) {
         setActiveNodeInfo(null);
       }
@@ -253,7 +332,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      camera.position.z = Math.max(8, Math.min(30, camera.position.z + e.deltaY * 0.02));
+      camera.position.z = Math.max(7, Math.min(32, camera.position.z + e.deltaY * 0.02));
     };
 
     const dom = renderer.domElement;
@@ -262,138 +341,540 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     window.addEventListener('mouseup', onMouseUp);
     dom.addEventListener('wheel', onWheel, { passive: false });
 
-    // 5. Animation Loop
+    // Handle container resize
+    const handleResize = () => {
+      if (!container) return;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    };
+    window.addEventListener('resize', handleResize);
+
+    // Animation Loop
     let animId: number;
     const animate = () => {
       animId = requestAnimationFrame(animate);
       if (isRotating && !isDragging) {
-        mainGroup.rotation.y += 0.006;
+        mainGroup.rotation.y += 0.005;
       }
       renderer.render(scene, camera);
     };
     animate();
 
-    // 6. Cleanup
     return () => {
       cancelAnimationFrame(animId);
       dom.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       dom.removeEventListener('wheel', onWheel);
-      if (mount && dom.parentElement === mount) {
-        mount.removeChild(dom);
+      window.removeEventListener('resize', handleResize);
+      if (container && dom.parentElement === container) {
+        container.removeChild(dom);
       }
       renderer.dispose();
     };
+  };
+
+  // Inline mount effect
+  useEffect(() => {
+    if (!mountRef.current) return;
+    return setupThreeScene(mountRef.current, false);
   }, [conceptType, isRotating]);
 
-  return (
-    <div
-      style={{
-        borderRadius: '10px',
-        overflow: 'hidden',
-        border: '1px solid rgba(56, 189, 248, 0.25)',
-        background: '#070D1B',
-        marginTop: '0.6rem',
-        marginBottom: '0.6rem',
-        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
-      }}
-    >
-      {/* Header Bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0.45rem 0.75rem',
-          background: 'linear-gradient(90deg, rgba(14, 22, 38, 0.95), rgba(8, 13, 26, 0.95))',
-          borderBottom: '1px solid rgba(56, 189, 248, 0.15)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <span style={{ fontSize: '0.9rem' }}>🪐</span>
-          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#38BDF8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            {title || `Interactive 3D WebGL Concept: ${conceptType.replace('_', ' ')}`}
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: '0.35rem' }}>
-          <button
-            type="button"
-            onClick={() => setIsRotating((prev) => !prev)}
-            style={{
-              fontSize: '0.65rem',
-              padding: '0.15rem 0.45rem',
-              borderRadius: '4px',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              background: isRotating ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
-              color: isRotating ? '#38BDF8' : '#94A3B8',
-              cursor: 'pointer',
-            }}
-          >
-            {isRotating ? 'Auto-Rotate ON' : 'Paused'}
-          </button>
-        </div>
-      </div>
+  // Fullscreen modal mount effect
+  useEffect(() => {
+    if (!isFullscreen || !fullscreenMountRef.current) return;
+    return setupThreeScene(fullscreenMountRef.current, true);
+  }, [isFullscreen, conceptType, isRotating]);
 
-      {/* WebGL Canvas Mount */}
+  // Keyboard close for fullscreen (Esc)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
+  return (
+    <>
+      {/* ── 1. INLINE 3D CARD (DRAWER VIEW) ─────────────────────────────────── */}
       <div
-        ref={mountRef}
         style={{
-          width: '100%',
-          height: '280px',
-          cursor: 'grab',
-          position: 'relative',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          background: '#070D1B',
+          marginTop: '0.75rem',
+          marginBottom: '0.75rem',
+          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5)',
         }}
       >
-        {/* Overlay Instructions & Live Inspection Label */}
+        {/* Header Bar */}
         <div
           style={{
-            position: 'absolute',
-            bottom: '8px',
-            left: '8px',
-            right: '8px',
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
-            pointerEvents: 'none',
+            justifyContent: 'space-between',
+            padding: '0.55rem 0.85rem',
+            background: 'linear-gradient(90deg, rgba(14, 22, 38, 0.98), rgba(8, 13, 26, 0.98))',
+            borderBottom: '1px solid rgba(56, 189, 248, 0.2)',
           }}
         >
-          <span style={{ fontSize: '0.65rem', color: '#64748B', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px' }}>
-            🖱️ Drag to rotate • Scroll to zoom
-          </span>
-          {activeNodeInfo && (
-            <span
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            <span style={{ fontSize: '1rem' }}>🪐</span>
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#38BDF8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                {title || `3D Interactive Model: ${conceptType.replace('_', ' ')}`}
+              </div>
+              <div style={{ fontSize: '0.62rem', color: '#64748B' }}>
+                WebGL Architecture Engine • Interactive Orbit
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <button
+              type="button"
+              onClick={() => setIsRotating((prev) => !prev)}
               style={{
-                fontSize: '0.7rem',
-                fontWeight: 600,
-                color: '#38BDF8',
-                background: 'rgba(15, 23, 42, 0.9)',
-                border: '1px solid #38BDF8',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                animation: 'fadeIn 0.2s ease-in',
+                fontSize: '0.65rem',
+                padding: '0.2rem 0.5rem',
+                borderRadius: '5px',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                background: isRotating ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+                color: isRotating ? '#38BDF8' : '#94A3B8',
+                cursor: 'pointer',
+                fontWeight: 500,
               }}
             >
-              🎯 {activeNodeInfo}
-            </span>
-          )}
+              {isRotating ? '🔄 Rotate ON' : '⏸️ Paused'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(true)}
+              style={{
+                fontSize: '0.68rem',
+                padding: '0.25rem 0.65rem',
+                borderRadius: '5px',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(139, 92, 246, 0.25))',
+                color: '#38BDF8',
+                cursor: 'pointer',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                boxShadow: '0 2px 8px rgba(56, 189, 248, 0.2)',
+              }}
+              title="Expand into full-screen sandbox with interactive architectural inspector"
+            >
+              <span>⛶</span> Fullscreen Sandbox
+            </button>
+          </div>
         </div>
-      </div>
 
-      {description && (
+        {/* WebGL Canvas Mount */}
         <div
+          ref={mountRef}
           style={{
-            padding: '0.4rem 0.75rem',
-            fontSize: '0.72rem',
-            color: '#94A3B8',
-            background: 'rgba(10, 16, 31, 0.8)',
-            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-            lineHeight: 1.4,
+            width: '100%',
+            height: '280px',
+            cursor: 'grab',
+            position: 'relative',
           }}
         >
-          {description}
+          {/* Canvas Floating Overlay Controls & Tooltip */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '10px',
+              left: '10px',
+              right: '10px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <span style={{ fontSize: '0.65rem', color: '#94A3B8', background: 'rgba(5, 9, 20, 0.85)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+              🖱️ Drag to rotate • Scroll to zoom
+            </span>
+            {activeNodeInfo && (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  color: '#38BDF8',
+                  background: 'rgba(8, 13, 26, 0.95)',
+                  border: '1px solid #38BDF8',
+                  padding: '3px 10px',
+                  borderRadius: '5px',
+                  boxShadow: '0 4px 12px rgba(56, 189, 248, 0.3)',
+                  animation: 'fadeIn 0.15s ease-out',
+                }}
+              >
+                🎯 {activeNodeInfo}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Layer Markings & Legend Bar */}
+        {conceptType === 'neural_network' && (
+          <div
+            style={{
+              padding: '0.55rem 0.75rem',
+              background: 'rgba(10, 16, 31, 0.95)',
+              borderTop: '1px solid rgba(56, 189, 248, 0.15)',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+              gap: '0.4rem',
+            }}
+          >
+            {NEURAL_LAYERS.map((layer) => (
+              <div
+                key={layer.id}
+                onClick={() => setSelectedLayer(layer)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.3rem 0.5rem',
+                  borderRadius: '6px',
+                  background: selectedLayer?.id === layer.id ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                  border: `1px solid ${selectedLayer?.id === layer.id ? layer.color : 'rgba(255, 255, 255, 0.06)'}`,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ width: '9px', height: '9px', borderRadius: '50%', background: layer.color, flexShrink: 0, boxShadow: `0 0 8px ${layer.color}` }} />
+                <div style={{ overflow: 'hidden' }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 600, color: layer.color, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                    {layer.shortName}
+                  </div>
+                  <div style={{ fontSize: '0.58rem', color: '#64748B' }}>
+                    {layer.role}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Active Layer Mathematical Formula & Explanation */}
+        {selectedLayer && (
+          <div
+            style={{
+              padding: '0.6rem 0.85rem',
+              background: 'rgba(6, 10, 23, 0.98)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              fontSize: '0.72rem',
+              color: '#CBD5E1',
+              lineHeight: 1.5,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+              <span style={{ fontWeight: 700, color: selectedLayer.color, fontSize: '0.75rem' }}>
+                📐 {selectedLayer.title}
+              </span>
+              <code style={{ fontSize: '0.65rem', background: 'rgba(255, 255, 255, 0.08)', padding: '1px 6px', borderRadius: '4px', color: '#38BDF8' }}>
+                {selectedLayer.math}
+              </code>
+            </div>
+            <div>{selectedLayer.details}</div>
+          </div>
+        )}
+
+        {description && (
+          <div
+            style={{
+              padding: '0.45rem 0.85rem',
+              fontSize: '0.7rem',
+              color: '#94A3B8',
+              background: 'rgba(8, 13, 26, 0.9)',
+              borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+              lineHeight: 1.4,
+            }}
+          >
+            💡 <strong style={{ color: '#E2E8F0' }}>Architecture Insight:</strong> {description}
+          </div>
+        )}
+      </div>
+
+      {/* ── 2. FULLSCREEN IMMERSIVE 3D SANDBOX MODAL ───────────────────────── */}
+      {isFullscreen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: 'rgba(5, 9, 20, 0.96)',
+            backdropFilter: 'blur(16px)',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '1.25rem',
+            animation: 'fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+        >
+          {/* Modal Header */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0.75rem 1.25rem',
+              background: 'linear-gradient(90deg, rgba(15, 23, 42, 0.95), rgba(8, 13, 26, 0.95))',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '12px 12px 0 0',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                🪐
+              </div>
+              <div>
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#F8FAFC', margin: 0 }}>
+                  {title || `Interactive 3D WebGL Concept Sandbox: ${conceptType.replace('_', ' ').toUpperCase()}`}
+                </h2>
+                <div style={{ fontSize: '0.75rem', color: '#38BDF8', display: 'flex', gap: '0.8rem', marginTop: '2px' }}>
+                  <span>WebGL 2.0 Real-time Shading</span>
+                  <span>•</span>
+                  <span>Three.js Orbit Controls</span>
+                  <span>•</span>
+                  <span>Full Architectural Raycasting</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <button
+                type="button"
+                onClick={() => setIsRotating((prev) => !prev)}
+                style={{
+                  fontSize: '0.8rem',
+                  padding: '0.4rem 0.85rem',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  background: isRotating ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                  color: isRotating ? '#38BDF8' : '#94A3B8',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                {isRotating ? '🔄 Auto-Rotate ON' : '⏸️ Auto-Rotate Paused'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFullscreen(false)}
+                style={{
+                  fontSize: '0.8rem',
+                  padding: '0.4rem 0.95rem',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: '#F87171',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                }}
+              >
+                ✕ Exit Fullscreen (Esc)
+              </button>
+            </div>
+          </div>
+
+          {/* Modal Body: Split 70% 3D Viewport / 30% Architecture Inspector */}
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              borderTop: 'none',
+              borderRadius: '0 0 12px 12px',
+              overflow: 'hidden',
+              background: '#040711',
+            }}
+          >
+            {/* Left 70%: Massive WebGL Three.js Viewport */}
+            <div
+              ref={fullscreenMountRef}
+              style={{
+                flex: 1,
+                position: 'relative',
+                cursor: 'grab',
+                height: '100%',
+              }}
+            >
+              {/* On-Canvas Hint Overlays */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '16px',
+                  left: '16px',
+                  background: 'rgba(8, 13, 26, 0.85)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '8px',
+                  padding: '8px 14px',
+                  color: '#94A3B8',
+                  fontSize: '0.75rem',
+                  pointerEvents: 'none',
+                }}
+              >
+                🖱️ Left Click & Drag to Orbit • Scroll Wheel to Zoom • Hover or Click Nodes to Inspect
+              </div>
+
+              {activeNodeInfo && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '20px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(15, 23, 42, 0.95)',
+                    border: '1px solid #38BDF8',
+                    borderRadius: '8px',
+                    padding: '8px 20px',
+                    color: '#38BDF8',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    boxShadow: '0 8px 24px rgba(56, 189, 248, 0.35)',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  🎯 Selected Node: {activeNodeInfo}
+                </div>
+              )}
+            </div>
+
+            {/* Right 30%: Comprehensive Architectural Deep-Dive & Layer Inspector */}
+            <div
+              style={{
+                width: '360px',
+                borderLeft: '1px solid rgba(56, 189, 248, 0.2)',
+                background: 'rgba(10, 16, 31, 0.95)',
+                display: 'flex',
+                flexDirection: 'column',
+                overflowY: 'auto',
+                padding: '1.25rem',
+                gap: '1.25rem',
+              }}
+            >
+              {/* Selected Component Card */}
+              {selectedLayer ? (
+                <div
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.9)',
+                    border: `1px solid ${selectedLayer.color}`,
+                    borderRadius: '10px',
+                    padding: '1rem',
+                    boxShadow: `0 4px 20px rgba(0, 0, 0, 0.4)`,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: selectedLayer.color, boxShadow: `0 0 10px ${selectedLayer.color}` }} />
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: selectedLayer.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {selectedLayer.role}
+                    </span>
+                  </div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#F8FAFC', margin: '0 0 0.5rem 0' }}>
+                    {selectedLayer.title}
+                  </h3>
+                  <div style={{ background: 'rgba(6, 10, 23, 0.9)', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.08)', marginBottom: '0.75rem' }}>
+                    <div style={{ fontSize: '0.65rem', color: '#64748B', marginBottom: '2px' }}>MATHEMATICAL FORMULATION:</div>
+                    <code style={{ fontSize: '0.75rem', color: '#38BDF8', wordBreak: 'break-all' }}>
+                      {selectedLayer.math}
+                    </code>
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: '#CBD5E1', lineHeight: 1.5, margin: 0 }}>
+                    {selectedLayer.details}
+                  </p>
+                </div>
+              ) : (
+                <div style={{ padding: '1rem', border: '1px dashed rgba(255, 255, 255, 0.15)', borderRadius: '10px', textAlign: 'center', color: '#64748B', fontSize: '0.8rem' }}>
+                  Click or hover any node in the 3D model to inspect its parameters.
+                </div>
+              )}
+
+              {/* Step-by-Step Transformer Pipeline */}
+              {conceptType === 'neural_network' && (
+                <div>
+                  <h4 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 0.65rem 0' }}>
+                    Transformer Architectural Stages
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {NEURAL_LAYERS.map((layer, idx) => (
+                      <div
+                        key={layer.id}
+                        onClick={() => setSelectedLayer(layer)}
+                        style={{
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: '8px',
+                          background: selectedLayer?.id === layer.id ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+                          border: `1px solid ${selectedLayer?.id === layer.id ? layer.color : 'rgba(255, 255, 255, 0.06)'}`,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '50%',
+                            background: `${layer.color}25`,
+                            border: `1px solid ${layer.color}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            color: layer.color,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {idx + 1}
+                        </div>
+                        <div style={{ overflow: 'hidden' }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#F1F5F9' }}>
+                            {layer.shortName}
+                          </div>
+                          <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                            {layer.role}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Academic Overview Box */}
+              <div
+                style={{
+                  marginTop: 'auto',
+                  padding: '0.85rem',
+                  borderRadius: '8px',
+                  background: 'rgba(56, 189, 248, 0.05)',
+                  border: '1px solid rgba(56, 189, 248, 0.15)',
+                  fontSize: '0.72rem',
+                  color: '#94A3B8',
+                  lineHeight: 1.45,
+                }}
+              >
+                🎓 <strong style={{ color: '#38BDF8' }}>Teacher Defense Note:</strong> In modern Transformers (Vaswani et al.), multi-head attention eliminates the sequential computation of RNNs/LSTMs, allowing token pairs to attend to one another in $O(1)$ sequential operations.
+              </div>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
