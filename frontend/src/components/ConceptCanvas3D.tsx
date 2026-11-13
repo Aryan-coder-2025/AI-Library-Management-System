@@ -27,7 +27,7 @@ const NEURAL_LAYERS: LayerMetadata[] = [
     hexColor: 0x10b981,
     math: 'x_i = Embedding(t_i) + PE(pos, 2i)',
     role: 'Vector Tokenization',
-    details: 'Translates raw input tokens into dense d-dimensional embeddings (e.g. 512-dim). Injects sinusoidal positional encodings so the model understands token order without recurrence.',
+    details: 'Translates raw input tokens into continuous 512-dimensional vector embeddings, superimposing sinusoidal positional coordinates to preserve token sequence order without recurrent recurrence.',
   },
   {
     id: 'layer-1',
@@ -37,7 +37,7 @@ const NEURAL_LAYERS: LayerMetadata[] = [
     hexColor: 0x8b5cf6,
     math: 'Attention(Q,K,V) = softmax(Q K^T / sqrt(d_k)) V',
     role: 'Contextual Head Attention',
-    details: 'Projects representations into Queries, Keys, and Values across parallel heads. Computes pairwise dot-product compatibility scores to capture dynamic grammatical and semantic dependencies.',
+    details: 'Splits representations into parallel Query, Key, and Value projections across multiple heads. Calculates pairwise compatibility dot products simultaneously across all tokens in O(1) sequential steps.',
   },
   {
     id: 'layer-2',
@@ -47,7 +47,7 @@ const NEURAL_LAYERS: LayerMetadata[] = [
     hexColor: 0xec4899,
     math: 'FFN(x) = max(0, x W_1 + b_1) W_2 + b_2',
     role: 'Non-Linear Abstraction',
-    details: 'Two dense affine linear transformations with GELU/ReLU non-linearity, bracketed by residual skip connections and LayerNorm (LayerNorm(x + SubLayer(x))) to guarantee stable gradient flow.',
+    details: 'Applies two affine transformations with non-linear activation (GELU/ReLU) to each token position individually. Bracketed by residual skip connections and LayerNorm (LayerNorm(x + Sublayer(x))) to prevent gradient vanishing.',
   },
   {
     id: 'layer-3',
@@ -57,7 +57,7 @@ const NEURAL_LAYERS: LayerMetadata[] = [
     hexColor: 0x38bdf8,
     math: 'P(w_t | w_<t) = softmax(W_vocab h_t)',
     role: 'Vocabulary Probability',
-    details: 'Unembeds final hidden representations back into vocabulary logits, passing through a softmax temperature function to generate output next-token probability distributions.',
+    details: 'Unembeds the final contextual representations into unnormalized vocabulary logits, followed by a temperature-scaled softmax function to compute next-token probability distributions.',
   },
 ];
 
@@ -70,7 +70,7 @@ const CLUSTER_ROLES: LayerMetadata[] = [
     hexColor: 0xf59e0b,
     math: 'Heartbeat Period: 50ms • Quorum >= 3/5',
     role: 'Consensus Coordinator',
-    details: 'Receives all write commands from patrons, appends log entries, replicates them to follower nodes, and commits when a majority acknowledges.',
+    details: 'Receives write commands, manages the replicated log, broadcasts periodic heartbeats, and commits entries when a quorum responds.',
   },
   {
     id: 'raft-follower',
@@ -80,7 +80,7 @@ const CLUSTER_ROLES: LayerMetadata[] = [
     hexColor: 0x38bdf8,
     math: 'Election Timeout: 150-300ms randomized',
     role: 'Distributed Replicas',
-    details: 'Passive nodes that respond to leader heartbeats and log entries. If a heartbeat is missed, a follower steps up to Candidate state.',
+    details: 'Maintains state consistency. Replicates log entries from leader and initiates new leader election if heartbeats lapse.',
   },
 ];
 
@@ -113,9 +113,45 @@ const BLOCH_STATES: LayerMetadata[] = [
     hexColor: 0xf43f5e,
     math: '|ψ⟩ = cos(θ/2)|0⟩ + e^(iφ)sin(θ/2)|1⟩',
     role: 'Quantum Coherence',
-    details: 'Represents a pure state vector on the sphere surface parameterized by polar angle θ and azimuthal phase angle φ.',
+    details: 'State vector on the Bloch sphere surface parameterized by polar angle θ and azimuthal phase angle φ.',
   },
 ];
+
+// Helper: 3D Billboard Text Label Sprite
+function createTextSprite(primary: string, secondary: string, color: string): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 140;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.clearRect(0, 0, 512, 140);
+    // Dark pill container
+    ctx.fillStyle = 'rgba(6, 10, 23, 0.9)';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(10, 10, 492, 120, 24);
+    ctx.fill();
+    ctx.stroke();
+
+    // Primary Label
+    ctx.font = 'bold 34px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.fillText(primary, 256, 62);
+
+    // Secondary Subtitle
+    ctx.font = '500 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#94A3B8';
+    ctx.fillText(secondary, 256, 102);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(3.4, 0.95, 1);
+  return sprite;
+}
 
 export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
   conceptType = 'neural_network',
@@ -130,14 +166,19 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
   );
   const [activeNodeInfo, setActiveNodeInfo] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState<boolean>(true);
+  const [activeCameraPreset, setActiveCameraPreset] = useState<'perspective' | 'front' | 'isometric'>('perspective');
 
-  // Setup Three.js scene builder
+  // Trigger pulse trigger ref shared across renders
+  const firePulseRef = useRef<(() => void) | null>(null);
+  const setCameraAngleRef = useRef<((mode: 'perspective' | 'front' | 'isometric') => void) | null>(null);
+
+  // Scene builder
   const setupThreeScene = (container: HTMLDivElement, isModal: boolean) => {
     const width = container.clientWidth || (isModal ? 800 : 400);
-    const height = container.clientHeight || (isModal ? 520 : 280);
+    const height = container.clientHeight || (isModal ? 540 : 290);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x060a17);
+    scene.background = new THREE.Color(0x050914);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
     camera.position.set(0, 0, isModal ? 19 : 17);
@@ -147,82 +188,173 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    // 1. Ambient & Directional Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
     scene.add(ambientLight);
 
-    const pointLight1 = new THREE.PointLight(0x38bdf8, 2, 60);
-    pointLight1.position.set(12, 12, 12);
-    scene.add(pointLight1);
+    const cyanLight = new THREE.PointLight(0x38bdf8, 2.2, 70);
+    cyanLight.position.set(15, 15, 15);
+    scene.add(cyanLight);
 
-    const pointLight2 = new THREE.PointLight(0xa855f7, 1.8, 60);
-    pointLight2.position.set(-12, -12, -12);
-    scene.add(pointLight2);
+    const purpleLight = new THREE.PointLight(0xa855f7, 2.0, 70);
+    purpleLight.position.set(-15, -15, -15);
+    scene.add(purpleLight);
+
+    // Background Cyber Ambient Particle Starfield
+    const starCount = 180;
+    const starGeo = new THREE.BufferGeometry();
+    const starPositions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount * 3; i += 3) {
+      starPositions[i] = (Math.random() - 0.5) * 60;
+      starPositions[i + 1] = (Math.random() - 0.5) * 45;
+      starPositions[i + 2] = (Math.random() - 0.5) * 40 - 10;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.18, transparent: true, opacity: 0.45 });
+    const starField = new THREE.Points(starGeo, starMat);
+    scene.add(starField);
 
     const mainGroup = new THREE.Group();
     scene.add(mainGroup);
     const interactiveObjects: THREE.Object3D[] = [];
 
-    // Geometry Construction
+    // Synaptic pulse packets list
+    interface PulsePacket {
+      mesh: THREE.Mesh;
+      p1: THREE.Vector3;
+      p2: THREE.Vector3;
+      progress: number;
+      speed: number;
+    }
+    const pulsePackets: PulsePacket[] = [];
+    const pulseGeo = new THREE.SphereGeometry(0.12, 12, 12);
+    const pulseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    // Geometry Generation
     if (conceptType === 'neural_network') {
       const layerCounts = [3, 4, 4, 2];
-      const layerSpacing = 3.8;
-      const nodeSpacing = 2.1;
+      const layerSpacing = 3.9;
+      const nodeSpacing = 2.2;
       const nodePositions: THREE.Vector3[][] = [];
-      const nodeGeo = new THREE.SphereGeometry(0.38, 20, 20);
+      const nodeGeo = new THREE.SphereGeometry(0.42, 24, 24);
+      const haloGeo = new THREE.SphereGeometry(0.62, 16, 16);
 
       NEURAL_LAYERS.forEach((meta, lIdx) => {
         const count = layerCounts[lIdx];
         const layerNodes: THREE.Vector3[] = [];
         const x = (lIdx - (layerCounts.length - 1) / 2) * layerSpacing;
-        const mat = new THREE.MeshPhongMaterial({
-          color: meta.hexColor,
-          emissive: meta.hexColor,
-          emissiveIntensity: 0.35,
-          shininess: 90,
-        });
 
+        // Add 3D Floating Hologram Header above each layer column
+        const headerSprite = createTextSprite(meta.shortName, meta.role, meta.color);
+        headerSprite.position.set(x, 4.4, 0);
+        mainGroup.add(headerSprite);
+
+        // Subtle vertical holographic laser column indicator
+        const columnLineGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(x, 3.8, 0),
+          new THREE.Vector3(x, -3.8, 0),
+        ]);
+        const columnLineMat = new THREE.LineDashedMaterial({
+          color: meta.hexColor,
+          dashSize: 0.2,
+          gapSize: 0.15,
+          transparent: true,
+          opacity: 0.25,
+        });
+        const columnLine = new THREE.Line(columnLineGeo, columnLineMat);
+        columnLine.computeLineDistances();
+        mainGroup.add(columnLine);
+
+        // Core Nodes and Glowing Halos
         for (let i = 0; i < count; i++) {
           const y = (i - (count - 1) / 2) * nodeSpacing;
           const pos = new THREE.Vector3(x, y, 0);
           layerNodes.push(pos);
 
-          const mesh = new THREE.Mesh(nodeGeo, mat);
-          mesh.position.copy(pos);
-          mesh.userData = {
+          // Solid core node
+          const coreMat = new THREE.MeshPhongMaterial({
+            color: meta.hexColor,
+            emissive: meta.hexColor,
+            emissiveIntensity: 0.45,
+            shininess: 95,
+          });
+          const nodeMesh = new THREE.Mesh(nodeGeo, coreMat);
+          nodeMesh.position.copy(pos);
+          nodeMesh.userData = {
             layerId: meta.id,
             label: `${meta.title} (Node ${i + 1}/${count})`,
             meta,
           };
-          mainGroup.add(mesh);
-          interactiveObjects.push(mesh);
+          mainGroup.add(nodeMesh);
+          interactiveObjects.push(nodeMesh);
+
+          // Translucent outer energy halo
+          const haloMat = new THREE.MeshBasicMaterial({
+            color: meta.hexColor,
+            transparent: true,
+            opacity: 0.22,
+            blending: THREE.AdditiveBlending,
+          });
+          const haloMesh = new THREE.Mesh(haloGeo, haloMat);
+          haloMesh.position.copy(pos);
+          mainGroup.add(haloMesh);
         }
         nodePositions.push(layerNodes);
       });
 
-      // Synapse Connections with glow opacity
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.55 });
+      // Synaptic Connections with color gradients
       for (let l = 0; l < nodePositions.length - 1; l++) {
+        const sourceMeta = NEURAL_LAYERS[l];
+        const lineMat = new THREE.LineBasicMaterial({
+          color: sourceMeta.hexColor,
+          transparent: true,
+          opacity: 0.35,
+        });
+
         for (const p1 of nodePositions[l]) {
           for (const p2 of nodePositions[l + 1]) {
             const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
             const line = new THREE.Line(geo, lineMat);
             mainGroup.add(line);
+
+            // Create flowing synaptic pulse packet
+            const pMesh = new THREE.Mesh(pulseGeo, pulseMat);
+            pMesh.position.copy(p1);
+            mainGroup.add(pMesh);
+            pulsePackets.push({
+              mesh: pMesh,
+              p1: p1.clone(),
+              p2: p2.clone(),
+              progress: Math.random(),
+              speed: 0.008 + Math.random() * 0.007,
+            });
           }
         }
       }
+
+      // Action: Fire Synchronized Wave Pulse
+      firePulseRef.current = () => {
+        pulsePackets.forEach((p) => {
+          p.progress = 0;
+          p.speed = 0.022;
+        });
+      };
     } else if (conceptType === 'distributed_cluster') {
-      const leaderGeo = new THREE.SphereGeometry(0.85, 28, 28);
-      const leaderMat = new THREE.MeshPhongMaterial({ color: 0xf59e0b, emissive: 0xb45309, emissiveIntensity: 0.5, shininess: 100 });
+      const leaderGeo = new THREE.SphereGeometry(0.9, 28, 28);
+      const leaderMat = new THREE.MeshPhongMaterial({ color: 0xf59e0b, emissive: 0xb45309, emissiveIntensity: 0.6, shininess: 100 });
       const leader = new THREE.Mesh(leaderGeo, leaderMat);
-      leader.userData = { label: 'Raft Leader Node (Active Term 4)', meta: CLUSTER_ROLES[0] };
+      leader.userData = { label: 'Raft Cluster Leader (Term 4)', meta: CLUSTER_ROLES[0] };
       mainGroup.add(leader);
       interactiveObjects.push(leader);
 
+      const leaderSprite = createTextSprite('LEADER NODE', 'Raft Term 4 Coordinator', '#F59E0B');
+      leaderSprite.position.set(0, 1.8, 0);
+      mainGroup.add(leaderSprite);
+
       const followerCount = 5;
-      const radius = 4.8;
-      const followerGeo = new THREE.SphereGeometry(0.48, 20, 20);
-      const followerMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.4, shininess: 80 });
+      const radius = 5.2;
+      const followerGeo = new THREE.SphereGeometry(0.5, 20, 20);
+      const followerMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.45, shininess: 85 });
 
       for (let i = 0; i < followerCount; i++) {
         const angle = (i / followerCount) * Math.PI * 2;
@@ -242,52 +374,55 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
         mainGroup.add(line);
       }
     } else if (conceptType === 'quantum_bloch') {
-      const sphereGeo = new THREE.SphereGeometry(4.2, 24, 24);
+      const sphereGeo = new THREE.SphereGeometry(4.4, 28, 28);
       const wireMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.22 });
       const sphere = new THREE.Mesh(sphereGeo, wireMat);
       mainGroup.add(sphere);
 
-      // Axes
-      const axesHelper = new THREE.AxesHelper(5.5);
-      mainGroup.add(axesHelper);
+      const axes = new THREE.AxesHelper(5.8);
+      mainGroup.add(axes);
 
-      // Poles
-      const poleGeo = new THREE.SphereGeometry(0.35, 16, 16);
+      const poleGeo = new THREE.SphereGeometry(0.38, 18, 18);
       const northMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0284c7 });
       const northPole = new THREE.Mesh(poleGeo, northMat);
-      northPole.position.set(0, 4.2, 0);
+      northPole.position.set(0, 4.4, 0);
       northPole.userData = { label: 'State |0⟩ (North Pole)', meta: BLOCH_STATES[0] };
       mainGroup.add(northPole);
       interactiveObjects.push(northPole);
 
       const southMat = new THREE.MeshPhongMaterial({ color: 0x8b5cf6, emissive: 0x6d28d9 });
       const southPole = new THREE.Mesh(poleGeo, southMat);
-      southPole.position.set(0, -4.2, 0);
+      southPole.position.set(0, -4.4, 0);
       southPole.userData = { label: 'State |1⟩ (South Pole)', meta: BLOCH_STATES[1] };
       mainGroup.add(southPole);
       interactiveObjects.push(southPole);
 
-      // Superposition Vector
-      const stateVector = new THREE.Vector3(2.8, 2.8, 1.4).normalize().multiplyScalar(4.2);
-      const arrowHelper = new THREE.ArrowHelper(stateVector.clone().normalize(), new THREE.Vector3(0, 0, 0), 4.2, 0xf43f5e, 0.6, 0.3);
+      const stateVector = new THREE.Vector3(3.0, 3.0, 1.5).normalize().multiplyScalar(4.4);
+      const arrowHelper = new THREE.ArrowHelper(stateVector.clone().normalize(), new THREE.Vector3(0, 0, 0), 4.4, 0xf43f5e, 0.7, 0.35);
       arrowHelper.userData = { label: 'Qubit State Vector |ψ⟩', meta: BLOCH_STATES[2] };
       mainGroup.add(arrowHelper);
       interactiveObjects.push(arrowHelper);
-    } else {
-      // Molecule or Generic fallback
-      const cGeo = new THREE.SphereGeometry(0.6, 20, 20);
-      const cMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0369a1 });
-      for (let i = 0; i < 6; i++) {
-        const ang = (i / 6) * Math.PI * 2;
-        const mesh = new THREE.Mesh(cGeo, cMat);
-        mesh.position.set(Math.cos(ang) * 3.5, Math.sin(ang) * 3.5, 0);
-        mesh.userData = { label: `Benzene Carbon-C${i + 1} (sp² hybridized)` };
-        mainGroup.add(mesh);
-        interactiveObjects.push(mesh);
-      }
     }
 
-    // Interaction Handlers
+    // Camera preset handler
+    const applyCameraAngle = (mode: 'perspective' | 'front' | 'isometric') => {
+      setActiveCameraPreset(mode);
+      if (mode === 'front') {
+        camera.position.set(0, 0, 18);
+        mainGroup.rotation.set(0, 0, 0);
+      } else if (mode === 'isometric') {
+        camera.position.set(12, 10, 16);
+        camera.lookAt(0, 0, 0);
+        mainGroup.rotation.set(0, 0, 0);
+      } else {
+        camera.position.set(0, 0, isModal ? 19 : 17);
+        mainGroup.rotation.set(0.12, -0.25, 0);
+      }
+    };
+    setCameraAngleRef.current = applyCameraAngle;
+    applyCameraAngle('perspective');
+
+    // Drag, Orbit & Raycasting
     let isDragging = false;
     let prevMousePos = { x: 0, y: 0 };
 
@@ -300,8 +435,8 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
       if (isDragging) {
         const deltaX = e.clientX - prevMousePos.x;
         const deltaY = e.clientY - prevMousePos.y;
-        mainGroup.rotation.y += deltaX * 0.01;
-        mainGroup.rotation.x += deltaY * 0.01;
+        mainGroup.rotation.y += deltaX * 0.009;
+        mainGroup.rotation.x += deltaY * 0.009;
         prevMousePos = { x: e.clientX, y: e.clientY };
       }
 
@@ -341,7 +476,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     window.addEventListener('mouseup', onMouseUp);
     dom.addEventListener('wheel', onWheel, { passive: false });
 
-    // Handle container resize
+    // Resize Handler
     const handleResize = () => {
       if (!container) return;
       const w = container.clientWidth;
@@ -352,13 +487,33 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     };
     window.addEventListener('resize', handleResize);
 
-    // Animation Loop
+    // Animation Loop with Synaptic Pulse Energy
     let animId: number;
+    let clock = 0;
+
     const animate = () => {
       animId = requestAnimationFrame(animate);
+      clock += 0.015;
+
+      // Rotate group gently
       if (isRotating && !isDragging) {
-        mainGroup.rotation.y += 0.005;
+        mainGroup.rotation.y += 0.004;
       }
+
+      // Starfield subtle shimmer
+      starField.rotation.y += 0.0006;
+
+      // Animate flowing pulse packets along synapses
+      for (const p of pulsePackets) {
+        p.progress += p.speed;
+        if (p.progress >= 1.0) {
+          p.progress = 0;
+          // Randomize speed slightly
+          p.speed = 0.007 + Math.random() * 0.007;
+        }
+        p.mesh.position.lerpVectors(p.p1, p.p2, p.progress);
+      }
+
       renderer.render(scene, camera);
     };
     animate();
@@ -377,19 +532,17 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     };
   };
 
-  // Inline mount effect
   useEffect(() => {
     if (!mountRef.current) return;
     return setupThreeScene(mountRef.current, false);
   }, [conceptType, isRotating]);
 
-  // Fullscreen modal mount effect
   useEffect(() => {
     if (!isFullscreen || !fullscreenMountRef.current) return;
     return setupThreeScene(fullscreenMountRef.current, true);
   }, [isFullscreen, conceptType, isRotating]);
 
-  // Keyboard close for fullscreen (Esc)
+  // Esc key closes fullscreen
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) {
@@ -407,11 +560,11 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
         style={{
           borderRadius: '12px',
           overflow: 'hidden',
-          border: '1px solid rgba(56, 189, 248, 0.3)',
+          border: '1px solid rgba(56, 189, 248, 0.35)',
           background: '#070D1B',
           marginTop: '0.75rem',
           marginBottom: '0.75rem',
-          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5)',
+          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.55)',
         }}
       >
         {/* Header Bar */}
@@ -426,17 +579,41 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-            <span style={{ fontSize: '1rem' }}>🪐</span>
+            <span style={{ fontSize: '1.05rem' }}>🪐</span>
             <div>
               <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#38BDF8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                 {title || `3D Interactive Model: ${conceptType.replace('_', ' ')}`}
               </div>
               <div style={{ fontSize: '0.62rem', color: '#64748B' }}>
-                WebGL Architecture Engine • Interactive Orbit
+                WebGL Architecture Engine • Real-time Synapse Pulses
               </div>
             </div>
           </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            {conceptType === 'neural_network' && (
+              <button
+                type="button"
+                onClick={() => firePulseRef.current?.()}
+                style={{
+                  fontSize: '0.65rem',
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '5px',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  color: '#F59E0B',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                }}
+                title="Send a synchronized wave of energy across the Transformer network"
+              >
+                ⚡ Fire Signal
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => setIsRotating((prev) => !prev)}
@@ -453,6 +630,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
             >
               {isRotating ? '🔄 Rotate ON' : '⏸️ Paused'}
             </button>
+
             <button
               type="button"
               onClick={() => setIsFullscreen(true)}
@@ -460,7 +638,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                 fontSize: '0.68rem',
                 padding: '0.25rem 0.65rem',
                 borderRadius: '5px',
-                border: '1px solid rgba(56, 189, 248, 0.4)',
+                border: '1px solid rgba(56, 189, 248, 0.45)',
                 background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(139, 92, 246, 0.25))',
                 color: '#38BDF8',
                 cursor: 'pointer',
@@ -468,9 +646,9 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.3rem',
-                boxShadow: '0 2px 8px rgba(56, 189, 248, 0.2)',
+                boxShadow: '0 2px 8px rgba(56, 189, 248, 0.25)',
               }}
-              title="Expand into full-screen sandbox with interactive architectural inspector"
+              title="Open full-screen sandbox with interactive architectural inspector"
             >
               <span>⛶</span> Fullscreen Sandbox
             </button>
@@ -482,7 +660,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
           ref={mountRef}
           style={{
             width: '100%',
-            height: '280px',
+            height: '290px',
             cursor: 'grab',
             position: 'relative',
           }}
@@ -501,7 +679,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
             }}
           >
             <span style={{ fontSize: '0.65rem', color: '#94A3B8', background: 'rgba(5, 9, 20, 0.85)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-              🖱️ Drag to rotate • Scroll to zoom
+              🖱️ Drag to rotate • Scroll to zoom • Glowing pulses = live forward pass
             </span>
             {activeNodeInfo && (
               <span
@@ -513,7 +691,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                   border: '1px solid #38BDF8',
                   padding: '3px 10px',
                   borderRadius: '5px',
-                  boxShadow: '0 4px 12px rgba(56, 189, 248, 0.3)',
+                  boxShadow: '0 4px 12px rgba(56, 189, 248, 0.35)',
                   animation: 'fadeIn 0.15s ease-out',
                 }}
               >
@@ -612,11 +790,11 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
             position: 'fixed',
             inset: 0,
             zIndex: 99999,
-            background: 'rgba(5, 9, 20, 0.96)',
+            background: 'rgba(4, 7, 16, 0.97)',
             backdropFilter: 'blur(16px)',
             display: 'flex',
             flexDirection: 'column',
-            padding: '1.25rem',
+            padding: '1rem',
             animation: 'fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
@@ -627,30 +805,106 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '0.75rem 1.25rem',
-              background: 'linear-gradient(90deg, rgba(15, 23, 42, 0.95), rgba(8, 13, 26, 0.95))',
-              border: '1px solid rgba(56, 189, 248, 0.3)',
+              background: 'linear-gradient(90deg, rgba(15, 23, 42, 0.98), rgba(8, 13, 26, 0.98))',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
               borderRadius: '12px 12px 0 0',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>
                 🪐
               </div>
               <div>
-                <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#F8FAFC', margin: 0 }}>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#F8FAFC', margin: 0 }}>
                   {title || `Interactive 3D WebGL Concept Sandbox: ${conceptType.replace('_', ' ').toUpperCase()}`}
                 </h2>
                 <div style={{ fontSize: '0.75rem', color: '#38BDF8', display: 'flex', gap: '0.8rem', marginTop: '2px' }}>
-                  <span>WebGL 2.0 Real-time Shading</span>
+                  <span>Three.js WebGL 2.0 Shading</span>
                   <span>•</span>
-                  <span>Three.js Orbit Controls</span>
+                  <span>Synaptic Energy Pulses Active</span>
                   <span>•</span>
-                  <span>Full Architectural Raycasting</span>
+                  <span>Real-time Architectural Raycasting</span>
                 </div>
               </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              {conceptType === 'neural_network' && (
+                <button
+                  type="button"
+                  onClick={() => firePulseRef.current?.()}
+                  style={{
+                    fontSize: '0.8rem',
+                    padding: '0.4rem 0.9rem',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(245, 158, 11, 0.5)',
+                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.25))',
+                    color: '#F59E0B',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    boxShadow: '0 0 12px rgba(245, 158, 11, 0.3)',
+                  }}
+                  title="Fire a high-intensity forward pass wave through all Transformer layers"
+                >
+                  ⚡ Fire Forward Pass
+                </button>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(255, 255, 255, 0.05)', padding: '2px 4px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                <span style={{ fontSize: '0.68rem', color: '#64748B', paddingLeft: '4px' }}>Camera:</span>
+                <button
+                  type="button"
+                  onClick={() => setCameraAngleRef.current?.('perspective')}
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '0.25rem 0.55rem',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: activeCameraPreset === 'perspective' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                    color: activeCameraPreset === 'perspective' ? '#38BDF8' : '#94A3B8',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  Perspective
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraAngleRef.current?.('front')}
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '0.25rem 0.55rem',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: activeCameraPreset === 'front' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                    color: activeCameraPreset === 'front' ? '#38BDF8' : '#94A3B8',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  Frontal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraAngleRef.current?.('isometric')}
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '0.25rem 0.55rem',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: activeCameraPreset === 'isometric' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                    color: activeCameraPreset === 'isometric' ? '#38BDF8' : '#94A3B8',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  Isometric
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setIsRotating((prev) => !prev)}
@@ -667,6 +921,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
               >
                 {isRotating ? '🔄 Auto-Rotate ON' : '⏸️ Auto-Rotate Paused'}
               </button>
+
               <button
                 type="button"
                 onClick={() => setIsFullscreen(false)}
@@ -674,8 +929,8 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                   fontSize: '0.8rem',
                   padding: '0.4rem 0.95rem',
                   borderRadius: '6px',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.45)',
+                  background: 'rgba(239, 68, 68, 0.18)',
                   color: '#F87171',
                   cursor: 'pointer',
                   fontWeight: 600,
@@ -717,33 +972,34 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                   position: 'absolute',
                   top: '16px',
                   left: '16px',
-                  background: 'rgba(8, 13, 26, 0.85)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'rgba(8, 13, 26, 0.88)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
                   padding: '8px 14px',
                   color: '#94A3B8',
                   fontSize: '0.75rem',
                   pointerEvents: 'none',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                 }}
               >
-                🖱️ Left Click & Drag to Orbit • Scroll Wheel to Zoom • Hover or Click Nodes to Inspect
+                🖱️ Left Click & Drag to Orbit • Scroll Wheel to Zoom • Glowing Pulses Show Real-Time Synaptic Forward Pass
               </div>
 
               {activeNodeInfo && (
                 <div
                   style={{
                     position: 'absolute',
-                    bottom: '20px',
+                    bottom: '24px',
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    background: 'rgba(15, 23, 42, 0.95)',
+                    background: 'rgba(15, 23, 42, 0.96)',
                     border: '1px solid #38BDF8',
                     borderRadius: '8px',
-                    padding: '8px 20px',
+                    padding: '8px 22px',
                     color: '#38BDF8',
                     fontSize: '0.85rem',
                     fontWeight: 600,
-                    boxShadow: '0 8px 24px rgba(56, 189, 248, 0.35)',
+                    boxShadow: '0 8px 24px rgba(56, 189, 248, 0.4)',
                     pointerEvents: 'none',
                   }}
                 >
@@ -755,9 +1011,9 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
             {/* Right 30%: Comprehensive Architectural Deep-Dive & Layer Inspector */}
             <div
               style={{
-                width: '360px',
+                width: '380px',
                 borderLeft: '1px solid rgba(56, 189, 248, 0.2)',
-                background: 'rgba(10, 16, 31, 0.95)',
+                background: 'rgba(10, 16, 31, 0.98)',
                 display: 'flex',
                 flexDirection: 'column',
                 overflowY: 'auto',
@@ -769,11 +1025,11 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
               {selectedLayer ? (
                 <div
                   style={{
-                    background: 'rgba(15, 23, 42, 0.9)',
+                    background: 'rgba(15, 23, 42, 0.95)',
                     border: `1px solid ${selectedLayer.color}`,
                     borderRadius: '10px',
-                    padding: '1rem',
-                    boxShadow: `0 4px 20px rgba(0, 0, 0, 0.4)`,
+                    padding: '1.1rem',
+                    boxShadow: `0 6px 24px rgba(0, 0, 0, 0.45)`,
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -782,16 +1038,16 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                       {selectedLayer.role}
                     </span>
                   </div>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#F8FAFC', margin: '0 0 0.5rem 0' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#F8FAFC', margin: '0 0 0.5rem 0' }}>
                     {selectedLayer.title}
                   </h3>
-                  <div style={{ background: 'rgba(6, 10, 23, 0.9)', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.08)', marginBottom: '0.75rem' }}>
-                    <div style={{ fontSize: '0.65rem', color: '#64748B', marginBottom: '2px' }}>MATHEMATICAL FORMULATION:</div>
-                    <code style={{ fontSize: '0.75rem', color: '#38BDF8', wordBreak: 'break-all' }}>
+                  <div style={{ background: 'rgba(6, 10, 23, 0.95)', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.08)', marginBottom: '0.75rem' }}>
+                    <div style={{ fontSize: '0.65rem', color: '#64748B', marginBottom: '3px' }}>MATHEMATICAL FORMULATION:</div>
+                    <code style={{ fontSize: '0.78rem', color: '#38BDF8', wordBreak: 'break-all', fontWeight: 600 }}>
                       {selectedLayer.math}
                     </code>
                   </div>
-                  <p style={{ fontSize: '0.78rem', color: '#CBD5E1', lineHeight: 1.5, margin: 0 }}>
+                  <p style={{ fontSize: '0.8rem', color: '#CBD5E1', lineHeight: 1.55, margin: 0 }}>
                     {selectedLayer.details}
                   </p>
                 </div>
@@ -807,13 +1063,13 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                   <h4 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 0.65rem 0' }}>
                     Transformer Architectural Stages
                   </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
                     {NEURAL_LAYERS.map((layer, idx) => (
                       <div
                         key={layer.id}
                         onClick={() => setSelectedLayer(layer)}
                         style={{
-                          padding: '0.65rem 0.85rem',
+                          padding: '0.7rem 0.9rem',
                           borderRadius: '8px',
                           background: selectedLayer?.id === layer.id ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255, 255, 255, 0.02)',
                           border: `1px solid ${selectedLayer?.id === layer.id ? layer.color : 'rgba(255, 255, 255, 0.06)'}`,
@@ -826,15 +1082,15 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                       >
                         <div
                           style={{
-                            width: '24px',
-                            height: '24px',
+                            width: '26px',
+                            height: '26px',
                             borderRadius: '50%',
                             background: `${layer.color}25`,
                             border: `1px solid ${layer.color}`,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: '0.72rem',
+                            fontSize: '0.75rem',
                             fontWeight: 700,
                             color: layer.color,
                             flexShrink: 0,
@@ -843,7 +1099,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                           {idx + 1}
                         </div>
                         <div style={{ overflow: 'hidden' }}>
-                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#F1F5F9' }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#F1F5F9' }}>
                             {layer.shortName}
                           </div>
                           <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
@@ -860,16 +1116,16 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
               <div
                 style={{
                   marginTop: 'auto',
-                  padding: '0.85rem',
+                  padding: '0.9rem',
                   borderRadius: '8px',
                   background: 'rgba(56, 189, 248, 0.05)',
-                  border: '1px solid rgba(56, 189, 248, 0.15)',
-                  fontSize: '0.72rem',
+                  border: '1px solid rgba(56, 189, 248, 0.18)',
+                  fontSize: '0.75rem',
                   color: '#94A3B8',
-                  lineHeight: 1.45,
+                  lineHeight: 1.5,
                 }}
               >
-                🎓 <strong style={{ color: '#38BDF8' }}>Teacher Defense Note:</strong> In modern Transformers (Vaswani et al.), multi-head attention eliminates the sequential computation of RNNs/LSTMs, allowing token pairs to attend to one another in $O(1)$ sequential operations.
+                🎓 <strong style={{ color: '#38BDF8' }}>Teacher Defense Note:</strong> In modern Transformers (Vaswani et al.), multi-head attention eliminates the sequential computation of RNNs/LSTMs, allowing token pairs to attend to one another in $O(1)$ operations with parallel tensor computations.
               </div>
             </div>
           </div>

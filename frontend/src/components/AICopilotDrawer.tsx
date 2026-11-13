@@ -164,20 +164,42 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   const [isVoiceEnabled, setIsVoiceEnabled] = useState<boolean>(false);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  const speakText = (text: string) => {
+  const stopSpeaking = () => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeakingMsgId(null);
+  };
+
+  const speakText = (text: string, msgId?: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
+    setSpeakingMsgId(null);
+
     const clean = text
       .replace(/[*_#`~\[\]()]/g, '')
       .replace(/https?:\/\/\S+/g, '')
       .replace(/[🪐✅📚ℹ️⚠️•]/g, '')
       .trim();
     if (!clean) return;
+
     const utterance = new SpeechSynthesisUtterance(clean);
     utterance.rate = 1.05;
     utterance.pitch = 1.0;
+
+    const idToTrack = msgId || 'auto-speech';
+    setSpeakingMsgId(idToTrack);
+
+    utterance.onend = () => {
+      setSpeakingMsgId((curr) => (curr === idToTrack ? null : curr));
+    };
+    utterance.onerror = () => {
+      setSpeakingMsgId((curr) => (curr === idToTrack ? null : curr));
+    };
+
     window.speechSynthesis.speak(utterance);
   };
 
@@ -340,7 +362,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
       setMessages((prev) => [...prev, assistantMsg]);
 
       if (isVoiceEnabled && resp.answer) {
-        speakText(resp.answer);
+        speakText(resp.answer, assistantMsg.id);
       }
     } catch (err: unknown) {
       let msg = 'Failed to reach AI Copilot.';
@@ -750,6 +772,50 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
 
           {/* Messages Body */}
           <div className="copilot-messages-container">
+            {speakingMsgId && (
+              <div
+                style={{
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 20,
+                  background: 'linear-gradient(90deg, rgba(220, 38, 38, 0.95), rgba(153, 27, 27, 0.95))',
+                  backdropFilter: 'blur(8px)',
+                  color: '#ffffff',
+                  padding: '0.4rem 0.85rem',
+                  borderRadius: '6px',
+                  marginBottom: '0.65rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)',
+                  animation: 'fadeIn 0.15s ease',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.75rem', fontWeight: 600 }}>
+                  <span style={{ fontSize: '0.9rem' }}>🔊</span>
+                  <span>AI Narration is speaking...</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={stopSpeaking}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.25)',
+                    border: '1px solid rgba(255, 255, 255, 0.4)',
+                    color: '#ffffff',
+                    borderRadius: '4px',
+                    padding: '2px 9px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <span>⏹️</span> Stop Narration
+                </button>
+              </div>
+            )}
             {messages.map((m) => (
               <div key={m.id} className={`copilot-bubble-row ${m.role === 'user' ? 'bubble-user' : 'bubble-assistant'}`}>
                 {m.role === 'assistant' && (
@@ -804,25 +870,49 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                   <div className="copilot-bubble-timestamp" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                     <span>{m.timestamp}</span>
                     {m.role === 'assistant' && (
-                      <button
-                        type="button"
-                        onClick={() => speakText(m.content)}
-                        title="Listen to this explanation (Text-to-Speech)"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: '0.75rem',
-                          color: '#38bdf8',
-                          padding: '0 4px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          opacity: 0.85,
-                        }}
-                      >
-                        🔊 Listen
-                      </button>
+                      speakingMsgId === m.id ? (
+                        <button
+                          type="button"
+                          onClick={stopSpeaking}
+                          title="Stop AI speech narration"
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.25)',
+                            border: '1px solid rgba(239, 68, 68, 0.6)',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '0.72rem',
+                            color: '#F87171',
+                            padding: '1px 8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontWeight: 700,
+                            boxShadow: '0 0 10px rgba(239, 68, 68, 0.35)',
+                          }}
+                        >
+                          <span style={{ fontSize: '0.68rem' }}>⏹️</span> Stop Speaking
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => speakText(m.content, m.id)}
+                          title="Listen to this explanation (Text-to-Speech)"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            color: '#38bdf8',
+                            padding: '0 4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            opacity: 0.85,
+                          }}
+                        >
+                          🔊 Listen
+                        </button>
+                      )
                     )}
                   </div>
                 </div>
