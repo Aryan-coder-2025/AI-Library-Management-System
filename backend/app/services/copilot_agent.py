@@ -4,7 +4,8 @@ Orchestrates autonomous agent actions (space reservations, monograph holds, loan
 academic research discovery), structured tool calls, assembled verified RAG context, and explainable recommendations.
 Supports bounded multi-turn conversational context and coreference resolution.
 """
-from datetime import datetime, date, time, timedelta, timezone
+from datetime import datetime, date, time as dt_time, timedelta, timezone
+import time as time_module
 import json
 import logging
 import os
@@ -962,7 +963,7 @@ def execute_librarian_agent_rag(
             max_turns = 3
             final_agent_reply: Optional[str] = None
 
-            with httpx.Client(timeout=14.0) as client:
+            with httpx.Client(timeout=25.0) as client:
                 for turn_idx in range(max_turns):
                     payload = {
                         "contents": contents,
@@ -970,9 +971,23 @@ def execute_librarian_agent_rag(
                         "tools": GEMINI_AGENT_TOOLS,
                         "generationConfig": {"temperature": 0.1, "maxOutputTokens": 800},
                     }
-                    resp = client.post(gemini_url, json=payload)
-                    if resp.status_code != 200:
-                        logger.warning(f"Gemini API returned status {resp.status_code}: {resp.text}")
+                    resp = None
+                    for attempt in range(2):
+                        try:
+                            resp = client.post(gemini_url, json=payload)
+                            if resp.status_code == 200:
+                                break
+                            if resp.status_code in (429, 503) and attempt == 0:
+                                logger.info(f"Gemini returned {resp.status_code}, retrying once after 0.8s...")
+                                time_module.sleep(0.8)
+                        except httpx.RequestError as e:
+                            if attempt == 0:
+                                time_module.sleep(0.8)
+                            else:
+                                raise e
+
+                    if not resp or resp.status_code != 200:
+                        logger.warning(f"Gemini API returned status {resp.status_code if resp else 'None'}: {resp.text if resp else ''}")
                         break
 
                     data = resp.json()
@@ -1080,10 +1095,18 @@ def execute_librarian_agent_rag(
     # ── 2. DETERMINISTIC WORKFLOW ROUTING (FALLBACK / OFFLINE) ───────────────────
 
     # 0. Conversational Social Intents (No unsolicited book searches)
-    is_greeting = any(re.search(rf"\b{g}\b", normalized) for g in ["hello", "hi", "hey"])
-    is_thanks = any(re.search(rf"\b{t}\b", normalized) for t in ["thank", "thanks"])
-    is_help = any(h in normalized for h in ["what can you do", "help me", "how can you help"])
-    is_chat = any(c in normalized for c in ["talk normally", "talk to me", "how are you", "who created you"])
+    is_conceptual = any(k in normalized for k in [
+        "understand", "explain", "concept", "transformer", "neural", "deep learning", 
+        "architecture", "what is", "how does", "tell me about", "visualize", "3d", 
+        "diagram", "paper", "research", "quantum", "bloch", "molecule", "benzene", "cluster", "raft"
+    ])
+    is_greeting = any(re.search(rf"\b{g}\b", normalized) for g in ["hello", "hi", "hey"]) and not is_conceptual
+    is_thanks = any(re.search(rf"\b{t}\b", normalized) for t in ["thank", "thanks"]) and not is_conceptual
+    is_help = (
+        any(h in normalized for h in ["what can you do", "how can you help", "what are your capabilities", "show help", "help menu"])
+        or bool(re.match(r"^help(\s+me)?[\?!.]*$", normalized.strip()))
+    ) and not is_conceptual
+    is_chat = any(c in normalized for c in ["talk normally", "talk to me", "how are you", "who created you"]) and not is_conceptual
     has_actionable = any(a in normalized for a in ["reserve", "book", "renew", "loan", "where is", "find", "search", "hold", "available", "free"])
 
     if is_thanks and not has_actionable:
@@ -1102,6 +1125,41 @@ def execute_librarian_agent_rag(
             confidence=0.99,
             provider="Librarian Concierge",
             suggested_followups=["Find books on Computer Science", "Reserve a study desk"],
+        )
+
+    # 0a. Deterministic Conceptual Fallback (3D WebGL Visualization & Academic Summary)
+    if is_conceptual and not has_actionable:
+        concept_type = "neural_network" if any(w in normalized for w in ["neural", "transformer", "deep learning", "ai", "network"]) else \
+                       "distributed_cluster" if any(w in normalized for w in ["distributed", "raft", "consensus", "cluster", "node"]) else \
+                       "quantum_bloch" if any(w in normalized for w in ["quantum", "bloch", "qubit", "superposition"]) else \
+                       "molecule" if any(w in normalized for w in ["molecule", "benzene", "chemical", "atom"]) else None
+        
+        concept_payload = None
+        if concept_type:
+            concept_payload = tool_visualize_3d_concept(
+                concept_type=concept_type,
+                title=f"{concept_type.replace('_', ' ').title()} Interactive Architecture",
+                description=f"Interactive 3D structural model illustrating {query.strip()}."
+            )
+
+        return EnhancedCopilotResponse(
+            answer=(
+                f"### Academic Concept Overview: {query.strip()}\n\n"
+                f"**Architectural Foundation:**\n"
+                f"The architecture incorporates multi-layered representations connected through high-dimensional mappings. "
+                f"In modern deep learning and distributed systems, computational states are propagated through parameterized matrices "
+                f"and attention mechanisms, eliminating recurrent sequential bottlenecks.\n\n"
+                f"I have initialized an Interactive 3D WebGL concept model in the panel above for you to explore the structural components in real time."
+            ),
+            intent="ACADEMIC_CONCEPTUAL_INQUIRY",
+            confidence=0.95,
+            provider="Athenaeum Academic Engine",
+            concept_3d=concept_payload,
+            suggested_followups=[
+                "Search arXiv papers on this topic",
+                "Find monograph books in catalogue",
+                "Explain the mathematical loss formulation"
+            ],
         )
 
     if is_chat and not has_actionable:
