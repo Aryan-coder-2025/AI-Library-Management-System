@@ -531,9 +531,13 @@ def tool_get_library_policy(query: str) -> Dict[str, Any]:
 def tool_visualize_3d_concept(concept_type: str, title: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]:
     """Tool: Generates an interactive 3D WebGL concept simulation for scientific and engineering concepts."""
     c_norm = (concept_type or "").lower().strip()
-    if any(k in c_norm for k in ["neural", "deep learning", "perceptron", "mlp", "network", "ai", "layer"]):
+    if any(k in c_norm for k in ["transformer", "attention", "self-attention", "llm", "encoder", "decoder", "bert", "gpt"]):
+        resolved_type = "transformer_architecture"
+        resolved_title = title or "Transformer Architecture & Multi-Head Attention"
+        resolved_desc = description or "Interactive 3D Transformer encoder block: Multi-Head Attention (Q, K, V), Add & Norm Residual Skip-Connections, Position-Wise Feed-Forward Network (FFN), and Softmax Logits."
+    elif any(k in c_norm for k in ["neural", "deep learning", "perceptron", "mlp", "network", "ai", "layer"]):
         resolved_type = "neural_network"
-        resolved_title = title or "Interactive 3D Multi-Layer Neural Network"
+        resolved_title = title or "Interactive 3D Multi-Layer Perceptron (MLP)"
         resolved_desc = description or "Interactive 3D visualization showing input features, hidden ReLU neurons, and output logits with synaptic weighting."
     elif any(k in c_norm for k in ["distributed", "cluster", "raft", "paxos", "consensus", "node", "server"]):
         resolved_type = "distributed_cluster"
@@ -690,11 +694,11 @@ GEMINI_AGENT_TOOLS = [
             },
             {
                 "name": "visualize_3d_concept",
-                "description": "Generate an interactive 3D WebGL conceptual visualization model (neural network, distributed cluster, molecule, or quantum bloch sphere) for the patron.",
+                "description": "Generate an interactive 3D WebGL conceptual visualization model (transformer architecture, neural network, distributed cluster, molecule, or quantum bloch sphere) for the patron.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
-                        "concept_type": {"type": "STRING", "description": "'neural_network', 'distributed_cluster', 'molecule', or 'quantum_bloch'"},
+                        "concept_type": {"type": "STRING", "description": "'transformer_architecture' (for transformers, attention, LLMs), 'neural_network' (for deep learning, MLP, perceptron), 'distributed_cluster', 'molecule', or 'quantum_bloch'"},
                         "title": {"type": "STRING", "description": "Short title of the 3D model"},
                         "description": {"type": "STRING", "description": "Brief explanation of the 3D visual concept"},
                     },
@@ -944,12 +948,13 @@ def execute_librarian_agent_rag(
                 "- get_spatial_resource: Get floor plan wayfinding coordinates\n"
                 "- get_library_policy: Look up borrowing rules\n"
                 "- visualize_3d_concept: Generate interactive 3D WebGL models for scientific/engineering concepts (neural networks, distributed clusters, molecules, quantum bloch spheres)\n\n"
-                "When the patron asks conceptual questions about machine learning, neural networks, or transformers:\n"
-                "1. ALWAYS call visualize_3d_concept with concept_type='neural_network'.\n"
-                "2. In your written response, explicitly explain the color-coded 3D model markings: "
-                "Green nodes = Input Embeddings + Positional Encoding; Purple nodes = Multi-Head Self-Attention (Q, K, V); "
-                "Magenta nodes = Feed-Forward Network & LayerNorm; Cyan nodes = Softmax Output Logits.\n"
+                "When the patron asks conceptual questions about transformers, attention mechanisms, or LLMs:\n"
+                "1. ALWAYS call visualize_3d_concept with concept_type='transformer_architecture'.\n"
+                "2. In your written response, explicitly explain the Transformer architecture components: Token Embeddings + Positional Encoding (E+P), "
+                "Multi-Head Attention (Q, K, V projections across parallel attention heads), curved Add & Norm Residual Skip-Connections, Position-Wise FFN, and Softmax Logits.\n"
                 "3. Point the patron to click '⛶ Fullscreen Sandbox' or the drawer expand button for the wide-canvas inspector.\n\n"
+                "When the patron asks about general neural networks or MLPs (perceptrons):\n"
+                "1. Call visualize_3d_concept with concept_type='neural_network'.\n"
                 "When the patron asks you to do something (e.g. reserve a seat, hold a book, renew a loan, return a book, search papers), "
                 "CALL THE APPROPRIATE ACTION TOOL IMMEDIATELY! Do not just give advice when an action can be performed.\n"
                 "For compound prompts (e.g. 'find a book and reserve a desk'), execute both tools.\n"
@@ -1135,7 +1140,8 @@ def execute_librarian_agent_rag(
 
     # 0a. Deterministic Conceptual Fallback (3D WebGL Visualization & Academic Summary)
     if is_conceptual and not has_actionable:
-        concept_type = "neural_network" if any(w in normalized for w in ["neural", "transformer", "deep learning", "ai", "network"]) else \
+        concept_type = "transformer_architecture" if any(w in normalized for w in ["transformer", "attention", "self-attention", "llm", "encoder", "decoder", "gpt", "bert"]) else \
+                       "neural_network" if any(w in normalized for w in ["neural", "deep learning", "perceptron", "mlp", "network", "ai"]) else \
                        "distributed_cluster" if any(w in normalized for w in ["distributed", "raft", "consensus", "cluster", "node"]) else \
                        "quantum_bloch" if any(w in normalized for w in ["quantum", "bloch", "qubit", "superposition"]) else \
                        "molecule" if any(w in normalized for w in ["molecule", "benzene", "chemical", "atom"]) else None
@@ -1148,26 +1154,32 @@ def execute_librarian_agent_rag(
                 description=f"Interactive 3D structural model illustrating {query.strip()}."
             )
 
-        if concept_type == "neural_network":
+        if concept_type == "transformer_architecture":
             custom_answer = (
-                f"### 🧠 Transformer & Neural Network Architecture Explained\n\n"
-                f"A **Transformer** is an attention-based deep neural network architecture that processes all input tokens in parallel, "
-                f"replacing traditional sequential recurrence (RNNs/LSTMs) with **Multi-Head Self-Attention**.\n\n"
-                f"#### 🎨 Color-Coded 3D Architectural Markings:\n"
-                f"In the **Interactive 3D WebGL Model** initialized above (click **⛶ Fullscreen Sandbox** or expand the drawer for the wide inspector view):\n\n"
-                f"1. 🟢 **Green Nodes (Input Layer)**:\n"
-                f"   - **Token Embeddings & Positional Encoding**: $\\mathbf{{x}}_i = \\text{{Embedding}}(t_i) + \\text{{PE}}_{{(pos, 2i)}}$\n"
-                f"   - Maps discrete text tokens into continuous vectors and superimposes sinusoidal positional coordinates so the model knows word order.\n\n"
-                f"2. 🟣 **Purple Nodes (Hidden Layer 1 — Attention)**:\n"
-                f"   - **Multi-Head Self-Attention**: $\\text{{Attention}}(Q, K, V) = \\text{{softmax}}\\left(\\frac{{QK^T}}{{\\sqrt{{d_k}}}}\\right)V$\n"
-                f"   - Projects representations into Queries, Keys, and Values across parallel heads to calculate cross-token affinity scores in $O(1)$ operations.\n\n"
-                f"3. 🌺 **Magenta Nodes (Hidden Layer 2 — Feed-Forward)**:\n"
-                f"   - **Position-Wise Feed-Forward & Residual Norm**: $\\text{{FFN}}(x) = \\max(0, xW_1 + b_1)W_2 + b_2$\n"
-                f"   - Dense non-linear mapping coupled with residual skip connections ($\\text{{LayerNorm}}(x + \\text{{Sublayer}}(x))$) for gradient stability.\n\n"
-                f"4. 🔵 **Cyan Nodes (Output Layer)**:\n"
-                f"   - **Linear Projection & Softmax Logits**: $P(w_t \\mid w_{{<t}}) = \\text{{softmax}}(W_{{\\text{{vocab}}}} h_t)$\n"
-                f"   - Projects the final hidden states to the vocabulary size, producing a normalized probability distribution for the next predicted token.\n\n"
-                f"💡 *Tip: Hover or click any colored node in the 3D model to inspect its parameters, or click **⛶ Fullscreen Sandbox** to explore in full-screen.*"
+                f"### 🧠 Transformer Architecture & Multi-Head Self-Attention Explained\n\n"
+                f"The **Transformer** (Vaswani et al., *'Attention Is All You Need'*) is fundamentally different from a standard Multi-Layer Perceptron (MLP). "
+                f"Instead of static dense matrix multiplications layer-by-layer, it relies on dynamic **Multi-Head Self-Attention** and **Residual Skip-Connections** to process sequence tokens in parallel.\n\n"
+                f"#### 🎨 3D Transformer Model Markings:\n"
+                f"In the **Interactive 3D WebGL Transformer Model** above (click **⛶ Fullscreen Sandbox** or expand the drawer to explore):\n\n"
+                f"1. 🟢 **Token Embeddings & Positional Encoding ($E + P$)**:\n"
+                f"   - Sinusoidal wave embeddings inject token position into dense representations without sequential loops.\n\n"
+                f"2. 🔀 **Multi-Head Attention Module ($Q, K, V$)**:\n"
+                f"   - Input projections split into **4 Parallel Attention Heads** computing dot-product affinity matrices: $\\text{{Attention}}(Q,K,V) = \\text{{softmax}}\\left(\\frac{{QK^T}}{{\\sqrt{{d_k}}}}\\right)V$.\n\n"
+                f"3. ⚡ **Curved Residual Skip-Connections (Add & LayerNorm)**:\n"
+                f"   - The glowing bypass wires looping OVER the attention block deliver $\\text{{LayerNorm}}(\\mathbf{{x}} + \\text{{Attention}}(\\mathbf{{x}}))$, preventing vanishing gradients in deep stacks.\n\n"
+                f"4. 🌺 **Position-Wise Feed-Forward Network (FFN)**:\n"
+                f"   - Dual-stage linear projections with non-linear activation ($\\text{{FFN}}(x) = \\max(0, xW_1 + b_1)W_2 + b_2$).\n\n"
+                f"5. 🔵 **Output Linear Projection & Softmax Logits**:\n"
+                f"   - Computes vocabulary probabilities $P(w_t \\mid w_{{<t}}) = \\text{{softmax}}(W_{{\\text{{vocab}}}} h_t)$ for autoregressive decoding."
+            )
+        elif concept_type == "neural_network":
+            custom_answer = (
+                f"### 🧠 Multi-Layer Perceptron (MLP) Deep Neural Network\n\n"
+                f"A classical **Deep Neural Network** is organized into sequentially connected dense layers where every neuron in layer $l$ is connected via synaptic weights to every neuron in layer $l+1$.\n\n"
+                f"1. 🟢 **Input Features Layer**: Receives raw normalized scalar inputs $\\mathbf{{x}}$.\n"
+                f"2. 🟣 **Hidden Layers**: Applies weight matrix multiplications with non-linear activation $\\mathbf{{h}} = \\sigma(W \\mathbf{{x}} + \\mathbf{{b}})$.\n"
+                f"3. 🔵 **Output Layer**: Produces prediction logits.\n\n"
+                f"I have initialized an Interactive 3D WebGL model in the panel above for you to explore the network architecture in real time."
             )
         else:
             custom_answer = (

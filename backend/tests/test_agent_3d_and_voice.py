@@ -9,6 +9,12 @@ def test_tool_visualize_3d_concept_neural_network():
     assert res["concept_type"] == "neural_network"
     assert "Neural" in res["title"]
 
+def test_tool_visualize_3d_concept_transformer():
+    res = tool_visualize_3d_concept("transformer multi-head attention")
+    assert res["status"] == "success"
+    assert res["concept_type"] == "transformer_architecture"
+    assert "Transformer" in res["title"]
+
 def test_tool_visualize_3d_concept_distributed_cluster():
     res = tool_visualize_3d_concept("distributed raft cluster")
     assert res["status"] == "success"

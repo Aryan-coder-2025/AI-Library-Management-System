@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 export interface Concept3DProps {
-  conceptType: 'neural_network' | 'distributed_cluster' | 'molecule' | 'quantum_bloch' | 'generic';
+  conceptType: 'transformer_architecture' | 'neural_network' | 'distributed_cluster' | 'molecule' | 'quantum_bloch' | 'generic';
   title?: string;
   description?: string;
 }
@@ -18,46 +18,101 @@ interface LayerMetadata {
   details: string;
 }
 
-const NEURAL_LAYERS: LayerMetadata[] = [
+// ── TRANSFORMER SPECIFIC ARCHITECTURAL STAGES ───────────────────────────────
+const TRANSFORMER_STAGES: LayerMetadata[] = [
   {
-    id: 'layer-0',
-    title: 'Input Embeddings & Positional Encoding',
-    shortName: 'Input [E+P]',
+    id: 'stage-embeddings',
+    title: 'Input Token Embeddings & Positional Encoding',
+    shortName: 'Token Embedding [E+P]',
     color: '#10B981',
     hexColor: 0x10b981,
-    math: 'x_i = Embedding(t_i) + PE(pos, 2i)',
+    math: 'x_i = W_e(t_i) + PE(pos, 2i)',
     role: 'Vector Tokenization',
-    details: 'Translates raw input tokens into continuous 512-dimensional vector embeddings, superimposing sinusoidal positional coordinates to preserve token sequence order without recurrent recurrence.',
+    details: 'Converts input words/tokens into dense 512-dim continuous vectors, adding sinusoidal wave positional frequencies so the model retains token order without recurrence.',
   },
   {
-    id: 'layer-1',
-    title: 'Multi-Head Self-Attention Mechanism',
-    shortName: 'Self-Attention [Q,K,V]',
+    id: 'stage-attention',
+    title: 'Multi-Head Self-Attention Module (4 Parallel Heads)',
+    shortName: 'Multi-Head Attention (Q,K,V)',
     color: '#8B5CF6',
     hexColor: 0x8b5cf6,
-    math: 'Attention(Q,K,V) = softmax(Q K^T / sqrt(d_k)) V',
-    role: 'Contextual Head Attention',
-    details: 'Splits representations into parallel Query, Key, and Value projections across multiple heads. Calculates pairwise compatibility dot products simultaneously across all tokens in O(1) sequential steps.',
+    math: 'MultiHead(Q,K,V) = Concat(head_1..head_4) W^O',
+    role: 'Parallel Context Heads',
+    details: 'Splits representations into 4 parallel attention heads across Query (Q), Key (K), and Value (V) projections. Calculates pairwise token affinity dot-products simultaneously in O(1) sequential operations.',
   },
   {
-    id: 'layer-2',
-    title: 'Position-Wise Feed-Forward & Add/Norm',
+    id: 'stage-residual-1',
+    title: 'Curved Residual Skip-Connection 1 (Add & Norm)',
+    shortName: 'Residual Highway 1',
+    color: '#38BDF8',
+    hexColor: 0x38bdf8,
+    math: 'x\' = LayerNorm(x + Sublayer(x))',
+    role: 'Gradient Bypass Highway',
+    details: 'The curved glowing bypass pipe looping OVER the attention block delivers input x directly to the LayerNorm slab, preventing vanishing gradients in deep Transformer stacks.',
+  },
+  {
+    id: 'stage-ffn',
+    title: 'Position-Wise Feed-Forward Network (FFN)',
     shortName: 'Feed-Forward [FFN]',
     color: '#EC4899',
     hexColor: 0xec4899,
-    math: 'FFN(x) = max(0, x W_1 + b_1) W_2 + b_2',
+    math: 'FFN(x\') = max(0, x\' W_1 + b_1) W_2 + b_2',
     role: 'Non-Linear Abstraction',
-    details: 'Applies two affine transformations with non-linear activation (GELU/ReLU) to each token position individually. Bracketed by residual skip connections and LayerNorm (LayerNorm(x + Sublayer(x))) to prevent gradient vanishing.',
+    details: 'Dense two-layer expansion (typically 4x d_model = 2048-dim) applied identically to each token position individually, followed by a secondary residual skip connection.',
   },
   {
-    id: 'layer-3',
-    title: 'Linear Projection & Softmax Logits',
-    shortName: 'Softmax Output',
-    color: '#38BDF8',
-    hexColor: 0x38bdf8,
+    id: 'stage-output',
+    title: 'Linear Unembedding & Softmax Probability Logits',
+    shortName: 'Softmax Vocabulary Logits',
+    color: '#F59E0B',
+    hexColor: 0xf59e0b,
     math: 'P(w_t | w_<t) = softmax(W_vocab h_t)',
     role: 'Vocabulary Probability',
-    details: 'Unembeds the final contextual representations into unnormalized vocabulary logits, followed by a temperature-scaled softmax function to compute next-token probability distributions.',
+    details: 'Projects the final hidden states into vocabulary dimensions, passing through a temperature-controlled softmax to yield token probability distributions.',
+  },
+];
+
+// ── STANDARD MULTI-LAYER PERCEPTRON (MLP) LAYERS ────────────────────────────
+const MLP_LAYERS: LayerMetadata[] = [
+  {
+    id: 'mlp-input',
+    title: 'Input Features Layer',
+    shortName: 'Input Features (X)',
+    color: '#10B981',
+    hexColor: 0x10b981,
+    math: 'a^[0] = x',
+    role: 'Input Scalar Vector',
+    details: 'Raw normalized input feature vectors passed to the first layer of the multi-layer perceptron.',
+  },
+  {
+    id: 'mlp-hidden-1',
+    title: 'Hidden Layer 1 (Dense ReLU)',
+    shortName: 'Hidden Layer 1',
+    color: '#8B5CF6',
+    hexColor: 0x8b5cf6,
+    math: 'z^[1] = W^[1] x + b^[1], a^[1] = ReLU(z^[1])',
+    role: 'Feature Extraction',
+    details: 'Dense fully connected layer applying affine transformation followed by rectified linear unit activation.',
+  },
+  {
+    id: 'mlp-hidden-2',
+    title: 'Hidden Layer 2 (Dense ReLU)',
+    shortName: 'Hidden Layer 2',
+    color: '#EC4899',
+    hexColor: 0xec4899,
+    math: 'z^[2] = W^[2] a^[1] + b^[2], a^[2] = ReLU(z^[2])',
+    role: 'Deep Representations',
+    details: 'Second dense layer forming hierarchical high-dimensional feature combinations.',
+  },
+  {
+    id: 'mlp-output',
+    title: 'Output Layer (Prediction Logits)',
+    shortName: 'Output Logits (Y)',
+    color: '#38BDF8',
+    hexColor: 0x38bdf8,
+    math: 'y_hat = sigma(W^[3] a^[2] + b^[3])',
+    role: 'Prediction Head',
+    details: 'Final linear transformation producing classification or regression target outputs.',
   },
 ];
 
@@ -125,7 +180,6 @@ function createTextSprite(primary: string, secondary: string, color: string): TH
   const ctx = canvas.getContext('2d');
   if (ctx) {
     ctx.clearRect(0, 0, 512, 140);
-    // Dark pill container
     ctx.fillStyle = 'rgba(6, 10, 23, 0.9)';
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
@@ -134,13 +188,11 @@ function createTextSprite(primary: string, secondary: string, color: string): TH
     ctx.fill();
     ctx.stroke();
 
-    // Primary Label
     ctx.font = 'bold 34px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.fillText(primary, 256, 62);
 
-    // Secondary Subtitle
     ctx.font = '500 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = '#94A3B8';
     ctx.fillText(secondary, 256, 102);
@@ -154,21 +206,23 @@ function createTextSprite(primary: string, secondary: string, color: string): TH
 }
 
 export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
-  conceptType = 'neural_network',
+  conceptType = 'transformer_architecture',
   title,
   description,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const fullscreenMountRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const isTransformer = conceptType === 'transformer_architecture' || conceptType === 'generic';
+  const activeStages = isTransformer ? TRANSFORMER_STAGES : conceptType === 'neural_network' ? MLP_LAYERS : [];
+
   const [selectedLayer, setSelectedLayer] = useState<LayerMetadata | null>(
-    conceptType === 'neural_network' ? NEURAL_LAYERS[0] : null
+    activeStages.length > 0 ? activeStages[0] : null
   );
   const [activeNodeInfo, setActiveNodeInfo] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState<boolean>(true);
   const [activeCameraPreset, setActiveCameraPreset] = useState<'perspective' | 'front' | 'isometric'>('perspective');
 
-  // Trigger pulse trigger ref shared across renders
   const firePulseRef = useRef<(() => void) | null>(null);
   const setCameraAngleRef = useRef<((mode: 'perspective' | 'front' | 'isometric') => void) | null>(null);
 
@@ -181,7 +235,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     scene.background = new THREE.Color(0x050914);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.set(0, 0, isModal ? 19 : 17);
+    camera.position.set(0, 0, isModal ? 21 : 18);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
@@ -189,25 +243,25 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     container.appendChild(renderer.domElement);
 
     // 1. Ambient & Directional Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
     scene.add(ambientLight);
 
-    const cyanLight = new THREE.PointLight(0x38bdf8, 2.2, 70);
-    cyanLight.position.set(15, 15, 15);
+    const cyanLight = new THREE.PointLight(0x38bdf8, 2.4, 80);
+    cyanLight.position.set(16, 16, 16);
     scene.add(cyanLight);
 
-    const purpleLight = new THREE.PointLight(0xa855f7, 2.0, 70);
-    purpleLight.position.set(-15, -15, -15);
+    const purpleLight = new THREE.PointLight(0xa855f7, 2.2, 80);
+    purpleLight.position.set(-16, -16, -16);
     scene.add(purpleLight);
 
-    // Background Cyber Ambient Particle Starfield
-    const starCount = 180;
+    // Background Starfield Particles
+    const starCount = 200;
     const starGeo = new THREE.BufferGeometry();
     const starPositions = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount * 3; i += 3) {
-      starPositions[i] = (Math.random() - 0.5) * 60;
-      starPositions[i + 1] = (Math.random() - 0.5) * 45;
-      starPositions[i + 2] = (Math.random() - 0.5) * 40 - 10;
+      starPositions[i] = (Math.random() - 0.5) * 65;
+      starPositions[i + 1] = (Math.random() - 0.5) * 50;
+      starPositions[i + 2] = (Math.random() - 0.5) * 45 - 12;
     }
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
     const starMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.18, transparent: true, opacity: 0.45 });
@@ -218,20 +272,290 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     scene.add(mainGroup);
     const interactiveObjects: THREE.Object3D[] = [];
 
-    // Synaptic pulse packets list
+    // Synaptic / Residual pulse packets list
     interface PulsePacket {
       mesh: THREE.Mesh;
-      p1: THREE.Vector3;
-      p2: THREE.Vector3;
+      curve?: THREE.CubicBezierCurve3;
+      p1?: THREE.Vector3;
+      p2?: THREE.Vector3;
       progress: number;
       speed: number;
+      isCurve: boolean;
     }
     const pulsePackets: PulsePacket[] = [];
     const pulseGeo = new THREE.SphereGeometry(0.12, 12, 12);
     const pulseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
-    // Geometry Generation
-    if (conceptType === 'neural_network') {
+    // ── A. TRANSFORMER ARCHITECTURE (VASWANI ET AL.) ────────────────────────
+    if (isTransformer) {
+      // 1. Token Embeddings Stage (x = -7.0)
+      const inputX = -7.0;
+      const inputSprite = createTextSprite('INPUT EMBEDDINGS', 'Tokens + Positional Encoding (E+P)', '#10B981');
+      inputSprite.position.set(inputX, 4.4, 0);
+      mainGroup.add(inputSprite);
+
+      const tokenNames = ['Token "The"', 'Token "Library"', 'Token "AI"'];
+      const tokenPositions: THREE.Vector3[] = [];
+      const tokenGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 20);
+      const tokenMat = new THREE.MeshPhongMaterial({ color: 0x10b981, emissive: 0x059669, emissiveIntensity: 0.5 });
+
+      tokenNames.forEach((name, i) => {
+        const y = (i - 1) * 2.2;
+        const pos = new THREE.Vector3(inputX, y, 0);
+        tokenPositions.push(pos);
+
+        const mesh = new THREE.Mesh(tokenGeo, tokenMat);
+        mesh.position.copy(pos);
+        mesh.rotation.x = Math.PI / 2;
+        mesh.userData = {
+          label: `${name} (512-dim Embedding Vector)`,
+          meta: TRANSFORMER_STAGES[0],
+        };
+        mainGroup.add(mesh);
+        interactiveObjects.push(mesh);
+      });
+
+      // Sinusoidal positional wave indicator
+      const wavePoints: THREE.Vector3[] = [];
+      for (let t = -3.0; t <= 3.0; t += 0.2) {
+        wavePoints.push(new THREE.Vector3(inputX - 0.9, t, Math.sin(t * 2.0) * 0.4));
+      }
+      const waveGeo = new THREE.BufferGeometry().setFromPoints(wavePoints);
+      const waveMat = new THREE.LineBasicMaterial({ color: 0x34d399, transparent: true, opacity: 0.75 });
+      mainGroup.add(new THREE.Line(waveGeo, waveMat));
+
+      // 2. Multi-Head Attention Module (x = -3.2)
+      const mhaX = -3.2;
+      const mhaSprite = createTextSprite('MULTI-HEAD ATTENTION', '4 Parallel Heads (Q, K, V)', '#8B5CF6');
+      mhaSprite.position.set(mhaX, 4.4, 0);
+      mainGroup.add(mhaSprite);
+
+      // Q, K, V Projection Hubs
+      const qkvLabels = [
+        { label: 'Query Projection (Q)', color: 0xf59e0b, y: 1.6 },
+        { label: 'Key Projection (K)', color: 0x38bdf8, y: 0.0 },
+        { label: 'Value Projection (V)', color: 0xa855f7, y: -1.6 },
+      ];
+      const qkvPositions: THREE.Vector3[] = [];
+      const qkvGeo = new THREE.SphereGeometry(0.42, 20, 20);
+
+      qkvLabels.forEach((qkv) => {
+        const pos = new THREE.Vector3(mhaX - 1.2, qkv.y, 0);
+        qkvPositions.push(pos);
+        const mat = new THREE.MeshPhongMaterial({ color: qkv.color, emissive: qkv.color, emissiveIntensity: 0.4 });
+        const mesh = new THREE.Mesh(qkvGeo, mat);
+        mesh.position.copy(pos);
+        mesh.userData = { label: `${qkv.label} Matrix`, meta: TRANSFORMER_STAGES[1] };
+        mainGroup.add(mesh);
+        interactiveObjects.push(mesh);
+      });
+
+      // 4 Distinct Parallel Attention Heads
+      const headColors = [0x06b6d4, 0x8b5cf6, 0xf43f5e, 0xf59e0b];
+      const headPositions: THREE.Vector3[] = [];
+      const headGeo = new THREE.SphereGeometry(0.38, 18, 18);
+
+      headColors.forEach((color, hIdx) => {
+        const y = (hIdx - 1.5) * 1.5;
+        const z = (hIdx % 2 === 0 ? 1 : -1) * 0.9;
+        const pos = new THREE.Vector3(mhaX + 0.6, y, z);
+        headPositions.push(pos);
+
+        const mat = new THREE.MeshPhongMaterial({ color, emissive: color, emissiveIntensity: 0.5 });
+        const mesh = new THREE.Mesh(headGeo, mat);
+        mesh.position.copy(pos);
+        mesh.userData = { label: `Attention Head #${hIdx + 1} (softmax(QK^T / √d_k)V)`, meta: TRANSFORMER_STAGES[1] };
+        mainGroup.add(mesh);
+        interactiveObjects.push(mesh);
+
+        // Connections from Q, K, V to Heads
+        qkvPositions.forEach((qPos) => {
+          const lGeo = new THREE.BufferGeometry().setFromPoints([qPos, pos]);
+          const lMat = new THREE.LineBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.4 });
+          mainGroup.add(new THREE.Line(lGeo, lMat));
+        });
+      });
+
+      // Connections from Input Tokens to Q, K, V
+      tokenPositions.forEach((tPos) => {
+        qkvPositions.forEach((qPos) => {
+          const lGeo = new THREE.BufferGeometry().setFromPoints([tPos, qPos]);
+          const lMat = new THREE.LineBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.35 });
+          mainGroup.add(new THREE.Line(lGeo, lMat));
+
+          const pMesh = new THREE.Mesh(pulseGeo, pulseMat);
+          mainGroup.add(pMesh);
+          pulsePackets.push({
+            mesh: pMesh,
+            p1: tPos.clone(),
+            p2: qPos.clone(),
+            progress: Math.random(),
+            speed: 0.009 + Math.random() * 0.008,
+            isCurve: false,
+          });
+        });
+      });
+
+      // 3. Add & LayerNorm Slab 1 (x = 0.4)
+      const norm1X = 0.4;
+      const norm1Geo = new THREE.BoxGeometry(0.5, 4.4, 2.4);
+      const norm1Mat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.3, transparent: true, opacity: 0.85 });
+      const norm1Mesh = new THREE.Mesh(norm1Geo, norm1Mat);
+      norm1Mesh.position.set(norm1X, 0, 0);
+      norm1Mesh.userData = { label: 'Add & LayerNorm 1: LayerNorm(x + Attention(x))', meta: TRANSFORMER_STAGES[2] };
+      mainGroup.add(norm1Mesh);
+      interactiveObjects.push(norm1Mesh);
+
+      const norm1Sprite = createTextSprite('ADD & LAYERNORM 1', 'LayerNorm(x + Sublayer(x))', '#38BDF8');
+      norm1Sprite.position.set(norm1X, 4.4, 0);
+      mainGroup.add(norm1Sprite);
+
+      // Connect Attention Heads to Norm 1
+      headPositions.forEach((hPos) => {
+        const dest = new THREE.Vector3(norm1X, hPos.y, 0);
+        const lGeo = new THREE.BufferGeometry().setFromPoints([hPos, dest]);
+        const lMat = new THREE.LineBasicMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0.45 });
+        mainGroup.add(new THREE.Line(lGeo, lMat));
+      });
+
+      // 4. THE ICONIC RESIDUAL SKIP-CONNECTION 1 (Curved Bypass Over Attention)
+      const curve1 = new THREE.CubicBezierCurve3(
+        new THREE.Vector3(inputX + 0.4, 0, 0),
+        new THREE.Vector3(inputX + 2.0, 4.8, 1.2),
+        new THREE.Vector3(norm1X - 2.0, 4.8, 1.2),
+        new THREE.Vector3(norm1X, 0, 0)
+      );
+      const tube1Geo = new THREE.TubeGeometry(curve1, 32, 0.08, 8, false);
+      const tube1Mat = new THREE.MeshPhongMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.6 });
+      const tube1 = new THREE.Mesh(tube1Geo, tube1Mat);
+      mainGroup.add(tube1);
+
+      // Pulse along Residual Skip Connection 1
+      for (let i = 0; i < 4; i++) {
+        const pMesh = new THREE.Mesh(pulseGeo, pulseMat);
+        mainGroup.add(pMesh);
+        pulsePackets.push({
+          mesh: pMesh,
+          curve: curve1,
+          progress: i * 0.25,
+          speed: 0.012,
+          isCurve: true,
+        });
+      }
+
+      // 5. Feed-Forward Network FFN (x = 3.8)
+      const ffnX = 3.8;
+      const ffnSprite = createTextSprite('FEED-FORWARD NETWORK', 'FFN(x) = max(0, xW1 + b1)W2 + b2', '#EC4899');
+      ffnSprite.position.set(ffnX, 4.4, 0);
+      mainGroup.add(ffnSprite);
+
+      const ffnNodeGeo = new THREE.SphereGeometry(0.4, 20, 20);
+      const ffnMat = new THREE.MeshPhongMaterial({ color: 0xec4899, emissive: 0xbe185d, emissiveIntensity: 0.5 });
+      const ffnPositions: THREE.Vector3[] = [];
+
+      for (let i = 0; i < 4; i++) {
+        const y = (i - 1.5) * 1.8;
+        const pos = new THREE.Vector3(ffnX, y, 0);
+        ffnPositions.push(pos);
+        const mesh = new THREE.Mesh(ffnNodeGeo, ffnMat);
+        mesh.position.copy(pos);
+        mesh.userData = { label: `Feed-Forward Neuron #${i + 1} (GELU Expansion 2048-dim)`, meta: TRANSFORMER_STAGES[3] };
+        mainGroup.add(mesh);
+        interactiveObjects.push(mesh);
+
+        // Connections from Norm1 to FFN
+        const lGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(norm1X, y * 0.5, 0), pos]);
+        const lMat = new THREE.LineBasicMaterial({ color: 0xec4899, transparent: true, opacity: 0.4 });
+        mainGroup.add(new THREE.Line(lGeo, lMat));
+
+        const pMesh = new THREE.Mesh(pulseGeo, pulseMat);
+        mainGroup.add(pMesh);
+        pulsePackets.push({
+          mesh: pMesh,
+          p1: new THREE.Vector3(norm1X, y * 0.5, 0),
+          p2: pos.clone(),
+          progress: Math.random(),
+          speed: 0.01 + Math.random() * 0.006,
+          isCurve: false,
+        });
+      }
+
+      // 6. THE ICONIC RESIDUAL SKIP-CONNECTION 2 (Curved Bypass Over FFN)
+      const norm2X = 6.2;
+      const curve2 = new THREE.CubicBezierCurve3(
+        new THREE.Vector3(norm1X + 0.4, 0, 0),
+        new THREE.Vector3(norm1X + 2.0, 4.6, -1.2),
+        new THREE.Vector3(norm2X - 1.5, 4.6, -1.2),
+        new THREE.Vector3(norm2X, 0, 0)
+      );
+      const tube2Geo = new THREE.TubeGeometry(curve2, 32, 0.08, 8, false);
+      const tube2Mat = new THREE.MeshPhongMaterial({ color: 0xec4899, emissive: 0xbe185d, emissiveIntensity: 0.6 });
+      const tube2 = new THREE.Mesh(tube2Geo, tube2Mat);
+      mainGroup.add(tube2);
+
+      for (let i = 0; i < 4; i++) {
+        const pMesh = new THREE.Mesh(pulseGeo, pulseMat);
+        mainGroup.add(pMesh);
+        pulsePackets.push({
+          mesh: pMesh,
+          curve: curve2,
+          progress: i * 0.25,
+          speed: 0.012,
+          isCurve: true,
+        });
+      }
+
+      // Add & LayerNorm Slab 2 (x = 6.2)
+      const norm2Geo = new THREE.BoxGeometry(0.5, 4.4, 2.4);
+      const norm2Mat = new THREE.MeshPhongMaterial({ color: 0xec4899, emissive: 0x9d174d, emissiveIntensity: 0.3, transparent: true, opacity: 0.85 });
+      const norm2Mesh = new THREE.Mesh(norm2Geo, norm2Mat);
+      norm2Mesh.position.set(norm2X, 0, 0);
+      norm2Mesh.userData = { label: 'Add & LayerNorm 2: LayerNorm(x\' + FFN(x\'))', meta: TRANSFORMER_STAGES[2] };
+      mainGroup.add(norm2Mesh);
+      interactiveObjects.push(norm2Mesh);
+
+      // Connect FFN to Norm 2
+      ffnPositions.forEach((fPos) => {
+        const dest = new THREE.Vector3(norm2X, fPos.y, 0);
+        const lGeo = new THREE.BufferGeometry().setFromPoints([fPos, dest]);
+        const lMat = new THREE.LineBasicMaterial({ color: 0xec4899, transparent: true, opacity: 0.45 });
+        mainGroup.add(new THREE.Line(lGeo, lMat));
+      });
+
+      // 7. Output Softmax Logits Stage (x = 8.5)
+      const outX = 8.5;
+      const outSprite = createTextSprite('SOFTMAX LOGITS', 'P(w_t | w_<t) Vocabulary Distribution', '#F59E0B');
+      outSprite.position.set(outX, 4.4, 0);
+      mainGroup.add(outSprite);
+
+      const probHeights = [2.2, 1.4, 0.7];
+      const probLabels = ['Logit: "model" (P=0.68)', 'Logit: "system" (P=0.22)', 'Logit: "book" (P=0.10)'];
+      probHeights.forEach((h, i) => {
+        const y = (i - 1) * 2.0;
+        const barGeo = new THREE.BoxGeometry(0.6, h, 0.6);
+        const barMat = new THREE.MeshPhongMaterial({ color: 0xf59e0b, emissive: 0xd97706, emissiveIntensity: 0.5 });
+        const mesh = new THREE.Mesh(barGeo, barMat);
+        mesh.position.set(outX, y, 0);
+        mesh.userData = { label: `${probLabels[i]}`, meta: TRANSFORMER_STAGES[4] };
+        mainGroup.add(mesh);
+        interactiveObjects.push(mesh);
+
+        const lGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(norm2X, y, 0), mesh.position]);
+        const lMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.5 });
+        mainGroup.add(new THREE.Line(lGeo, lMat));
+      });
+
+      // Action: Fire Synchronized Transformer Energy Wave
+      firePulseRef.current = () => {
+        pulsePackets.forEach((p) => {
+          p.progress = 0;
+          p.speed = 0.024;
+        });
+      };
+    }
+
+    // ── B. CLASSICAL MULTI-LAYER PERCEPTRON (MLP) ───────────────────────────
+    else if (conceptType === 'neural_network') {
       const layerCounts = [3, 4, 4, 2];
       const layerSpacing = 3.9;
       const nodeSpacing = 2.2;
@@ -239,39 +563,20 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
       const nodeGeo = new THREE.SphereGeometry(0.42, 24, 24);
       const haloGeo = new THREE.SphereGeometry(0.62, 16, 16);
 
-      NEURAL_LAYERS.forEach((meta, lIdx) => {
+      MLP_LAYERS.forEach((meta, lIdx) => {
         const count = layerCounts[lIdx];
         const layerNodes: THREE.Vector3[] = [];
         const x = (lIdx - (layerCounts.length - 1) / 2) * layerSpacing;
 
-        // Add 3D Floating Hologram Header above each layer column
         const headerSprite = createTextSprite(meta.shortName, meta.role, meta.color);
         headerSprite.position.set(x, 4.4, 0);
         mainGroup.add(headerSprite);
 
-        // Subtle vertical holographic laser column indicator
-        const columnLineGeo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(x, 3.8, 0),
-          new THREE.Vector3(x, -3.8, 0),
-        ]);
-        const columnLineMat = new THREE.LineDashedMaterial({
-          color: meta.hexColor,
-          dashSize: 0.2,
-          gapSize: 0.15,
-          transparent: true,
-          opacity: 0.25,
-        });
-        const columnLine = new THREE.Line(columnLineGeo, columnLineMat);
-        columnLine.computeLineDistances();
-        mainGroup.add(columnLine);
-
-        // Core Nodes and Glowing Halos
         for (let i = 0; i < count; i++) {
           const y = (i - (count - 1) / 2) * nodeSpacing;
           const pos = new THREE.Vector3(x, y, 0);
           layerNodes.push(pos);
 
-          // Solid core node
           const coreMat = new THREE.MeshPhongMaterial({
             color: meta.hexColor,
             emissive: meta.hexColor,
@@ -282,13 +587,12 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
           nodeMesh.position.copy(pos);
           nodeMesh.userData = {
             layerId: meta.id,
-            label: `${meta.title} (Node ${i + 1}/${count})`,
+            label: `${meta.title} (Neuron ${i + 1}/${count})`,
             meta,
           };
           mainGroup.add(nodeMesh);
           interactiveObjects.push(nodeMesh);
 
-          // Translucent outer energy halo
           const haloMat = new THREE.MeshBasicMaterial({
             color: meta.hexColor,
             transparent: true,
@@ -302,9 +606,8 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
         nodePositions.push(layerNodes);
       });
 
-      // Synaptic Connections with color gradients
       for (let l = 0; l < nodePositions.length - 1; l++) {
-        const sourceMeta = NEURAL_LAYERS[l];
+        const sourceMeta = MLP_LAYERS[l];
         const lineMat = new THREE.LineBasicMaterial({
           color: sourceMeta.hexColor,
           transparent: true,
@@ -317,9 +620,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
             const line = new THREE.Line(geo, lineMat);
             mainGroup.add(line);
 
-            // Create flowing synaptic pulse packet
             const pMesh = new THREE.Mesh(pulseGeo, pulseMat);
-            pMesh.position.copy(p1);
             mainGroup.add(pMesh);
             pulsePackets.push({
               mesh: pMesh,
@@ -327,12 +628,12 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
               p2: p2.clone(),
               progress: Math.random(),
               speed: 0.008 + Math.random() * 0.007,
+              isCurve: false,
             });
           }
         }
       }
 
-      // Action: Fire Synchronized Wave Pulse
       firePulseRef.current = () => {
         pulsePackets.forEach((p) => {
           p.progress = 0;
@@ -366,7 +667,6 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
         mainGroup.add(fMesh);
         interactiveObjects.push(fMesh);
 
-        // Heartbeat lines
         const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), fMesh.position]);
         const lineMat = new THREE.LineDashedMaterial({ color: 0x38bdf8, dashSize: 0.3, gapSize: 0.2 });
         const line = new THREE.Line(lineGeo, lineMat);
@@ -408,15 +708,15 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     const applyCameraAngle = (mode: 'perspective' | 'front' | 'isometric') => {
       setActiveCameraPreset(mode);
       if (mode === 'front') {
-        camera.position.set(0, 0, 18);
+        camera.position.set(0, 0, isModal ? 22 : 18);
         mainGroup.rotation.set(0, 0, 0);
       } else if (mode === 'isometric') {
-        camera.position.set(12, 10, 16);
+        camera.position.set(14, 12, 18);
         camera.lookAt(0, 0, 0);
         mainGroup.rotation.set(0, 0, 0);
       } else {
-        camera.position.set(0, 0, isModal ? 19 : 17);
-        mainGroup.rotation.set(0.12, -0.25, 0);
+        camera.position.set(0, 0, isModal ? 21 : 18);
+        mainGroup.rotation.set(0.12, -0.22, 0);
       }
     };
     setCameraAngleRef.current = applyCameraAngle;
@@ -435,8 +735,8 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
       if (isDragging) {
         const deltaX = e.clientX - prevMousePos.x;
         const deltaY = e.clientY - prevMousePos.y;
-        mainGroup.rotation.y += deltaX * 0.009;
-        mainGroup.rotation.x += deltaY * 0.009;
+        mainGroup.rotation.y += deltaX * 0.008;
+        mainGroup.rotation.x += deltaY * 0.008;
         prevMousePos = { x: e.clientX, y: e.clientY };
       }
 
@@ -467,7 +767,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      camera.position.z = Math.max(7, Math.min(32, camera.position.z + e.deltaY * 0.02));
+      camera.position.z = Math.max(7, Math.min(34, camera.position.z + e.deltaY * 0.02));
     };
 
     const dom = renderer.domElement;
@@ -487,31 +787,29 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     };
     window.addEventListener('resize', handleResize);
 
-    // Animation Loop with Synaptic Pulse Energy
+    // Animation Loop with Synaptic & Residual Wave Pulses
     let animId: number;
-    let clock = 0;
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      clock += 0.015;
 
-      // Rotate group gently
       if (isRotating && !isDragging) {
-        mainGroup.rotation.y += 0.004;
+        mainGroup.rotation.y += 0.0035;
       }
 
-      // Starfield subtle shimmer
-      starField.rotation.y += 0.0006;
+      starField.rotation.y += 0.0005;
 
-      // Animate flowing pulse packets along synapses
       for (const p of pulsePackets) {
         p.progress += p.speed;
         if (p.progress >= 1.0) {
           p.progress = 0;
-          // Randomize speed slightly
-          p.speed = 0.007 + Math.random() * 0.007;
         }
-        p.mesh.position.lerpVectors(p.p1, p.p2, p.progress);
+
+        if (p.isCurve && p.curve) {
+          p.mesh.position.copy(p.curve.getPointAt(p.progress));
+        } else if (p.p1 && p.p2) {
+          p.mesh.position.lerpVectors(p.p1, p.p2, p.progress);
+        }
       }
 
       renderer.render(scene, camera);
@@ -542,7 +840,6 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
     return setupThreeScene(fullscreenMountRef.current, true);
   }, [isFullscreen, conceptType, isRotating]);
 
-  // Esc key closes fullscreen
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) {
@@ -582,37 +879,35 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
             <span style={{ fontSize: '1.05rem' }}>🪐</span>
             <div>
               <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#38BDF8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                {title || `3D Interactive Model: ${conceptType.replace('_', ' ')}`}
+                {title || (isTransformer ? 'TRANSFORMER & MULTI-HEAD ATTENTION ARCHITECTURE' : `3D Interactive Model: ${conceptType.replace('_', ' ')}`)}
               </div>
               <div style={{ fontSize: '0.62rem', color: '#64748B' }}>
-                WebGL Architecture Engine • Real-time Synapse Pulses
+                {isTransformer ? 'Attention Heads • Curved Residual Highways • Softmax Logits' : 'WebGL Architecture Engine • Real-time Synapse Pulses'}
               </div>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            {conceptType === 'neural_network' && (
-              <button
-                type="button"
-                onClick={() => firePulseRef.current?.()}
-                style={{
-                  fontSize: '0.65rem',
-                  padding: '0.2rem 0.55rem',
-                  borderRadius: '5px',
-                  border: '1px solid rgba(245, 158, 11, 0.4)',
-                  background: 'rgba(245, 158, 11, 0.15)',
-                  color: '#F59E0B',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '2px',
-                }}
-                title="Send a synchronized wave of energy across the Transformer network"
-              >
-                ⚡ Fire Signal
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => firePulseRef.current?.()}
+              style={{
+                fontSize: '0.65rem',
+                padding: '0.2rem 0.55rem',
+                borderRadius: '5px',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                background: 'rgba(245, 158, 11, 0.15)',
+                color: '#F59E0B',
+                cursor: 'pointer',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '2px',
+              }}
+              title="Send a synchronized wave of energy across the Transformer network"
+            >
+              ⚡ Fire Signal
+            </button>
 
             <button
               type="button"
@@ -665,7 +960,6 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
             position: 'relative',
           }}
         >
-          {/* Canvas Floating Overlay Controls & Tooltip */}
           <div
             style={{
               position: 'absolute',
@@ -679,7 +973,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
             }}
           >
             <span style={{ fontSize: '0.65rem', color: '#94A3B8', background: 'rgba(5, 9, 20, 0.85)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-              🖱️ Drag to rotate • Scroll to zoom • Glowing pulses = live forward pass
+              🖱️ Drag to rotate • Scroll to zoom • Arched tubes = Residual Skip Connections
             </span>
             {activeNodeInfo && (
               <span
@@ -702,7 +996,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
         </div>
 
         {/* Layer Markings & Legend Bar */}
-        {conceptType === 'neural_network' && (
+        {activeStages.length > 0 && (
           <div
             style={{
               padding: '0.55rem 0.75rem',
@@ -713,7 +1007,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
               gap: '0.4rem',
             }}
           >
-            {NEURAL_LAYERS.map((layer) => (
+            {activeStages.map((layer) => (
               <div
                 key={layer.id}
                 onClick={() => setSelectedLayer(layer)}
@@ -816,42 +1110,40 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
               </div>
               <div>
                 <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#F8FAFC', margin: 0 }}>
-                  {title || `Interactive 3D WebGL Concept Sandbox: ${conceptType.replace('_', ' ').toUpperCase()}`}
+                  {title || (isTransformer ? 'TRANSFORMER & MULTI-HEAD ATTENTION ARCHITECTURE (3D LAB)' : `Interactive 3D WebGL Concept Sandbox: ${conceptType.replace('_', ' ').toUpperCase()}`)}
                 </h2>
                 <div style={{ fontSize: '0.75rem', color: '#38BDF8', display: 'flex', gap: '0.8rem', marginTop: '2px' }}>
                   <span>Three.js WebGL 2.0 Shading</span>
                   <span>•</span>
-                  <span>Synaptic Energy Pulses Active</span>
+                  <span>Curved Residual Highways</span>
                   <span>•</span>
-                  <span>Real-time Architectural Raycasting</span>
+                  <span>Parallel Attention Heads</span>
                 </div>
               </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              {conceptType === 'neural_network' && (
-                <button
-                  type="button"
-                  onClick={() => firePulseRef.current?.()}
-                  style={{
-                    fontSize: '0.8rem',
-                    padding: '0.4rem 0.9rem',
-                    borderRadius: '6px',
-                    border: '1px solid rgba(245, 158, 11, 0.5)',
-                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.25))',
-                    color: '#F59E0B',
-                    cursor: 'pointer',
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    boxShadow: '0 0 12px rgba(245, 158, 11, 0.3)',
-                  }}
-                  title="Fire a high-intensity forward pass wave through all Transformer layers"
-                >
-                  ⚡ Fire Forward Pass
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => firePulseRef.current?.()}
+                style={{
+                  fontSize: '0.8rem',
+                  padding: '0.4rem 0.9rem',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(245, 158, 11, 0.5)',
+                  background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.25))',
+                  color: '#F59E0B',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  boxShadow: '0 0 12px rgba(245, 158, 11, 0.3)',
+                }}
+                title="Fire a high-intensity forward pass wave through the Transformer network"
+              >
+                ⚡ Fire Forward Pass
+              </button>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(255, 255, 255, 0.05)', padding: '2px 4px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                 <span style={{ fontSize: '0.68rem', color: '#64748B', paddingLeft: '4px' }}>Camera:</span>
@@ -966,7 +1258,6 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                 height: '100%',
               }}
             >
-              {/* On-Canvas Hint Overlays */}
               <div
                 style={{
                   position: 'absolute',
@@ -982,7 +1273,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                   boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                 }}
               >
-                🖱️ Left Click & Drag to Orbit • Scroll Wheel to Zoom • Glowing Pulses Show Real-Time Synaptic Forward Pass
+                🖱️ Left Click & Drag to Orbit • Scroll Wheel to Zoom • Notice Glowing Arched Tubes = Residual Skip Connections
               </div>
 
               {activeNodeInfo && (
@@ -1003,7 +1294,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                     pointerEvents: 'none',
                   }}
                 >
-                  🎯 Selected Node: {activeNodeInfo}
+                  🎯 Selected Component: {activeNodeInfo}
                 </div>
               )}
             </div>
@@ -1053,18 +1344,18 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                 </div>
               ) : (
                 <div style={{ padding: '1rem', border: '1px dashed rgba(255, 255, 255, 0.15)', borderRadius: '10px', textAlign: 'center', color: '#64748B', fontSize: '0.8rem' }}>
-                  Click or hover any node in the 3D model to inspect its parameters.
+                  Click or hover any component in the 3D model to inspect its parameters.
                 </div>
               )}
 
-              {/* Step-by-Step Transformer Pipeline */}
-              {conceptType === 'neural_network' && (
+              {/* Step-by-Step Architecture Pipeline */}
+              {activeStages.length > 0 && (
                 <div>
                   <h4 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 0.65rem 0' }}>
-                    Transformer Architectural Stages
+                    {isTransformer ? 'Transformer Encoder Pipeline' : 'Perceptron Layers'}
                   </h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                    {NEURAL_LAYERS.map((layer, idx) => (
+                    {activeStages.map((layer, idx) => (
                       <div
                         key={layer.id}
                         onClick={() => setSelectedLayer(layer)}
@@ -1112,7 +1403,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                 </div>
               )}
 
-              {/* Academic Overview Box */}
+              {/* Academic Teacher Defense Note */}
               <div
                 style={{
                   marginTop: 'auto',
@@ -1125,7 +1416,7 @@ export const ConceptCanvas3D: React.FC<Concept3DProps> = ({
                   lineHeight: 1.5,
                 }}
               >
-                🎓 <strong style={{ color: '#38BDF8' }}>Teacher Defense Note:</strong> In modern Transformers (Vaswani et al.), multi-head attention eliminates the sequential computation of RNNs/LSTMs, allowing token pairs to attend to one another in $O(1)$ operations with parallel tensor computations.
+                🎓 <strong style={{ color: '#38BDF8' }}>Teacher Defense Note:</strong> In Vaswani et al. (2017), the Multi-Head Attention block fans out across parallel heads (d_k = d_model / h = 64) with residual connections (x + Sublayer(x)) preventing vanishing gradients in deep Transformer stacks.
               </div>
             </div>
           </div>
