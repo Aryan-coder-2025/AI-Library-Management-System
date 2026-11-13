@@ -12,9 +12,11 @@
   "dependencies": {
     "@rolldown/binding-wasm32-wasi": "^1.2.15",
     "@types/qrcode": "^1.5.6",
+    "@types/three": "^0.187.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

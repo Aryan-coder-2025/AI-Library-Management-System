@@ -1501,6 +1501,7 @@ class EnhancedCopilotResponse(BaseModel):
     book_cards: List[Dict[str, Any]] = []
     agent_actions: List[CopilotAgentAction] = []
     suggested_followups: List[str] = []
+    concept_3d: Optional[Dict[str, Any]] = None
 
 
 class ChatMessageInput(BaseModel):

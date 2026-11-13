@@ -316,6 +316,42 @@ def tool_reserve_study_space(
         return {"status": "failed", "reason": str(e)}
 
 
+def tool_cancel_study_space(
+    db: Session,
+    current_user: User,
+    reservation_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Tool: Cancels an active study space reservation for the authenticated patron."""
+    target_id = reservation_id
+    if target_id is None:
+        my_res = space_service.get_my_reservations_service(
+            db=db, user=current_user, status_filter="active", page=1, page_size=10
+        )
+        if not my_res.items:
+            return {"status": "failed", "reason": "You have no active study space reservations to cancel."}
+        if len(my_res.items) == 1:
+            target_id = my_res.items[0].id
+        else:
+            return {
+                "status": "ambiguous",
+                "reason": "Multiple active reservations found. Please specify which reservation to cancel.",
+                "reservations": [{"id": r.id, "resource": r.resource_label} for r in my_res.items],
+            }
+
+    try:
+        res = space_service.cancel_reservation_service(db=db, user=current_user, reservation_id=target_id)
+        return {
+            "status": "success",
+            "reservation_id": res.id,
+            "resource_label": res.resource_label,
+            "message": f"Reservation #{res.id} for {res.resource_label} has been successfully cancelled.",
+        }
+    except Exception as e:
+        logger.warning(f"Failed to cancel space reservation: {e}")
+        return {"status": "failed", "reason": str(e)}
+
+
+
 def tool_place_monograph_hold(
     db: Session,
     current_user: User,
@@ -491,6 +527,39 @@ def tool_get_library_policy(query: str) -> Dict[str, Any]:
     return {"query": query, "policies": matched}
 
 
+def tool_visualize_3d_concept(concept_type: str, title: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]:
+    """Tool: Generates an interactive 3D WebGL concept simulation for scientific and engineering concepts."""
+    c_norm = (concept_type or "").lower().strip()
+    if any(k in c_norm for k in ["neural", "deep learning", "perceptron", "mlp", "network", "ai", "layer"]):
+        resolved_type = "neural_network"
+        resolved_title = title or "Interactive 3D Multi-Layer Neural Network"
+        resolved_desc = description or "Interactive 3D visualization showing input features, hidden ReLU neurons, and output logits with synaptic weighting."
+    elif any(k in c_norm for k in ["distributed", "cluster", "raft", "paxos", "consensus", "node", "server"]):
+        resolved_type = "distributed_cluster"
+        resolved_title = title or "Interactive 3D Raft Distributed Cluster"
+        resolved_desc = description or "Leader-follower consensus topology with active heartbeat broadcast beams and quorum replication."
+    elif any(k in c_norm for k in ["quantum", "bloch", "qubit", "sphere", "spin"]):
+        resolved_type = "quantum_bloch"
+        resolved_title = title or "Interactive 3D Quantum Bloch Sphere"
+        resolved_desc = description or "Geometric representation of a 2-level quantum state space showing basis states |0⟩, |1⟩ and state vector |ψ⟩."
+    elif any(k in c_norm for k in ["molecule", "benzene", "chemistry", "atom", "bond", "compound", "dna"]):
+        resolved_type = "molecule"
+        resolved_title = title or "Interactive 3D Molecular Geometry (Benzene C₆H₆)"
+        resolved_desc = description or "Planar hexagonal ring structure demonstrating aromatic sp² hybridization and resonance delocalization."
+    else:
+        resolved_type = "neural_network"
+        resolved_title = title or "Interactive 3D Conceptual Model"
+        resolved_desc = description or "Interactive WebGL schematic model for academic study."
+
+    return {
+        "status": "success",
+        "concept_type": resolved_type,
+        "title": resolved_title,
+        "description": resolved_desc,
+    }
+
+
+
 # ── Gemini Function Calling Schema Specification ─────────────────────────────
 
 GEMINI_AGENT_TOOLS = [
@@ -507,6 +576,16 @@ GEMINI_AGENT_TOOLS = [
                         "date_str": {"type": "STRING", "description": "Target date YYYY-MM-DD (e.g. 2026-11-10)"},
                         "start_time_str": {"type": "STRING", "description": "Start time HH:MM (e.g. '10:00', '14:00')"},
                         "end_time_str": {"type": "STRING", "description": "End time HH:MM (e.g. '12:00', '16:00')"},
+                    },
+                },
+            },
+            {
+                "name": "cancel_study_space",
+                "description": "Cancel an active study space (seat or room) reservation for the authenticated patron.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "reservation_id": {"type": "INTEGER", "description": "Specific reservation ID to cancel if known"},
                     },
                 },
             },
@@ -608,6 +687,19 @@ GEMINI_AGENT_TOOLS = [
                     "required": ["query"],
                 },
             },
+            {
+                "name": "visualize_3d_concept",
+                "description": "Generate an interactive 3D WebGL conceptual visualization model (neural network, distributed cluster, molecule, or quantum bloch sphere) for the patron.",
+                "parameters": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "concept_type": {"type": "STRING", "description": "'neural_network', 'distributed_cluster', 'molecule', or 'quantum_bloch'"},
+                        "title": {"type": "STRING", "description": "Short title of the 3D model"},
+                        "description": {"type": "STRING", "description": "Brief explanation of the 3D visual concept"},
+                    },
+                    "required": ["concept_type"],
+                },
+            },
         ]
     }
 ]
@@ -650,6 +742,22 @@ def _dispatch_tool(
                 status="info",
                 title="Active Reservation Limit",
                 description=res.get("message", "Quota limit reached."),
+                data=res,
+            )
+        return res, action
+
+    elif tool_name == "cancel_study_space":
+        res = tool_cancel_study_space(
+            db=db,
+            current_user=current_user,
+            reservation_id=args.get("reservation_id"),
+        )
+        if res.get("status") == "success":
+            action = CopilotAgentAction(
+                action_type="space_cancelled",
+                status="success",
+                title="Reservation Cancelled",
+                description=res.get("message", "Study space reservation cancelled."),
                 data=res,
             )
         return res, action
@@ -751,6 +859,14 @@ def _dispatch_tool(
         res = tool_get_library_policy(query=args.get("query", ""))
         return res, None
 
+    elif tool_name == "visualize_3d_concept":
+        res = tool_visualize_3d_concept(
+            concept_type=args.get("concept_type", "generic"),
+            title=args.get("title"),
+            description=args.get("description"),
+        )
+        return res, None
+
     return {"error": f"Unknown tool: {tool_name}"}, None
 
 
@@ -776,6 +892,7 @@ def execute_librarian_agent_rag(
     citations: List[StructuredCitation] = []
     book_cards: List[Dict[str, Any]] = []
     spatial_card: Optional[Dict[str, Any]] = None
+    concept_3d: Optional[Dict[str, Any]] = None
     suggested_followups: List[str] = []
 
     # Bounded multi-turn context sanitization (max 6 messages)
@@ -815,6 +932,7 @@ def execute_librarian_agent_rag(
                 f"When calling tools with dates, always pass dates in {now_local.year} or later (e.g. '{tomorrow_local.strftime('%Y-%m-%d')}').\n"
                 "You have DIRECT REAL-TIME ACTION TOOLS to perform tasks on behalf of the patron:\n"
                 "- reserve_study_space: Reserve a study seat or room (ground floor is floor 0)\n"
+                "- cancel_study_space: Cancel an active study seat or room reservation\n"
                 "- place_monograph_hold: Reserve a physical monograph for desk pickup\n"
                 "- renew_loan: Renew active book loans\n"
                 "- generate_return_pass: Generate instant QR return clearance passes\n"
@@ -823,7 +941,8 @@ def execute_librarian_agent_rag(
                 "- get_available_spaces: Check open seats and rooms\n"
                 "- get_patron_loans: View patron active loans\n"
                 "- get_spatial_resource: Get floor plan wayfinding coordinates\n"
-                "- get_library_policy: Look up borrowing rules\n\n"
+                "- get_library_policy: Look up borrowing rules\n"
+                "- visualize_3d_concept: Generate interactive 3D WebGL models for scientific/engineering concepts (neural networks, distributed clusters, molecules, quantum bloch spheres)\n\n"
                 "When the patron asks you to do something (e.g. reserve a seat, hold a book, renew a loan, return a book, search papers), "
                 "CALL THE APPROPRIATE ACTION TOOL IMMEDIATELY! Do not just give advice when an action can be performed.\n"
                 "For compound prompts (e.g. 'find a book and reserve a desk'), execute both tools.\n"
@@ -911,6 +1030,10 @@ def execute_librarian_agent_rag(
                         if f_name == "get_spatial_resource" and "error" not in t_res:
                             spatial_card = t_res
 
+                        # If 3d concept returned, capture 3d spec
+                        if f_name == "visualize_3d_concept" and "concept_type" in t_res:
+                            concept_3d = t_res
+
                         # Feed function response back to Gemini
                         contents.append({
                             "role": "user",
@@ -947,6 +1070,7 @@ def execute_librarian_agent_rag(
                     citations=citations,
                     book_cards=book_cards,
                     spatial_card=spatial_card,
+                    concept_3d=concept_3d,
                     suggested_followups=suggested_followups,
                 )
 
@@ -1030,6 +1154,59 @@ def execute_librarian_agent_rag(
             spatial_card=s_res,
             citations=citations,
             suggested_followups=["Reserve this study space", "What other spaces are available on this floor?"],
+        )
+
+    # 0c. Cancel Study Space Reservation
+    is_cancel_intent = any(k in normalized for k in [
+        "cancel my booking", "cancel booking", "cancel reservation", "cancel my reservation",
+        "cancel seat", "cancel my seat", "cancel room", "cancel my room", "cancel space",
+    ])
+    if is_cancel_intent:
+        t_res, t_action = _dispatch_tool(db=db, current_user=current_user, tool_name="cancel_study_space", args={})
+        tool_calls.append(CopilotToolCall(tool_name="cancel_study_space", arguments={}, result=t_res))
+        if t_action:
+            agent_actions.append(t_action)
+
+        if t_res.get("status") == "success":
+            answer = (
+                f"✅ **Reservation Successfully Cancelled!**\n\n"
+                f"{t_res.get('message')}\n"
+                f"Your active study space quota has been refreshed. You can now make a new reservation whenever needed."
+            )
+        else:
+            answer = f"ℹ️ {t_res.get('reason', 'Could not cancel reservation.')}"
+
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="SPACE_CANCELLATION",
+            confidence=0.99,
+            provider="Librarian Agent Tool Runner",
+            tool_calls=tool_calls,
+            agent_actions=agent_actions,
+            suggested_followups=["Book a study seat for me", "What are my active loans?"],
+        )
+
+    # 0d. 3D Concept Visualization Intent
+    is_3d_intent = (any(k in normalized for k in ["3d", "three.js", "webgl", "bloch", "benzene", "molecule"]) or
+                    ("neural" in normalized and ("visualize" in normalized or "model" in normalized or "3d" in normalized)) or
+                    ("cluster" in normalized and ("visualize" in normalized or "topology" in normalized or "3d" in normalized)))
+    if is_3d_intent:
+        t_res = tool_visualize_3d_concept(concept_type=normalized)
+        tool_calls.append(CopilotToolCall(tool_name="visualize_3d_concept", arguments={"concept_type": normalized}, result=t_res))
+        answer = (
+            f"🪐 **Interactive 3D WebGL Visualization Generated!**\n\n"
+            f"Here is an interactive 3D model of **{t_res.get('title')}**.\n"
+            f"{t_res.get('description')}\n\n"
+            f"• **Controls**: Click and drag with your mouse to rotate in 3D space. Scroll to zoom in/out. Hover over elements to inspect parameters in real time."
+        )
+        return EnhancedCopilotResponse(
+            answer=answer,
+            intent="CONCEPT_3D_VISUALIZATION",
+            confidence=0.99,
+            provider="Librarian 3D WebGL Engine",
+            tool_calls=tool_calls,
+            concept_3d=t_res,
+            suggested_followups=["Explain the mathematical theory behind this", "Find textbooks on this topic in the library"],
         )
 
     # A. Reserve study space

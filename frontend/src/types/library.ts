@@ -206,6 +206,7 @@ export interface CopilotMessage {
   agent_actions?: CopilotAgentAction[];
   tool_calls?: CopilotToolExecution[];
   suggested_followups?: string[];
+  concept_3d?: Record<string, any>;
 }
 
 export interface CopilotChatResponse {
@@ -214,6 +215,7 @@ export interface CopilotChatResponse {
   is_fallback: boolean;
   sources: CopilotSource[];
   suggested_followups: string[];
+  concept_3d?: Record<string, any>;
 }
 
 

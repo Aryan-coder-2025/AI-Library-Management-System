@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../services/apiClient';
 import type { CopilotAgentAction, CopilotMessage, CopilotSource, CopilotToolExecution, UserProfile } from '../types/library';
 import { VisionSearchModal } from './VisionSearchModal';
+import { ConceptCanvas3D } from './ConceptCanvas3D';
 
 interface AICopilotDrawerProps {
   currentUser: UserProfile;
@@ -38,6 +39,15 @@ const getContextualLoadingStages = (query: string): string[] => {
       'Thinking...',
       'Formulating response...',
       'Connecting with Gemini AI...',
+    ];
+  }
+
+  // 1b. Cancellation
+  if (q.includes('cancel')) {
+    return [
+      'Locating active reservation...',
+      'Releasing seat allocation in database...',
+      'Updating patron quota...',
     ];
   }
 
@@ -83,15 +93,17 @@ const getContextualLoadingStages = (query: string): string[] => {
 
   // 4. Books, Monographs, Authors & Reading Lists
   if (
-    q.includes('book') ||
-    q.includes('author') ||
-    q.includes('monograph') ||
-    q.includes('read') ||
-    q.includes('syllabus') ||
-    q.includes('title') ||
-    q.includes('edition') ||
-    q.includes('isbn') ||
-    q.includes('recommend')
+    !q.includes('cancel') && (
+      q.includes('book') ||
+      q.includes('author') ||
+      q.includes('monograph') ||
+      q.includes('read') ||
+      q.includes('syllabus') ||
+      q.includes('title') ||
+      q.includes('edition') ||
+      q.includes('isbn') ||
+      q.includes('recommend')
+    )
   ) {
     return [
       'Searching library holdings...',
@@ -148,6 +160,73 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showVisionModal, setShowVisionModal] = useState<boolean>(false);
 
+  // Two-Way Spoken Voice Concierge State
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState<boolean>(false);
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const recognitionRef = useRef<any>(null);
+
+  const speakText = (text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const clean = text
+      .replace(/[*_#`~\[\]()]/g, '')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/[🪐✅📚ℹ️⚠️•]/g, '')
+      .trim();
+    if (!clean) return;
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 1.05;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      alert('Live speech recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = Array.from(event.results)
+          .map((result: any) => result[0].transcript)
+          .join('');
+        setInputMessage(transcript);
+      };
+
+      recognition.onerror = () => {
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch {
+      setIsListening(false);
+    }
+  };
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const stageTimersRef = useRef<NodeJS.Timeout[]>([]);
@@ -155,6 +234,12 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   useEffect(() => {
     return () => {
       stageTimersRef.current.forEach(clearTimeout);
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
     };
   }, []);
 
@@ -248,9 +333,14 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
         agent_actions: resp.agent_actions,
         tool_calls: resp.tool_calls,
         suggested_followups: resp.suggested_followups,
+        concept_3d: resp.concept_3d,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
+
+      if (isVoiceEnabled && resp.answer) {
+        speakText(resp.answer);
+      }
     } catch (err: unknown) {
       let msg = 'Failed to reach AI Copilot.';
       if (err instanceof Error) {
@@ -589,6 +679,27 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
               <button
                 type="button"
                 className="copilot-btn-icon"
+                onClick={() => {
+                  if (isVoiceEnabled && typeof window !== 'undefined' && window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                  }
+                  setIsVoiceEnabled((prev) => !prev);
+                }}
+                title={isVoiceEnabled ? 'Voice Narration ON (Click to Mute)' : 'Voice Narration OFF (Click to Enable)'}
+                aria-label="Toggle Voice Narration"
+                style={{
+                  fontSize: '0.95rem',
+                  color: isVoiceEnabled ? '#38bdf8' : '#64748b',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {isVoiceEnabled ? '🔊' : '🔇'}
+              </button>
+              <button
+                type="button"
+                className="copilot-btn-icon"
                 onClick={handleClearHistory}
                 title="Clear conversation history"
                 aria-label="Clear chat"
@@ -635,6 +746,15 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                   {/* Render Autonomous Agent Executed Action Cards */}
                   {m.agent_actions && renderAgentActions(m.agent_actions)}
 
+                  {/* Render Interactive 3D WebGL Concept Model */}
+                  {m.concept_3d && (
+                    <ConceptCanvas3D
+                      conceptType={m.concept_3d.concept_type || 'neural_network'}
+                      title={m.concept_3d.title}
+                      description={m.concept_3d.description}
+                    />
+                  )}
+
                   {/* Render Structured Book Result Cards */}
                   {m.sources && renderBookCards(m.sources)}
 
@@ -657,7 +777,30 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                     </div>
                   )}
 
-                  <div className="copilot-bubble-timestamp">{m.timestamp}</div>
+                  <div className="copilot-bubble-timestamp" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <span>{m.timestamp}</span>
+                    {m.role === 'assistant' && (
+                      <button
+                        type="button"
+                        onClick={() => speakText(m.content)}
+                        title="Listen to this explanation (Text-to-Speech)"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem',
+                          color: '#38bdf8',
+                          padding: '0 4px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          opacity: 0.85,
+                        }}
+                      >
+                        🔊 Listen
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -712,6 +855,26 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
               />
               <span className="copilot-char-counter">{inputMessage.length}/500</span>
             </div>
+
+            <button
+              type="button"
+              className={`btn ${isListening ? 'btn-danger' : 'btn-secondary'} copilot-mic-btn`}
+              onClick={toggleListening}
+              title={isListening ? 'Listening... (Click to Stop)' : 'Voice Input (Click and Speak your query)'}
+              style={{
+                padding: '0 0.65rem',
+                height: '38px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isListening ? '#ef4444' : undefined,
+                color: isListening ? '#ffffff' : undefined,
+                boxShadow: isListening ? '0 0 12px rgba(239, 68, 68, 0.8)' : undefined,
+                fontSize: '1rem',
+              }}
+            >
+              {isListening ? '⏹️' : '🎤'}
+            </button>
 
             <button
               type="button"
