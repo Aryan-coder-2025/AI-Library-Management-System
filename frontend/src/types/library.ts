@@ -216,6 +216,7 @@ export interface CopilotMessage {
   tool_calls?: CopilotToolExecution[];
   suggested_followups?: string[];
   concept_3d?: Record<string, any>;
+  media_card?: Record<string, any>;
   graph_trace?: GraphTraceNode[];
   architecture_mode?: string;
 }
@@ -227,6 +228,7 @@ export interface CopilotChatResponse {
   sources: CopilotSource[];
   suggested_followups: string[];
   concept_3d?: Record<string, any>;
+  media_card?: Record<string, any>;
   graph_trace?: GraphTraceNode[];
   architecture_mode?: string;
 }

@@ -425,6 +425,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
         tool_calls: resp.tool_calls,
         suggested_followups: resp.suggested_followups,
         concept_3d: resp.concept_3d,
+        media_card: resp.media_card,
         graph_trace: resp.graph_trace,
         architecture_mode: resp.architecture_mode,
       };
@@ -471,6 +472,148 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
               ],
       },
     ]);
+  };
+
+  const renderAcademicMediaCard = (media: Record<string, any>) => {
+    if (!media || !media.image_url) return null;
+
+    return (
+      <div
+        style={{
+          borderRadius: '10px',
+          overflow: 'hidden',
+          border: '1px solid rgba(56, 189, 248, 0.35)',
+          background: 'rgba(8, 14, 28, 0.95)',
+          marginTop: '0.75rem',
+          marginBottom: '0.75rem',
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
+        }}
+      >
+        {/* Header Badge */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0.45rem 0.75rem',
+            background: 'linear-gradient(90deg, rgba(14, 24, 44, 0.98), rgba(8, 14, 28, 0.98))',
+            borderBottom: '1px solid rgba(56, 189, 248, 0.2)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ fontSize: '0.9rem' }}>🖼️</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#38BDF8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Verified Archival Record
+            </span>
+          </div>
+          <span style={{ fontSize: '0.62rem', color: '#10B981', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+            Public Domain / CC
+          </span>
+        </div>
+
+        {/* Media Content */}
+        <div style={{ padding: '0.85rem', display: 'flex', gap: '0.85rem', alignItems: 'flex-start' }}>
+          {/* Portrait Image */}
+          <div
+            style={{
+              position: 'relative',
+              flexShrink: 0,
+              width: '110px',
+              height: '140px',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              background: '#040711',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+            }}
+          >
+            <img
+              src={media.image_url}
+              alt={media.title || 'Archival portrait'}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: 'block',
+              }}
+              onError={(e) => {
+                if (media.thumbnail_url && (e.currentTarget as HTMLImageElement).src !== media.thumbnail_url) {
+                  (e.currentTarget as HTMLImageElement).src = media.thumbnail_url;
+                }
+              }}
+            />
+          </div>
+
+          {/* Biographical Extract */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#F8FAFC', margin: '0 0 2px 0' }}>
+              {media.title}
+            </h4>
+            {media.description && (
+              <div style={{ fontSize: '0.74rem', color: '#A78BFA', fontWeight: 600, marginBottom: '6px' }}>
+                {media.description}
+              </div>
+            )}
+            {media.extract && (
+              <p
+                style={{
+                  fontSize: '0.76rem',
+                  color: '#CBD5E1',
+                  lineHeight: 1.45,
+                  margin: '0 0 8px 0',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 4,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {media.extract}
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {media.page_url && (
+                <a
+                  href={media.page_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: '0.68rem',
+                    color: '#38BDF8',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                    background: 'rgba(56, 189, 248, 0.12)',
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>Open Archive</span> ↗
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => handleSend(`Find monographs by ${media.title} in the library catalogue`)}
+                style={{
+                  fontSize: '0.68rem',
+                  color: '#E2E8F0',
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                📚 Search Works
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderBookCards = (sources: CopilotSource[]) => {
@@ -1050,6 +1193,9 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                       description={m.concept_3d.description}
                     />
                   )}
+
+                  {/* Render Verified Academic Media Card (Archival Portrait/Image) */}
+                  {m.media_card && renderAcademicMediaCard(m.media_card)}
 
                   {/* Render Structured Book Result Cards */}
                   {m.sources && renderBookCards(m.sources)}

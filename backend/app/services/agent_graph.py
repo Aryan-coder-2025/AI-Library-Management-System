@@ -47,6 +47,7 @@ class AgentGraphState(TypedDict):
     book_cards: List[Dict[str, Any]]
     spatial_card: Optional[Dict[str, Any]]
     concept_3d: Optional[Dict[str, Any]]
+    media_card: Optional[Dict[str, Any]]
     suggested_followups: List[str]
     raw_answer: str
     final_answer: str
@@ -143,6 +144,7 @@ class StateGraphWorkflow:
         state["book_cards"] = copilot_resp.book_cards
         state["spatial_card"] = copilot_resp.spatial_card
         state["concept_3d"] = copilot_resp.concept_3d
+        state["media_card"] = getattr(copilot_resp, "media_card", None)
         state["suggested_followups"] = copilot_resp.suggested_followups
 
         duration = round((time.perf_counter() - t0) * 1000, 2)
@@ -222,6 +224,7 @@ class StateGraphWorkflow:
             "book_cards": [],
             "spatial_card": None,
             "concept_3d": None,
+            "media_card": None,
             "suggested_followups": [],
             "raw_answer": "",
             "final_answer": "",
@@ -260,6 +263,7 @@ class StateGraphWorkflow:
             book_cards=state["book_cards"],
             spatial_card=state["spatial_card"],
             concept_3d=state["concept_3d"],
+            media_card=state.get("media_card"),
             suggested_followups=state["suggested_followups"],
             graph_trace=state["graph_trace"],
             architecture_mode="Dual-Layer Hybrid (StateGraph + ReAct)",
