@@ -114,12 +114,19 @@ For full sequence diagrams and component interactions, see [docs/ARCHITECTURE.md
 
 ### 🔍 Discovery & Catalog Search
 - **Physical Book Ingestion & Barcode Scanner**: Ingest physical books in 2 seconds via live phone/webcam camera barcode scanning (`@zxing/browser`) or USB scanner guns. Automatically queries Open Library for bibliographic copy-cataloging (title, author, publisher, cover, Dewey category) and generates atomic physical copy accession barcodes (`BC-0042-01`).
+- **1-Click Printable Spine Labels**: Direct `window.print()` generation of standardized 1" × 2.5" adhesive sticker sheets containing vector Code 128 barcodes, Cutter-Sanborn call numbers (`004.0 C50e`), and shelf tier badges.
+- **Physical Shelf Micro-Location Navigator**: Deterministically computes bookcase bay, vertical tier (1-5), and **exact book slot number from the left edge** (or right) with authentic Dewey Decimal Classification and virtual 3D shelf spine simulation.
 - **Reciprocal Rank Fusion (RRF)**: Fuses parameterized SQL lexical queries ($+100.0$ title match bonus) with dense vector cosine similarity ($k=60.0$).
 - **Dense Vector Search**: Powered by SentenceTransformers (`all-MiniLM-L6-v2`, 384 dimensions) stored directly as binary BLOBs.
 - **ISBN Normalization**: Modulo 11 check (ISBN-10), modulo 10 alternating check (ISBN-13), canonical conversion, and Rank-1 pinning for exact matches.
 - **Content Recommendations**: Cosine similarity calculations identifying related academic works without user tracking.
 
-### 🔄 Circulation, Holds & QR Operations
+### 🔄 Circulation, Physical Operations & Security
+- **Express Self-Checkout Kiosk**: Zero-staff patron self-checkout. Automatically validates student identity, rejects wrong title pickups with exact shelf bay/tier guidance, and automatically issues active loans in 0.2s.
+- **Smart Copy Swapping (Dynamic Binding)**: When a student accidentally pulls an unreserved sibling copy of their reserved title, the system dynamically swaps the hold to the copy in hand and releases the old copy without manual staff intervention.
+- **Physical RFID / EM Exit Security Gate**: Simulates physical entrance/exit security sensor pedestals. Evaluates active loans, suppresses false theft alarms for registered hold reservations via intelligent **Non-Punitive Advisories**, and triggers high-frequency sirens for unborrowed items.
+- **Real-Time Shelf-Reading & Misplaced Audit**: Scans aisle shelves to detect misplaced monographs across floors/categories, provides 1-click routing to the **Circulation Reshelving Cart Buffer**, and restores missing items.
+- **Crowdsourced Missing Monograph Reporting**: Patrons flag missing monographs directly from the shelf navigator to eliminate "ghost availability".
 - **Role-Based Borrowing**: Students (5 items, 14 days, 2 self-renewals), Faculty (10 items, 30 days).
 - **Priority Hold Queues**: FIFO hold placement on checked-out monographs with automatic copy allocation and 48-hour pickup expiration timers upon return.
 - **Cryptographic QR Collection**: Patron generates a 15-minute secure QR token on mobile; librarian scans token at desk to auto-fulfill the hold into an active loan.

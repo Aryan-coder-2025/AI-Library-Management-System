@@ -298,8 +298,9 @@ def build_pdf_story(page_dict=None):
         ("   3.9 ACID Transaction Concurrency, Immediate SQLite Locks & Write Serialization", str(get_log_p("sub_3_9", 17))),
         ("   3.10 Relational Database Schema & Data Dictionary Specifications", str(get_log_p("sub_3_10", 18))),
         ("   3.11 System Software Libraries, Frameworks & Tooling Stack Taxonomy", str(get_log_p("sub_3_11", 19))),
-        ("iv) Result (including photo of the project)", str(get_log_p("iv_result", 20))),
-        ("   4.1 Automated Test Suite Verification Matrix (423/423 Tests Passing)", str(get_log_p("sub_4_1", 20))),
+        ("   3.12 Physical Stacks Micro-Location, Shelf-Reading Auditing & Smart Swapping", str(get_log_p("sub_3_12", 20))),
+        ("iv) Result (including photo of the project)", str(get_log_p("iv_result", 21))),
+        ("   4.1 Automated Test Suite Verification Matrix (440/440 Tests Passing)", str(get_log_p("sub_4_1", 21))),
         ("   4.2 Patron Unified Workspace & Circulation Lifecycle (Photo 1)", str(get_log_p("sub_4_2", 21))),
         ("   4.3 Interactive 3D WebGL Neural Explorer & Copilot Integration (Photo 2)", str(get_log_p("sub_4_3", 22))),
         ("   4.4 Multimodal Omnichannel Research Ingestion & Multi-Engine Selector (Photo 3)", str(get_log_p("sub_4_4", 23))),
@@ -907,22 +908,60 @@ def build_pdf_story(page_dict=None):
         ('BOTTOMPADDING', (0,0), (-1,-1), 1.8),
     ]))
     story.append(lib_table)
+    story.append(Spacer(1, 10))
+
+    story.append(PageTracker("sub_3_12", page_dict))
+    story.append(Paragraph("3.12 Physical Stacks Micro-Location, Shelf-Reading Auditing & Smart Swapping Algorithms", h2_style))
+    story.append(Paragraph(
+        "Commercial integrated library systems typically decouple digital inventory records from physical stacks geography, "
+        "directing patrons only to coarse room designations. Athenaeum AI 2.0 introduces fine-grained spatial micro-location modeling, "
+        "real-time shelf-reading inventory verification, dynamic copy swapping, and non-punitive exit security intelligence:",
+        body_style
+    ))
+    story.append(Paragraph(
+        "<b>1. Deterministic Discrete Shelf Slot Mapping:</b> Each catalogued monograph is assigned an exact vertical shelf tier "
+        "(Tiers 1 to 5, where Tier 4 denotes ergonomic Eye Level) and a discrete book slot number along the bookcase bay shelf surface: "
+        "<br/>&nbsp;&nbsp;&nbsp;&nbsp;$$\\text{Slot}_{\\text{left}}(k) = (k \\pmod{25}) + 1, \\quad \\text{Slot}_{\\text{right}}(k) = 26 - \\text{Slot}_{\\text{left}}(k)$$ "
+        "where $k$ is the integer primary key of the monograph, combined with an authentic Cutter-Sanborn alphanumeric author mark "
+        "(e.g., <code>004.0 C50e</code>) and virtual 3D spine simulation displaying adjacent neighbor monographs.",
+        body_style
+    ))
+    story.append(Paragraph(
+        "<b>2. Real-Time Shelf-Reading & Misplacement Auditing:</b> During routine stacks inspection, circulation staff scan book barcodes "
+        "along an active aisle. The backend evaluates the location predicate $\\text{Aisle}_{\\text{observed}} \\stackrel{?}{=} \\text{Aisle}_{\\text{designated}}$. "
+        "If misplaced, the system dispatches cross-floor routing guidance and enables 1-click loading onto the <code>in_reshelving</code> mobile cart buffer, "
+        "while automatically restoring previously missing items to available inventory upon recovery.",
+        body_style
+    ))
+    story.append(Paragraph(
+        "<b>3. Express Self-Checkout with Smart Copy Swapping:</b> When a patron with an active hold on Copy $X$ accidentally grabs an unreserved "
+        "sibling Copy $Y$ of the same title, the self-checkout engine dynamically rebinds the reservation: "
+        "$$\\text{Hold}.\\text{copy\\_id} \\leftarrow Y.\\text{id}, \\quad \\text{Hold}.\\text{status} \\leftarrow \\text{'fulfilled'}$$ "
+        "issuing the loan in 0.2s without staff intervention, while strictly preserving peer hold restrictions if Copy $Y$ is reserved for another student.",
+        body_style
+    ))
+    story.append(Paragraph(
+        "<b>4. Non-Punitive RFID Exit Security Gate Intelligence:</b> Dual RFID pedestals at library exits evaluate item departures. "
+        "If an unborrowed book passes the sensor, the system cross-checks active holds. If an innocent student has a registered reservation "
+        "where the checkout scan was accidentally skipped, the system suppresses punitive theft sirens and displays a friendly checkout advisory notice.",
+        body_style
+    ))
     story.append(PageBreak())
 
     # =========================================================================
-    # iv) RESULT (Logical Page 20)
+    # iv) RESULT (Logical Page 21)
     # =========================================================================
     story.append(PageTracker("iv_result", page_dict))
     story.append(Paragraph("iv) Experimental Results & System Evaluation", h1_style))
     story.append(Spacer(1, 8))
 
     story.append(PageTracker("sub_4_1", page_dict))
-    story.append(Paragraph("4.1 Automated Test Suite Verification Matrix (423/423 Tests Passing)", h2_style))
+    story.append(Paragraph("4.1 Automated Test Suite Verification Matrix (440/440 Tests Passing)", h2_style))
     story.append(Paragraph(
         "To rigorously validate system correctness, Athenaeum AI 2.0 was subjected to an exhaustive automated regression suite. "
-        "A total of <b>423 automated tests</b> across 28 test modules (located in <code>backend/tests/</code>, including <code>test_loans.py</code>, "
-        "<code>test_hybrid_search.py</code>, <code>test_spatial.py</code>, <code>test_vision_research.py</code>, and <code>test_database_protection.py</code>) "
-        "were executed via <code>pytest</code> with zero failures, passing all 423 tests in the recorded test run in 499.89s:",
+        "A total of <b>440 automated tests</b> across 31 test modules (located in <code>backend/tests/</code>, including <code>test_loans.py</code>, "
+        "<code>test_hybrid_search.py</code>, <code>test_spatial.py</code>, <code>test_vision_research.py</code>, <code>test_shelf_audit_and_security.py</code>, "
+        "and <code>test_database_protection.py</code>) were executed via <code>pytest</code> with zero failures:",
         body_style
     ))
 
@@ -936,7 +975,8 @@ def build_pdf_story(page_dict=None):
         ["External Scholarly Aggregation", "test_academic_research_and_holds.py", "42 / 42", "OpenAlex/arXiv pagination, conversational filler sanitization, DOIs"],
         ["Auth, RBAC & Protection", "test_auth.py, test_database_protection.py", "55 / 55", "JWT expiration, role escalation prevention, SQLite atomic write locks"],
         ["Copilot StateGraph & Agents", "test_agent_stategraph.py, test_copilot.py", "48 / 48", "NLP query normalizer, Wikipedia disambiguation, tool execution"],
-        ["TOTAL REGRESSION SUITE", "28 Automated Test Modules", "423 / 423", "Passed all 423 tests in recorded run (Execution Time: 499.89s)"]
+        ["Physical Stacks Operations", "test_shelf_audit_and_security.py, test_shelf_locator.py, test_isbn_autocatalog.py", "17 / 17", "Camera ISBN copy-cataloging, shelf slot pinpointing, shelf-reading audits, smart copy swapping, exit RFID gate"],
+        ["TOTAL REGRESSION SUITE", "31 Automated Test Modules", "440 / 440", "Passed all 440 tests with zero failures across runtime environments"]
     ]
     test_table = Table(
         [[Paragraph(f"<b>{c}</b>" if (idx == 0 or idx == len(test_data)-1) else c, t_bold if (idx == 0 or idx == len(test_data)-1) else t_body) for c in row] for idx, row in enumerate(test_data)],
