@@ -922,6 +922,56 @@ def execute_librarian_agent_rag(
     now_local = space_service.get_utc_now().astimezone(inst_tz)
     tomorrow_local = (now_local + timedelta(days=1)).date()
 
+    # ── 0. FAST-PATH CONVERSATIONAL SOCIAL INTENTS (Sub-5ms, Zero API Token Burn) ────
+    is_conceptual = any(k in normalized for k in [
+        "understand", "explain", "concept", "transformer", "neural", "deep learning", 
+        "architecture", "what is", "how does", "tell me about", "visualize", "3d", 
+        "diagram", "paper", "research", "quantum", "bloch", "molecule", "benzene", "cluster", "raft"
+    ])
+    has_actionable = any(a in normalized for a in [
+        "reserve", "book", "renew", "loan", "where is", "find", "search", "hold", "available", 
+        "free", "empty", "seats", "rooms", "room", "seat", "return", "pass", "qr", "take me", "wayfinding"
+    ])
+
+    if not is_conceptual and not has_actionable:
+        is_greeting = any(re.search(rf"\b{g}\b", normalized) for g in ["hello", "hi", "hey"])
+        is_thanks = any(re.search(rf"\b{t}\b", normalized) for t in ["thank", "thanks"])
+        is_help = any(h in normalized for h in ["what can you do", "how can you help", "what are your capabilities", "show help", "help menu"]) or bool(re.match(r"^help(\s+me)?[\?!.]*$", normalized.strip()))
+        is_chat = any(c in normalized for c in ["talk normally", "talk to me", "how are you", "who created you"]) or "can you talk" in normalized
+
+        if is_thanks:
+            return EnhancedCopilotResponse(
+                answer=f"You are very welcome, {current_user.full_name}! Please let me know if you need any assistance with book borrowings, renewals, or study spaces.",
+                intent="THANKS",
+                confidence=0.99,
+                provider="Librarian Concierge",
+                suggested_followups=["What are my active loans?", "Show available study seats"],
+            )
+        if is_help:
+            return EnhancedCopilotResponse(
+                answer="I am your Athenaeum AI Library Concierge. I can assist you with searching the monograph catalogue, reserving study seats, renewing loans, checking space availability, and generating return passes.",
+                intent="HELP",
+                confidence=0.99,
+                provider="Librarian Concierge",
+                suggested_followups=["Find books on Computer Science", "Reserve a study desk"],
+            )
+        if is_greeting:
+            return EnhancedCopilotResponse(
+                answer=f"Hello, {current_user.full_name}! I am your AI Library Copilot. How may I assist your academic research or library needs today?",
+                intent="GREETING",
+                confidence=0.99,
+                provider="Librarian Concierge",
+                suggested_followups=["What are my active loans?", "Show available study seats on Ground Floor"],
+            )
+        if is_chat:
+            return EnhancedCopilotResponse(
+                answer=f"I am fully here to converse and assist you with your academic work, {current_user.full_name}. I can coordinate monograph checkouts, study pod wayfinding, and scholarly literature searches across our collection.",
+                intent="CONVERSATIONAL",
+                confidence=0.99,
+                provider="Librarian Concierge",
+                suggested_followups=["Find books on Computer Science", "Check my active loans"],
+            )
+
     # ── 1. AUTONOMOUS REACT EXECUTION (GEMINI 3.1 FLASH LITE) ───────────────────
     if provider_name == "gemini" and api_key:
         try:
@@ -932,7 +982,7 @@ def execute_librarian_agent_rag(
 
             system_instruction = (
                 f"You are the Athenaeum Autonomous AI Library Concierge serving patron '{current_user.full_name}' "
-                f"(Role: {current_user.role}, Email: {current_user.email}).\n"
+                f"(Role: {current_user.role}, Email: {current_user.email}). Always address the patron warmly by their name ({current_user.full_name}) when answering about their account or loans.\n"
                 f"Today's date is {now_local.strftime('%Y-%m-%d (%A)')}. Tomorrow is {tomorrow_local.strftime('%Y-%m-%d')}. "
                 f"When calling tools with dates, always pass dates in {now_local.year} or later (e.g. '{tomorrow_local.strftime('%Y-%m-%d')}').\n"
                 "You have DIRECT REAL-TIME ACTION TOOLS to perform tasks on behalf of the patron:\n"
@@ -1052,6 +1102,23 @@ def execute_librarian_agent_rag(
                         # If spatial returned, capture spatial card
                         if f_name == "get_spatial_resource" and "error" not in t_res:
                             spatial_card = t_res
+                            citations.append(StructuredCitation(
+                                source_type="study_space",
+                                title=f"{t_res.get('label', 'Resource')} Location",
+                                reference_id=str(t_res.get("resource_id")),
+                                snippet=f"Located on {t_res.get('floor_name', 'Library')}, Zone: {t_res.get('zone_name', '')}. {t_res.get('directional_guidance', '')}",
+                                url_or_action=f"/spaces?resource_type={t_res.get('resource_type')}&id={t_res.get('resource_id')}",
+                            ))
+
+                        # If space availability returned, capture citation
+                        if f_name == "get_available_spaces" and "floors" in t_res:
+                            for fl in t_res.get("floors", []):
+                                citations.append(StructuredCitation(
+                                    source_type="study_space",
+                                    title=f"{fl.get('floor_name', 'Library')} Spaces",
+                                    snippet=f"Available seats: {fl.get('available_seats_count', 0)}, rooms: {fl.get('available_rooms_count', 0)}",
+                                    url_or_action="/spaces",
+                                ))
 
                         # If 3d concept returned, capture 3d spec
                         if f_name == "visualize_3d_concept" and "concept_type" in t_res:
@@ -1095,9 +1162,30 @@ def execute_librarian_agent_rag(
                         "Find books on Distributed Systems",
                     ]
 
+                resolved_intent = "AUTONOMOUS_AGENT_EXECUTION"
+                if tool_calls:
+                    last_tool = tool_calls[-1].tool_name
+                    tool_intent_map = {
+                        "get_spatial_resource": "SPATIAL_NAVIGATION",
+                        "get_available_spaces": "SPACE_AVAILABILITY",
+                        "get_patron_loans": "PATRON_LOANS",
+                        "search_catalogue": "RECOMMENDATION_RAG",
+                        "query_academic_research": "RECOMMENDATION_RAG",
+                        "reserve_study_space": "SPACE_RESERVATION",
+                        "cancel_study_space": "SPACE_CANCELLATION",
+                        "renew_loan": "LOAN_RENEWAL",
+                        "generate_return_pass": "RETURN_PASS",
+                        "place_monograph_hold": "BOOK_HOLD",
+                    }
+                    resolved_intent = tool_intent_map.get(last_tool, "AUTONOMOUS_AGENT_EXECUTION")
+
+                # If answering patron loans and user name missing, ensure courteous address
+                if resolved_intent == "PATRON_LOANS" and current_user.full_name not in final_agent_reply:
+                    final_agent_reply = f"Hello {current_user.full_name}, {final_agent_reply}"
+
                 return EnhancedCopilotResponse(
                     answer=final_agent_reply,
-                    intent="AUTONOMOUS_AGENT_EXECUTION" if agent_actions else "COPILOT_CHAT",
+                    intent=resolved_intent,
                     confidence=0.99,
                     provider=f"Gemini 3.1 Flash Lite (Autonomous Agent)",
                     tool_calls=tool_calls,
