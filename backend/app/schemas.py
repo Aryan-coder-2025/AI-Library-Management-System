@@ -530,8 +530,8 @@ class CopilotChatRequest(BaseModel):
 
 
 class VerifyKeyRequest(BaseModel):
-    api_key: str = Field(..., min_length=10, max_length=255, description="Google Gemini or OpenAI API key to validate")
-    provider: str = Field("gemini", description="AI provider to test ('gemini' or 'openai')")
+    api_key: str = Field(..., min_length=10, max_length=255, description="Provider API key to validate (Gemini, Groq, OpenAI, Anthropic)")
+    provider: str = Field("gemini", description="AI provider to test ('gemini', 'groq', 'openai', 'anthropic')")
 
 
 class VerifyKeyResponse(BaseModel):

@@ -21,11 +21,23 @@ export async function apiFetch<T>(
   const method = (options.method ?? 'GET').toUpperCase();
   const headers = new Headers(options.headers || {});
 
-  // Inject patron BYOK custom Gemini key if configured
+  // Inject patron BYOK multi-provider keys if configured (Groq, OpenAI, Anthropic, Gemini)
   if (typeof window !== 'undefined') {
-    const customKey = localStorage.getItem('patron_custom_gemini_key');
-    if (customKey && !headers.has('X-Gemini-API-Key')) {
-      headers.set('X-Gemini-API-Key', customKey.trim());
+    const groqKey = localStorage.getItem('patron_custom_groq_key');
+    if (groqKey && !headers.has('X-Groq-API-Key')) {
+      headers.set('X-Groq-API-Key', groqKey.trim());
+    }
+    const openaiKey = localStorage.getItem('patron_custom_openai_key');
+    if (openaiKey && !headers.has('X-OpenAI-API-Key')) {
+      headers.set('X-OpenAI-API-Key', openaiKey.trim());
+    }
+    const anthropicKey = localStorage.getItem('patron_custom_anthropic_key');
+    if (anthropicKey && !headers.has('X-Anthropic-API-Key')) {
+      headers.set('X-Anthropic-API-Key', anthropicKey.trim());
+    }
+    const geminiKey = localStorage.getItem('patron_custom_gemini_key');
+    if (geminiKey && !headers.has('X-Gemini-API-Key')) {
+      headers.set('X-Gemini-API-Key', geminiKey.trim());
     }
   }
 

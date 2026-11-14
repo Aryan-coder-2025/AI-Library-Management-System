@@ -169,20 +169,34 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  // BYOK (Bring Your Own Key) State
+  // BYOK (Bring Your Own Key) Multi-Provider State
+  type AIProviderId = 'groq' | 'gemini' | 'openai' | 'anthropic';
+
   const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
-  const [personalKey, setPersonalKey] = useState<string>(() => {
-    return typeof window !== 'undefined' ? (localStorage.getItem('patron_custom_gemini_key') || '') : '';
-  });
-  const [isKeySaved, setIsKeySaved] = useState<boolean>(() => {
-    return typeof window !== 'undefined' ? Boolean(localStorage.getItem('patron_custom_gemini_key')) : false;
+  const [activeProviderTab, setActiveProviderTab] = useState<AIProviderId>('groq');
+  const [providerKeys, setProviderKeys] = useState<Record<AIProviderId, string>>(() => {
+    if (typeof window === 'undefined') return { groq: '', gemini: '', openai: '', anthropic: '' };
+    return {
+      groq: localStorage.getItem('patron_custom_groq_key') || '',
+      gemini: localStorage.getItem('patron_custom_gemini_key') || '',
+      openai: localStorage.getItem('patron_custom_openai_key') || '',
+      anthropic: localStorage.getItem('patron_custom_anthropic_key') || '',
+    };
   });
   const [keyTesting, setKeyTesting] = useState<boolean>(false);
   const [keyMessage, setKeyMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const handleTestKey = async () => {
-    if (!personalKey.trim()) {
-      setKeyMessage({ type: 'error', text: 'Please enter a Gemini API Key to test.' });
+  const hasAnyKey = Boolean(
+    providerKeys.groq.trim() ||
+    providerKeys.gemini.trim() ||
+    providerKeys.openai.trim() ||
+    providerKeys.anthropic.trim()
+  );
+
+  const handleTestKey = async (provider: AIProviderId) => {
+    const key = providerKeys[provider].trim();
+    if (!key) {
+      setKeyMessage({ type: 'error', text: `Please enter a ${provider.toUpperCase()} API Key to test.` });
       return;
     }
     setKeyTesting(true);
@@ -190,7 +204,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
     try {
       const res = await apiFetch<{ valid: boolean; provider: string; message: string }>('/api/copilot/verify-key', {
         method: 'POST',
-        body: JSON.stringify({ api_key: personalKey.trim(), provider: 'gemini' }),
+        body: JSON.stringify({ api_key: key, provider }),
       });
       if (res.valid) {
         setKeyMessage({ type: 'success', text: `Key verified successfully! (${res.message})` });
@@ -205,22 +219,20 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
     }
   };
 
-  const handleSaveKey = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!personalKey.trim()) {
+  const handleSaveKey = (provider: AIProviderId) => {
+    const key = providerKeys[provider].trim();
+    if (!key) {
       setKeyMessage({ type: 'error', text: 'API key cannot be empty.' });
       return;
     }
-    localStorage.setItem('patron_custom_gemini_key', personalKey.trim());
-    setIsKeySaved(true);
-    setKeyMessage({ type: 'success', text: 'Personal API key active! All Copilot queries & OCR will use your key.' });
+    localStorage.setItem(`patron_custom_${provider}_key`, key);
+    setKeyMessage({ type: 'success', text: `${provider.toUpperCase()} key saved! Intelligent gateway will route to it.` });
   };
 
-  const handleClearKey = () => {
-    localStorage.removeItem('patron_custom_gemini_key');
-    setPersonalKey('');
-    setIsKeySaved(false);
-    setKeyMessage({ type: 'success', text: 'Personal key cleared. Reverted to institutional server default.' });
+  const handleClearKey = (provider: AIProviderId) => {
+    localStorage.removeItem(`patron_custom_${provider}_key`);
+    setProviderKeys((prev) => ({ ...prev, [provider]: '' }));
+    setKeyMessage({ type: 'success', text: `${provider.toUpperCase()} key cleared.` });
   };
 
   const stopSpeaking = () => {
@@ -863,11 +875,11 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                   setKeyMessage(null);
                   setShowKeyModal(true);
                 }}
-                title={isKeySaved ? 'Personal Gemini API Key Active (Click to edit)' : 'Configure Personal AI Key (BYOK)'}
+                title={hasAnyKey ? 'Personal AI Key Gateway Active (Click to configure)' : 'Configure Multi-Provider AI Keys (BYOK)'}
                 aria-label="Configure AI Key"
                 style={{
                   fontSize: '0.92rem',
-                  color: isKeySaved ? '#10b981' : '#94a3b8',
+                  color: hasAnyKey ? '#10b981' : '#94a3b8',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -875,7 +887,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                 }}
               >
                 🔑
-                {isKeySaved && (
+                {hasAnyKey && (
                   <span
                     style={{
                       position: 'absolute',
@@ -1242,7 +1254,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
               backgroundColor: '#0c1322',
               border: '1px solid rgba(56, 189, 248, 0.35)',
               borderRadius: '14px',
-              maxWidth: '460px',
+              maxWidth: '520px',
               width: '100%',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
               padding: '1.5rem',
@@ -1250,12 +1262,17 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
             }}
           >
             {/* Modal Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <span style={{ fontSize: '1.25rem' }}>🔑</span>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc' }}>
-                  AI Key Settings (BYOK)
-                </h3>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc' }}>
+                    Multi-Provider AI Gateway (BYOK)
+                  </h3>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                    Omnichannel Model Routing & Quota Optimization
+                  </div>
+                </div>
               </div>
               <button
                 type="button"
@@ -1273,34 +1290,87 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
               </button>
             </div>
 
-            {/* Status Pill */}
-            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  padding: '3px 10px',
-                  borderRadius: '999px',
-                  fontWeight: 600,
-                  backgroundColor: isKeySaved ? 'rgba(34, 197, 94, 0.18)' : 'rgba(56, 189, 248, 0.18)',
-                  color: isKeySaved ? '#4ade80' : '#38bdf8',
-                  border: `1px solid ${isKeySaved ? 'rgba(34, 197, 94, 0.4)' : 'rgba(56, 189, 248, 0.4)'}`,
-                }}
-              >
-                {isKeySaved ? '● Personal Key Active' : '● Institutional Server Default'}
-              </span>
+            {/* Live Gateway Routing Status */}
+            <div
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '8px',
+                padding: '0.65rem 0.85rem',
+                marginBottom: '1rem',
+                fontSize: '0.78rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.35rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#94a3b8' }}>⚡ Real-Time Chat Engine:</span>
+                <span style={{ fontWeight: 600, color: providerKeys.groq.trim() ? '#4ade80' : providerKeys.openai.trim() ? '#38bdf8' : providerKeys.anthropic.trim() ? '#fb923c' : providerKeys.gemini.trim() ? '#a78bfa' : '#94a3b8' }}>
+                  {providerKeys.groq.trim() ? 'Groq LPU (Llama 3.3 70B)' : providerKeys.openai.trim() ? 'OpenAI (GPT-4o-mini)' : providerKeys.anthropic.trim() ? 'Anthropic (Claude 3.5)' : providerKeys.gemini.trim() ? 'Google Gemini' : 'Institutional Default'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#94a3b8' }}>📸 Multimodal OCR & Vision:</span>
+                <span style={{ fontWeight: 600, color: providerKeys.gemini.trim() ? '#a78bfa' : providerKeys.openai.trim() ? '#38bdf8' : providerKeys.anthropic.trim() ? '#fb923c' : '#94a3b8' }}>
+                  {providerKeys.gemini.trim() ? 'Google Gemini Multimodal' : providerKeys.openai.trim() ? 'OpenAI GPT-4o Vision' : providerKeys.anthropic.trim() ? 'Claude 3.5 Vision' : 'Institutional Default'}
+                </span>
+              </div>
             </div>
 
-            <p style={{ fontSize: '0.84rem', color: '#94a3b8', lineHeight: 1.5, marginBottom: '1rem' }}>
-              Bring Your Own Key (BYOK) allows you to use your personal Google Gemini API key. It is saved <strong>only inside your browser's local storage</strong> and is never sent or stored on the central database.
-            </p>
+            {/* Provider Tabs */}
+            <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '1rem', background: 'rgba(255, 255, 255, 0.05)', padding: '3px', borderRadius: '8px' }}>
+              {(
+                [
+                  { id: 'groq', label: '⚡ Groq', badge: 'Fastest' },
+                  { id: 'gemini', label: '🪐 Gemini', badge: 'Vision' },
+                  { id: 'openai', label: '🧠 OpenAI', badge: 'GPT-4o' },
+                  { id: 'anthropic', label: '🎭 Claude', badge: '3.5' },
+                ] as const
+              ).map((p) => {
+                const isSaved = Boolean(providerKeys[p.id].trim());
+                const isActive = activeProviderTab === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveProviderTab(p.id);
+                      setKeyMessage(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '0.45rem 0.35rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: isActive ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                      color: isActive ? '#38bdf8' : '#94a3b8',
+                      fontSize: '0.76rem',
+                      fontWeight: isActive ? 700 : 500,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '2px',
+                      position: 'relative',
+                    }}
+                  >
+                    <span>{p.label}</span>
+                    {isSaved && (
+                      <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#4ade80' }} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
             {keyMessage && (
               <div
                 style={{
-                  padding: '0.6rem 0.85rem',
+                  padding: '0.55rem 0.85rem',
                   borderRadius: '8px',
                   marginBottom: '1rem',
-                  fontSize: '0.82rem',
+                  fontSize: '0.8rem',
                   backgroundColor: keyMessage.type === 'success' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                   color: keyMessage.type === 'success' ? '#4ade80' : '#f87171',
                   border: `1px solid ${keyMessage.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
@@ -1310,16 +1380,42 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
               </div>
             )}
 
+            {/* Active Provider Card */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '0.35rem', fontWeight: 600 }}>
-                  Google Gemini API Key
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                  <label style={{ fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600 }}>
+                    {activeProviderTab === 'groq' && '⚡ Groq API Key (Llama 3.3 70B - 500+ tokens/s)'}
+                    {activeProviderTab === 'gemini' && '🪐 Google Gemini API Key (Multimodal Vision & Audio)'}
+                    {activeProviderTab === 'openai' && '🧠 OpenAI API Key (GPT-4o / GPT-4o-mini)'}
+                    {activeProviderTab === 'anthropic' && '🎭 Anthropic API Key (Claude 3.5 Sonnet / Haiku)'}
+                  </label>
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      color: providerKeys[activeProviderTab].trim() ? '#4ade80' : '#64748b',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {providerKeys[activeProviderTab].trim() ? '● Configured' : '○ Not Configured'}
+                  </span>
+                </div>
                 <input
                   type="password"
-                  value={personalKey}
-                  onChange={(e) => setPersonalKey(e.target.value)}
-                  placeholder="AIzaSy... (Paste Gemini Key)"
+                  value={providerKeys[activeProviderTab]}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setProviderKeys((prev) => ({ ...prev, [activeProviderTab]: val }));
+                  }}
+                  placeholder={
+                    activeProviderTab === 'groq'
+                      ? 'gsk_... (Paste Groq API Key)'
+                      : activeProviderTab === 'gemini'
+                      ? 'AIzaSy... (Paste Gemini Key)'
+                      : activeProviderTab === 'openai'
+                      ? 'sk-... (Paste OpenAI Key)'
+                      : 'sk-ant-... (Paste Anthropic Key)'
+                  }
                   style={{
                     width: '100%',
                     padding: '0.55rem 0.75rem',
@@ -1337,30 +1433,30 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
                 <button
                   type="button"
-                  onClick={() => handleSaveKey()}
-                  disabled={!personalKey.trim()}
+                  onClick={() => handleSaveKey(activeProviderTab)}
+                  disabled={!providerKeys[activeProviderTab].trim()}
                   className="btn btn-primary btn-sm"
                   style={{ flex: 1, padding: '0.5rem 0.8rem' }}
                 >
-                  Save Key
+                  Save {activeProviderTab.toUpperCase()} Key
                 </button>
                 <button
                   type="button"
-                  onClick={handleTestKey}
-                  disabled={keyTesting || !personalKey.trim()}
+                  onClick={() => handleTestKey(activeProviderTab)}
+                  disabled={keyTesting || !providerKeys[activeProviderTab].trim()}
                   className="btn btn-secondary btn-sm"
                   style={{ padding: '0.5rem 0.8rem' }}
                 >
                   {keyTesting ? 'Testing...' : '⚡ Test Key'}
                 </button>
-                {isKeySaved && (
+                {Boolean(providerKeys[activeProviderTab].trim()) && (
                   <button
                     type="button"
-                    onClick={handleClearKey}
+                    onClick={() => handleClearKey(activeProviderTab)}
                     className="btn btn-outline btn-sm"
                     style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.35)' }}
                   >
-                    Clear & Revert
+                    Clear
                   </button>
                 )}
               </div>
@@ -1378,14 +1474,22 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                 justifyContent: 'space-between',
               }}
             >
-              <span>Don't have a personal key?</span>
+              <span>Get API key from provider console:</span>
               <a
-                href="https://aistudio.google.com/app/apikey"
+                href={
+                  activeProviderTab === 'groq'
+                    ? 'https://console.groq.com/keys'
+                    : activeProviderTab === 'gemini'
+                    ? 'https://aistudio.google.com/app/apikey'
+                    : activeProviderTab === 'openai'
+                    ? 'https://platform.openai.com/api-keys'
+                    : 'https://console.anthropic.com/'
+                }
                 target="_blank"
                 rel="noreferrer"
                 style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}
               >
-                Get Free Gemini Key (30s) ↗
+                Open {activeProviderTab.toUpperCase()} Console ↗
               </a>
             </div>
           </div>

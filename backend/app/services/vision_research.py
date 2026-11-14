@@ -103,24 +103,26 @@ def _extract_pdf_text_fallback(file_bytes: bytes) -> str:
         return ""
 
 
-def _call_gemini_multimodal(
+def _call_multimodal_engine(
     file_bytes: bytes,
     mime_type: str,
     user_prompt: Optional[str] = None,
     custom_api_key: Optional[str] = None,
+    keys_vault: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
-    """Sends multimodal data (image, audio, PDF, or Office doc) to Gemini API."""
-    api_key = (
-        custom_api_key
+    """Sends multimodal data to Gemini, OpenAI (GPT-4o), or Anthropic (Claude 3.5) with automatic gateway failover."""
+    vault = keys_vault or {}
+    gemini_key = (
+        vault.get("gemini")
+        or custom_api_key
         or getattr(settings, "GEMINI_API_KEY", None)
         or getattr(settings, "LLM_API_KEY", None)
         or os.environ.get("GEMINI_API_KEY")
         or os.environ.get("LLM_API_KEY")
         or ""
     ).strip()
-
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY is not configured in environment.")
+    openai_key = (vault.get("openai") or os.environ.get("OPENAI_API_KEY") or "").strip()
+    anthropic_key = (vault.get("anthropic") or os.environ.get("ANTHROPIC_API_KEY") or "").strip()
 
     # Format-specific preparation
     is_docx = "wordprocessingml" in mime_type or mime_type.endswith("docx")
@@ -141,6 +143,7 @@ def _call_gemini_multimodal(
 
     # Content parts construction
     parts: List[Dict[str, Any]] = []
+    b64_data = base64.b64encode(file_bytes).decode("utf-8")
 
     if extracted_doc_text:
         doc_kind = "PowerPoint Presentation Slides" if is_pptx else ("PDF Document / Academic Paper" if is_pdf else "Word Document")
@@ -150,7 +153,6 @@ def _call_gemini_multimodal(
         parts.append({"text": prompt_intro})
     else:
         # Pass bytes via inline_data (works for Image, Audio, and scanned PDF)
-        b64_data = base64.b64encode(file_bytes).decode("utf-8")
         parts.append({
             "inline_data": {
                 "mime_type": mime_type,
@@ -175,40 +177,97 @@ def _call_gemini_multimodal(
             )
         parts.append({"text": prompt_text})
 
-    models_to_try = [
-        "gemini-3.5-flash-lite",
-        "gemini-flash-latest",
-        settings.LLM_MODEL_NAME,
-    ]
+    # Strategy 1: Google Gemini (Multimodal Audio & Vision)
+    if gemini_key:
+        models_to_try = [
+            "gemini-3.5-flash-lite",
+            "gemini-flash-latest",
+            settings.LLM_MODEL_NAME,
+        ]
 
-    for model_name in models_to_try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        payload = {
-            "system_instruction": {"parts": [{"text": GEMINI_MULTIMODAL_SYSTEM_PROMPT}]},
-            "contents": [{"parts": parts}],
-            "generationConfig": {
-                "response_mime_type": "application/json",
-                "temperature": 0.2,
-                "maxOutputTokens": 1024,
-            },
-        }
+        for model_name in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
+            payload = {
+                "system_instruction": {"parts": [{"text": GEMINI_MULTIMODAL_SYSTEM_PROMPT}]},
+                "contents": [{"parts": parts}],
+                "generationConfig": {
+                    "response_mime_type": "application/json",
+                    "temperature": 0.2,
+                    "maxOutputTokens": 1024,
+                },
+            }
 
+            try:
+                with httpx.Client(timeout=8.0) as client:
+                    resp = client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            text_content = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                            clean_json = re.sub(r"^```json\s*", "", text_content.strip())
+                            clean_json = re.sub(r"\s*```$", "", clean_json)
+                            return json.loads(clean_json)
+                    else:
+                        logger.warning(f"Model {model_name} returned status {resp.status_code}: {resp.text[:120]}")
+            except Exception as e:
+                logger.warning(f"Error calling {model_name}: {e}")
+
+    # Strategy 2: OpenAI GPT-4o-mini Vision (if image or extracted text available)
+    if openai_key and (is_image or extracted_doc_text):
         try:
-            with httpx.Client(timeout=8.0) as client:
-                resp = client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        text_content = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        clean_json = re.sub(r"^```json\s*", "", text_content.strip())
-                        clean_json = re.sub(r"\s*```$", "", clean_json)
-                        parsed = json.loads(clean_json)
-                        return parsed
-                else:
-                    logger.warning(f"Model {model_name} returned status {resp.status_code}: {resp.text[:120]}")
+            o_url = "https://api.openai.com/v1/chat/completions"
+            o_content: List[Dict[str, Any]] = []
+            if extracted_doc_text:
+                o_content.append({"type": "text", "text": f"Document content:\n{extracted_doc_text[:6000]}\nQuestion: {user_prompt or 'Analyze'}"})
+            else:
+                o_content.append({"type": "text", "text": user_prompt or "Analyze this image, extract equations, and detect key concepts."})
+                o_content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}})
+
+            o_payload = {
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {"role": "system", "content": GEMINI_MULTIMODAL_SYSTEM_PROMPT},
+                    {"role": "user", "content": o_content},
+                ],
+                "response_format": {"type": "json_object"},
+                "max_tokens": 1024,
+            }
+            with httpx.Client(timeout=10.0) as client:
+                o_resp = client.post(o_url, headers={"Authorization": f"Bearer {openai_key}"}, json=o_payload)
+                if o_resp.status_code == 200:
+                    raw_text = o_resp.json()["choices"][0]["message"]["content"]
+                    return json.loads(raw_text)
         except Exception as e:
-            logger.warning(f"Error calling {model_name}: {e}")
+            logger.warning(f"OpenAI multimodal gateway failed: {e}")
+
+    # Strategy 3: Anthropic Claude 3.5 Haiku Vision
+    if anthropic_key and (is_image or extracted_doc_text):
+        try:
+            a_url = "https://api.anthropic.com/v1/messages"
+            a_content: List[Dict[str, Any]] = []
+            if extracted_doc_text:
+                a_content.append({"type": "text", "text": f"Document content:\n{extracted_doc_text[:6000]}\nQuestion: {user_prompt or 'Analyze'}"})
+            else:
+                a_content.append({"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": b64_data}})
+                a_content.append({"type": "text", "text": user_prompt or "Analyze this image, extract equations, and detect key concepts."})
+
+            a_payload = {
+                "model": "claude-3-5-haiku-20241022",
+                "max_tokens": 1024,
+                "system": GEMINI_MULTIMODAL_SYSTEM_PROMPT,
+                "messages": [{"role": "user", "content": a_content}],
+            }
+            headers = {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+            with httpx.Client(timeout=10.0) as client:
+                a_resp = client.post(a_url, headers=headers, json=a_payload)
+                if a_resp.status_code == 200:
+                    txt = a_resp.json()["content"][0]["text"]
+                    clean_json = re.sub(r"^```json\s*", "", txt.strip())
+                    clean_json = re.sub(r"\s*```$", "", clean_json)
+                    return json.loads(clean_json)
+        except Exception as e:
+            logger.warning(f"Anthropic multimodal gateway failed: {e}")
 
     # Fallback response
     detected_kind = "audio_lecture" if is_audio else ("pdf_document" if is_pdf else ("slide_deck" if is_pptx else "diagram"))
@@ -230,22 +289,24 @@ def analyze_academic_image_service(
     mime_type: str,
     user_prompt: Optional[str] = None,
     custom_api_key: Optional[str] = None,
+    keys_vault: Optional[Dict[str, str]] = None,
 ) -> VisionResearchResponse:
     """
     Main orchestration service for Multimodal Omnichannel Research.
     Accepts Images (PNG, JPG, WEBP), Audio clips (WAV, MP3, WEBM, M4A),
     PDF papers, Word documents (.docx), and PowerPoint presentations (.pptx).
-    1. Sends to Gemini Multimodal Engine for conceptual and speech decomposition.
+    1. Sends to Omnichannel Multimodal Engine (Gemini, OpenAI, Anthropic) with automatic gateway failover.
     2. Runs hybrid search on library catalogue to surface matching monographs.
     3. Concurrently queries arXiv, OpenAlex, and Crossref for real peer-reviewed papers.
-    Supports Bring-Your-Own-Key (BYOK) for student and teacher Gemini API keys.
+    Supports Bring-Your-Own-Key (BYOK) for student and teacher Gemini, OpenAI, and Anthropic keys.
     """
     # 1. Multimodal analysis
-    media_analysis = _call_gemini_multimodal(
+    media_analysis = _call_multimodal_engine(
         file_bytes=image_bytes,
         mime_type=mime_type,
         user_prompt=user_prompt,
         custom_api_key=custom_api_key,
+        keys_vault=keys_vault,
     )
 
     # Determine broad media format

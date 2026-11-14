@@ -1070,7 +1070,19 @@ def execute_librarian_agent_rag(
 
             if final_agent_reply:
                 # Build contextual follow-up suggestions
-                if agent_actions:
+                if concept_3d:
+                    suggested_followups = [
+                        "Explain attention heads mathematically",
+                        "Show ResNet-50 architecture",
+                        "Search monographs on Deep Learning",
+                    ]
+                elif any(k in normalized for k in ["transformer", "neural", "deep learning", "attention", "perceptron"]):
+                    suggested_followups = [
+                        "Show 3D architecture model of this network",
+                        "What textbooks cover Transformer attention?",
+                        "Search scholarly papers on this architecture",
+                    ]
+                elif agent_actions:
                     suggested_followups = [
                         "View this on the Interactive Floor Map",
                         "What are my active loans and reservations?",

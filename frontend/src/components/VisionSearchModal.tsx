@@ -183,10 +183,19 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
         .find((row) => row.startsWith('csrf_token='))
         ?.split('=')[1] || '';
 
-      const customKey = typeof window !== 'undefined' ? localStorage.getItem('patron_custom_gemini_key') : null;
       const headers: Record<string, string> = {};
       if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
-      if (customKey) headers['X-Gemini-API-Key'] = customKey.trim();
+
+      if (typeof window !== 'undefined') {
+        const geminiKey = localStorage.getItem('patron_custom_gemini_key');
+        if (geminiKey) headers['X-Gemini-API-Key'] = geminiKey.trim();
+        const openaiKey = localStorage.getItem('patron_custom_openai_key');
+        if (openaiKey) headers['X-OpenAI-API-Key'] = openaiKey.trim();
+        const anthropicKey = localStorage.getItem('patron_custom_anthropic_key');
+        if (anthropicKey) headers['X-Anthropic-API-Key'] = anthropicKey.trim();
+        const groqKey = localStorage.getItem('patron_custom_groq_key');
+        if (groqKey) headers['X-Groq-API-Key'] = groqKey.trim();
+      }
 
       const res = await fetch('/api/research/vision-search', {
         method: 'POST',

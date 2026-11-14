@@ -84,12 +84,15 @@ async def vision_research_search(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
     x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-API-Key"),
+    x_openai_api_key: Optional[str] = Header(None, alias="X-OpenAI-API-Key"),
+    x_anthropic_api_key: Optional[str] = Header(None, alias="X-Anthropic-API-Key"),
+    x_groq_api_key: Optional[str] = Header(None, alias="X-Groq-API-Key"),
 ):
     """
     Analyzes multimodal academic media (diagrams, whiteboard math, audio lecture clips,
     voice inquiries, PDF research papers, Word docs, PowerPoint slides)
-    using Gemini Multimodal AI, then retrieves matching library monographs
-    and arXiv/OpenAlex research papers.
+    using Omnichannel Multimodal AI (Gemini, OpenAI GPT-4o, Anthropic Claude),
+    then retrieves matching library monographs and arXiv/OpenAlex research papers.
     """
     allowed_types = [
         "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif",
@@ -137,11 +140,19 @@ async def vision_research_search(
         elif fn_lower.endswith(".webm"):
             effective_mime = "audio/webm"
 
+    keys_vault = {
+        "gemini": (x_gemini_api_key or "").strip(),
+        "openai": (x_openai_api_key or "").strip(),
+        "anthropic": (x_anthropic_api_key or "").strip(),
+        "groq": (x_groq_api_key or "").strip(),
+    }
+
     return analyze_academic_image_service(
         db=db,
         image_bytes=image_bytes,
         mime_type=effective_mime,
         user_prompt=query,
-        custom_api_key=x_gemini_api_key,
+        custom_api_key=keys_vault.get("gemini"),
+        keys_vault=keys_vault,
     )
 
