@@ -19,6 +19,8 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<VisionResearchResponse | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [booksPage, setBooksPage] = useState<number>(1);
+  const [papersPage, setPapersPage] = useState<number>(1);
 
   // Audio Recording State
   const [isRecording, setIsRecording] = useState<boolean>(false);
@@ -213,6 +215,8 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
 
       const data: VisionResearchResponse = await res.json();
       setResults(data);
+      setBooksPage(1);
+      setPapersPage(1);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error processing media.';
       setError(msg.replace(/^\d+:\s*/, ''));
@@ -692,62 +696,91 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                     No exact physical copies found on library shelves for this specific formulation. Check global preprints below!
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
-                    {results.catalogue_matches.map((book) => {
-                      const isAvail = book.available_copies > 0;
-                      return (
-                        <div
-                          key={book.id}
-                          style={{
-                            background: '#0e1626',
-                            border: '1px solid #1e293b',
-                            borderRadius: '8px',
-                            padding: '0.85rem',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'space-between',
-                            gap: '0.5rem',
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '0.88rem' }}>{book.title}</div>
-                            <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.15rem' }}>
-                              by {book.author} • {book.category}
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
+                      {results.catalogue_matches.slice((booksPage - 1) * 4, booksPage * 4).map((book) => {
+                        const isAvail = book.available_copies > 0;
+                        return (
+                          <div
+                            key={book.id}
+                            style={{
+                              background: '#0e1626',
+                              border: '1px solid #1e293b',
+                              borderRadius: '8px',
+                              padding: '0.85rem',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              gap: '0.5rem',
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '0.88rem' }}>{book.title}</div>
+                              <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                                by {book.author} • {book.category}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.2rem' }}>ISBN: {book.isbn}</div>
                             </div>
-                            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.2rem' }}>ISBN: {book.isbn}</div>
-                          </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-                            <span
-                              style={{
-                                fontSize: '0.72rem',
-                                padding: '0.15rem 0.45rem',
-                                borderRadius: '4px',
-                                background: isAvail ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                color: isAvail ? '#34d399' : '#f87171',
-                                fontWeight: 600,
-                              }}
-                            >
-                              {book.available_copies} / {book.total_copies} available
-                            </span>
-
-                            {onSelectBook && (
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-xs"
-                                onClick={() => {
-                                  onSelectBook(book.id);
-                                  onClose();
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.72rem',
+                                  padding: '0.15rem 0.45rem',
+                                  borderRadius: '4px',
+                                  background: isAvail ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                  color: isAvail ? '#34d399' : '#f87171',
+                                  fontWeight: 600,
                                 }}
                               >
-                                View Monograph 📖
-                              </button>
-                            )}
+                                {book.available_copies} / {book.total_copies} available
+                              </span>
+
+                              {onSelectBook && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-xs"
+                                  onClick={() => {
+                                    onSelectBook(book.id);
+                                    onClose();
+                                  }}
+                                >
+                                  View Monograph 📖
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Book Holdings Pagination */}
+                    {Math.ceil(results.catalogue_matches.length / 4) > 1 && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.6rem', padding: '0.35rem 0.6rem', background: 'rgba(8, 14, 28, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '6px' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-xs"
+                          disabled={booksPage === 1}
+                          onClick={() => setBooksPage((p) => Math.max(1, p - 1))}
+                          style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                        >
+                          ◀ Prev
+                        </button>
+                        <span style={{ fontSize: '0.74rem', color: '#94a3b8', fontWeight: 600 }}>
+                          Page {booksPage} of {Math.ceil(results.catalogue_matches.length / 4)} ({results.catalogue_matches.length} holdings)
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-xs"
+                          disabled={booksPage >= Math.ceil(results.catalogue_matches.length / 4)}
+                          onClick={() => setBooksPage((p) => Math.min(Math.ceil(results.catalogue_matches.length / 4), p + 1))}
+                          style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                        >
+                          Next ▶
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -756,7 +789,7 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                 <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <span>🎓</span> Global Scholarly Preprints (arXiv / OpenAlex)
                   <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400 }}>
-                    ({results.scholarly_papers.length} peer-reviewed papers)
+                    ({results.scholarly_papers.length} peer-reviewed papers retrieved)
                   </span>
                 </h4>
 
@@ -765,52 +798,81 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                     No external scholarly preprints found for this query.
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                    {results.scholarly_papers.map((paper) => (
-                      <div
-                        key={paper.paper_id}
-                        style={{
-                          background: '#0e1626',
-                          border: '1px solid #1e293b',
-                          borderRadius: '8px',
-                          padding: '0.85rem 1rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '1rem',
-                        }}
-                      >
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.88rem' }}>{paper.title}</div>
-                          <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                            {paper.authors.slice(0, 3).join(', ')}{paper.authors.length > 3 ? ' et al.' : ''} • {paper.venue || 'Academic Repository'} ({paper.year || 'Recent'})
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {results.scholarly_papers.slice((papersPage - 1) * 5, papersPage * 5).map((paper) => (
+                        <div
+                          key={paper.paper_id}
+                          style={{
+                            background: '#0e1626',
+                            border: '1px solid #1e293b',
+                            borderRadius: '8px',
+                            padding: '0.85rem 1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '1rem',
+                          }}
+                        >
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.88rem' }}>{paper.title}</div>
+                            <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                              {paper.authors.slice(0, 3).join(', ')}{paper.authors.length > 3 ? ' et al.' : ''} • {paper.venue || 'Academic Repository'} ({paper.year || 'Recent'})
+                            </div>
+                            {paper.doi && (
+                              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.15rem' }}>DOI: {paper.doi}</div>
+                            )}
                           </div>
-                          {paper.doi && (
-                            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.15rem' }}>DOI: {paper.doi}</div>
+
+                          {paper.open_access_pdf_url && (
+                            <a
+                              href={paper.open_access_pdf_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-primary btn-sm"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                whiteSpace: 'nowrap',
+                                background: '#0284c7',
+                                textDecoration: 'none',
+                              }}
+                            >
+                              <span>📄</span> Download PDF ↗
+                            </a>
                           )}
                         </div>
+                      ))}
+                    </div>
 
-                        {paper.open_access_pdf_url && (
-                          <a
-                            href={paper.open_access_pdf_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-primary btn-sm"
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.35rem',
-                              whiteSpace: 'nowrap',
-                              background: '#0284c7',
-                              textDecoration: 'none',
-                            }}
-                          >
-                            <span>📄</span> Download PDF ↗
-                          </a>
-                        )}
+                    {/* Preprints 5-per-page Pagination */}
+                    {Math.ceil(results.scholarly_papers.length / 5) > 1 && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.75rem', padding: '0.5rem 0.85rem', background: 'rgba(8, 14, 28, 0.8)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '8px' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={papersPage === 1}
+                          onClick={() => setPapersPage((p) => Math.max(1, p - 1))}
+                          style={{ fontSize: '0.76rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <span>◀</span> Previous 5
+                        </button>
+                        <span style={{ fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600 }}>
+                          Showing {(papersPage - 1) * 5 + 1}–{Math.min(papersPage * 5, results.scholarly_papers.length)} of {results.scholarly_papers.length} papers (Page {papersPage} of {Math.ceil(results.scholarly_papers.length / 5)})
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={papersPage >= Math.ceil(results.scholarly_papers.length / 5)}
+                          onClick={() => setPapersPage((p) => Math.min(Math.ceil(results.scholarly_papers.length / 5), p + 1))}
+                          style={{ fontSize: '0.76rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          Next 5 <span>▶</span>
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

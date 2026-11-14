@@ -400,7 +400,7 @@ def analyze_academic_image_service(
     cat_query = analysis.suggested_catalogue_search or (analysis.key_concepts[0] if analysis.key_concepts else "")
     if cat_query:
         try:
-            local_results = hybrid_search_service(db=db, query=cat_query, page_size=8)
+            local_results = hybrid_search_service(db=db, query=cat_query, page_size=20)
             for b in local_results.items:
                 catalogue_matches.append(
                     VisionCatalogueMatch(
@@ -423,7 +423,7 @@ def analyze_academic_image_service(
         try:
             res = academic_research_service.search_papers(
                 query=paper_query,
-                limit=10,
+                limit=20,
                 page=1,
                 skip_ai_notes=True,
                 providers=["openalex", "crossref", "arxiv"],
