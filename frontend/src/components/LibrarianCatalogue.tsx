@@ -8,6 +8,7 @@ import type {
   SemanticSearchResponse,
 } from '../types/library';
 import { CopyStatusModal } from './CopyStatusModal';
+import { PhysicalBookScannerModal } from './PhysicalBookScannerModal';
 
 interface DisplayBook extends Book {
   match_channels?: string[];
@@ -29,6 +30,7 @@ export const LibrarianCatalogue: React.FC = () => {
   const [totalCount, setTotalCount] = useState(0);
 
   // Modals
+  const [showPhysicalScanner, setShowPhysicalScanner] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [selectedBookForCopies, setSelectedBookForCopies] = useState<BookDetail | null>(null);
@@ -294,9 +296,25 @@ export const LibrarianCatalogue: React.FC = () => {
             Librarian administrative records, bibliographic metadata, and physical holdings
           </p>
         </div>
-        <button type="button" data-tour="librarian-add-book" className="btn btn-primary" onClick={openAddModal}>
-          + Add New Book
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{
+              background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+            }}
+            onClick={() => setShowPhysicalScanner(true)}
+          >
+            <span>📷</span> Scan Physical Book (ISBN / Camera)
+          </button>
+          <button type="button" data-tour="librarian-add-book" className="btn btn-secondary" onClick={openAddModal}>
+            + Manual Entry
+          </button>
+        </div>
       </div>
 
       {successNotice && (
@@ -838,6 +856,16 @@ export const LibrarianCatalogue: React.FC = () => {
           }}
         />
       )}
+
+      {/* Physical Book Ingestion & Barcode Scanner Modal */}
+      <PhysicalBookScannerModal
+        isOpen={showPhysicalScanner}
+        onClose={() => setShowPhysicalScanner(false)}
+        onBookAdded={(newBook) => {
+          setSuccessNotice(`Successfully accessioned "${newBook.title}" with ${newBook.copies?.length || 0} physical copies!`);
+          fetchBooks();
+        }}
+      />
     </div>
   );
 };

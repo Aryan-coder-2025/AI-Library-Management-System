@@ -850,3 +850,31 @@ export interface VisionResearchResponse {
   total_scholarly_papers?: number;
 }
 
+export interface ISBNLookupResult {
+  found: boolean;
+  isbn: string;
+  title: string | null;
+  author: string | null;
+  category: string | null;
+  publisher: string | null;
+  publish_year: number | null;
+  description: string | null;
+  cover_url: string | null;
+  page_count: number | null;
+  edition: string | null;
+  exists_locally: boolean;
+  local_book_id: number | null;
+  local_total_copies: number | null;
+  local_available_copies: number | null;
+}
+
+export interface BookAutoCatalogPayload {
+  isbn: string;
+  title: string;
+  author: string;
+  category: string;
+  description?: string | null;
+  initial_copies: number;
+  copy_code_prefix?: string | null;
+}
+

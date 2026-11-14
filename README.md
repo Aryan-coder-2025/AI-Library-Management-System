@@ -7,7 +7,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0+-D71F00.svg)](https://www.sqlalchemy.org/)
-[![Test Suite](https://img.shields.io/badge/Tests-423%20Passed%20(2%20Skipped)-success.svg)]()
+[![Test Suite](https://img.shields.io/badge/Tests-426%20Passed%20(2%20Skipped)-success.svg)]()
 [![Academic Report](https://img.shields.io/badge/CSE%20276-28%20Page%20Report%20Verified-blue.svg)](./CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf)
 [![License](https://img.shields.io/badge/License-Pending%20Institutional%20Approval-lightgrey.svg)]()
 
@@ -113,6 +113,7 @@ For full sequence diagrams and component interactions, see [docs/ARCHITECTURE.md
 - **SMTP Password Recovery**: Single-use 32-byte cryptographic tokens with 30-minute expiration and SHA-256 database storage.
 
 ### 🔍 Discovery & Catalog Search
+- **Physical Book Ingestion & Barcode Scanner**: Ingest physical books in 2 seconds via live phone/webcam camera barcode scanning (`@zxing/browser`) or USB scanner guns. Automatically queries Open Library for bibliographic copy-cataloging (title, author, publisher, cover, Dewey category) and generates atomic physical copy accession barcodes (`BC-0042-01`).
 - **Reciprocal Rank Fusion (RRF)**: Fuses parameterized SQL lexical queries ($+100.0$ title match bonus) with dense vector cosine similarity ($k=60.0$).
 - **Dense Vector Search**: Powered by SentenceTransformers (`all-MiniLM-L6-v2`, 384 dimensions) stored directly as binary BLOBs.
 - **ISBN Normalization**: Modulo 11 check (ISBN-10), modulo 10 alternating check (ISBN-13), canonical conversion, and Rank-1 pinning for exact matches.

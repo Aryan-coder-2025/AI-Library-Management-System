@@ -355,6 +355,34 @@ class BookDetailResponse(BookResponse):
     user_active_hold_token: Optional[str] = None
 
 
+class ISBNLookupResponse(BaseModel):
+    found: bool
+    isbn: str
+    title: Optional[str] = None
+    author: Optional[str] = None
+    category: Optional[str] = None
+    publisher: Optional[str] = None
+    publish_year: Optional[int] = None
+    description: Optional[str] = None
+    cover_url: Optional[str] = None
+    page_count: Optional[int] = None
+    edition: Optional[str] = None
+    exists_locally: bool = False
+    local_book_id: Optional[int] = None
+    local_total_copies: Optional[int] = None
+    local_available_copies: Optional[int] = None
+
+
+class BookAutoCatalogIn(BaseModel):
+    isbn: str
+    title: str = Field(..., min_length=1, max_length=255)
+    author: str = Field(..., min_length=1, max_length=255)
+    category: str = Field("General Academic", min_length=1, max_length=100)
+    description: Optional[str] = None
+    initial_copies: int = Field(1, ge=1, le=50, description="Initial physical copies to accession")
+    copy_code_prefix: Optional[str] = None
+
+
 # ── Loan Circulation Schemas ──────────────────────────────────────────────────
 
 class LoanIssueRequest(BaseModel):

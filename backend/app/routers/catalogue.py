@@ -19,8 +19,11 @@ from app.schemas import (
     BookCopyResponse,
     BookCopyUpdate,
     MessageResponse,
+    ISBNLookupResponse,
+    BookAutoCatalogIn,
 )
 from app.services import catalogue as catalogue_service
+from app.services import isbn_lookup as isbn_service
 
 router = APIRouter(tags=["catalogue"])
 
@@ -58,6 +61,42 @@ def list_books(
         include_archived=include_archived,
         is_librarian=is_librarian,
     )
+
+
+@router.get(
+    "/api/books/lookup-isbn/{isbn}",
+    response_model=ISBNLookupResponse,
+    summary="Look up global bibliographic metadata and local inventory for an ISBN",
+)
+def lookup_isbn_route(
+    isbn: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Copy Cataloging: Look up bibliographic metadata from Open Library / Google Books
+    and check if copies already exist in the local library inventory.
+    Available to authenticated patrons and librarians.
+    """
+    return isbn_service.lookup_isbn_metadata(db=db, isbn_raw=isbn)
+
+
+@router.post(
+    "/api/books/auto-catalog",
+    response_model=BookDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Auto-catalog a physical book and generate accession barcodes (librarian only)",
+)
+def auto_catalog_route(
+    data: BookAutoCatalogIn,
+    current_user: User = Depends(require_librarian),
+    db: Session = Depends(get_write_db),
+):
+    """
+    One-click physical book accessioning:
+    Creates book metadata and generates physical copy barcodes in an atomic transaction.
+    """
+    return isbn_service.auto_catalog_book_service(db=db, data=data)
 
 
 @router.post(
