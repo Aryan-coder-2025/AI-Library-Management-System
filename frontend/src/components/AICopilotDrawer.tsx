@@ -513,27 +513,30 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
 
         {/* Media Content */}
         <div style={{ padding: '0.85rem', display: 'flex', gap: '0.85rem', alignItems: 'flex-start' }}>
-          {/* Portrait Image */}
+          {/* Portrait or Architecture Diagram Image */}
           <div
             style={{
               position: 'relative',
               flexShrink: 0,
-              width: '110px',
-              height: '140px',
+              width: '120px',
+              minHeight: '130px',
               borderRadius: '8px',
               overflow: 'hidden',
               border: '1px solid rgba(255, 255, 255, 0.15)',
               background: '#040711',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
             }}
           >
             <img
               src={media.image_url}
-              alt={media.title || 'Archival portrait'}
+              alt={media.title || 'Archival record'}
               style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
+                maxWidth: '100%',
+                maxHeight: '150px',
+                objectFit: 'contain',
                 display: 'block',
               }}
               onError={(e) => {
@@ -609,6 +612,27 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
               >
                 📚 Search Works
               </button>
+              {(media.interactive_3d_available || media.concept_3d) && (
+                <button
+                  type="button"
+                  onClick={() => handleSend("Show 3D model of transformer architecture")}
+                  style={{
+                    fontSize: '0.68rem',
+                    color: '#F59E0B',
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                  }}
+                >
+                  <span>⚡ 3D Explorer</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

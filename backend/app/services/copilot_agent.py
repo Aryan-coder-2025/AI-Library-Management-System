@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 import httpx
 from sqlalchemy import or_, select
@@ -567,41 +568,98 @@ def tool_visualize_3d_concept(concept_type: str, title: Optional[str] = None, de
 def tool_fetch_academic_media(query: str, subject_hint: Optional[str] = None) -> Dict[str, Any]:
     """
     Tool: Fetches verified academic media, authentic historical portraits, photographs,
-    and archival imagery of authors, scholars, scientists, and academic subjects
+    canonical schematics, and archival diagrams of authors, scholars, scientists,
+    and foundational computational/scientific architectures (e.g. Transformer, ENIAC, JWST)
     from the Open Knowledge Archive (Wikimedia Commons / Wikipedia REST API).
     Cost: $0.00 (Zero AI image generation tokens, 100% authentic archival records).
     """
-    clean_query = (query or "").strip().rstrip(".?!,")
-    for prefix in [
-        "an image of", "a photo of", "a portrait of", "a picture of",
-        "image of", "photo of", "portrait of", "picture of", "photograph of",
-        "show image of", "show photo of", "show portrait of", "provide me with an image of",
-        "provide an image of", "give me an image of"
-    ]:
-        if clean_query.lower().startswith(prefix):
-            clean_query = clean_query[len(prefix):].strip()
+    raw_query = (query or "").strip()
+    clean_query = raw_query.rstrip(".?!,")
 
-    for suffix in [" if possible", " please", " thanks", " if you can", " photo", " image", " portrait"]:
-        if clean_query.lower().endswith(suffix):
-            clean_query = clean_query[:-len(suffix)].strip()
+    # 1. Strip polite conversational prefixes
+    prefixes = [
+        "and please provide me with the image of", "and please provide me with an image of",
+        "please provide me with the image of", "please provide me with an image of",
+        "please provide the image of", "please provide an image of",
+        "please give me a picture of", "please give me an image of", "please give me a photo of",
+        "please show me a picture of", "please show me an image of", "please show me a photo of",
+        "and provide me with an image of", "provide me with the image of", "provide me with an image of",
+        "provide the image of", "provide an image of",
+        "give me a picture of", "give me an image of", "give me a photo of", "give me a portrait of",
+        "show me a picture of", "show me an image of", "show me a photo of", "show me a portrait of",
+        "show a picture of", "show an image of", "show a photo of", "show a portrait of",
+        "an image of", "the image of", "a picture of", "the picture of", "a photo of", "the photo of",
+        "image of", "photo of", "portrait of", "picture of", "photograph of", "diagram of", "schematic of"
+    ]
+    lower = clean_query.lower()
+    for pfx in prefixes:
+        if lower.startswith(pfx):
+            clean_query = clean_query[len(pfx):].strip()
+            lower = clean_query.lower()
+            break
 
-    if not clean_query:
-        clean_query = "Oscar Wilde"
+    # 2. Strip leading articles
+    for art in ["a ", "an ", "the "]:
+        if lower.startswith(art):
+            clean_query = clean_query[len(art):].strip()
+            lower = clean_query.lower()
+            break
 
-    slug = clean_query.strip().replace(" ", "_")
-    url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{slug}"
+    # 3. Strip conversational and filler clauses
+    suffixes = [
+        " if possible", " please", " thanks", " thank you", " if you can",
+        " photo", " image", " portrait", " diagram", " picture", " schematic"
+    ]
+    for sfx in suffixes:
+        if lower.endswith(sfx):
+            clean_query = clean_query[:-len(sfx)].strip()
+            lower = clean_query.lower()
+
+    # Strip clauses like 'which is used in real life for LLM models'
+    has_llm_context = bool(re.search(r"(llm|deep learning|neural|machine learning|attention|ai|language model)", raw_query, re.IGNORECASE))
+    clause_match = re.search(r"\s+(which is used|used in|used for|in real life|for llm|for ai).*$", clean_query, re.IGNORECASE)
+    if clause_match:
+        clean_query = clean_query[:clause_match.start()].strip()
+        lower = clean_query.lower()
+
+    # 4. Domain Disambiguation for Academic & AI Concepts
+    if "transformer" in lower and (has_llm_context or "architecture" in lower or lower == "transformer"):
+        resolved_title = "Transformer (deep learning)"
+    elif "attention" in lower and (has_llm_context or "mechanism" in lower):
+        resolved_title = "Attention (machine learning)"
+    elif "backpropagation" in lower:
+        resolved_title = "Backpropagation"
+    elif "apollo guidance computer" in lower:
+        resolved_title = "Apollo Guidance Computer"
+    elif "dna" in lower and ("helix" in lower or "structure" in lower):
+        resolved_title = "DNA"
+    elif "rosetta stone" in lower:
+        resolved_title = "Rosetta Stone"
+    elif "turing machine" in lower:
+        resolved_title = "Turing machine"
+    elif "eniac" in lower:
+        resolved_title = "ENIAC"
+    elif "james webb" in lower or "jwst" in lower:
+        resolved_title = "James Webb Space Telescope"
+    else:
+        resolved_title = clean_query or "Oscar Wilde"
+
     headers = {"User-Agent": "AthenaeumLibraryAI/2.0 (academic library management platform; contact@library.local)"}
 
     try:
-        with httpx.Client(timeout=4.0) as client:
+        with httpx.Client(timeout=4.5) as client:
+            # Tier 1: Direct canonical page summary
+            slug = resolved_title.strip().replace(" ", "_")
+            url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(slug)}"
             resp = client.get(url, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 img_url = (data.get("originalimage") or {}).get("source") or (data.get("thumbnail") or {}).get("source")
                 if img_url:
+                    is_transformer = "transformer" in resolved_title.lower() or "transformer" in (data.get("title") or "").lower()
                     return {
                         "status": "success",
-                        "title": data.get("title", clean_query),
+                        "title": data.get("title", resolved_title),
                         "description": data.get("description", "Archival Academic Subject"),
                         "extract": data.get("extract", ""),
                         "image_url": img_url,
@@ -609,14 +667,55 @@ def tool_fetch_academic_media(query: str, subject_hint: Optional[str] = None) ->
                         "page_url": (data.get("content_urls", {}).get("desktop", {}).get("page") or f"https://en.wikipedia.org/wiki/{slug}"),
                         "source": "Wikimedia Commons / Open Knowledge Archive",
                         "license": "Public Domain / Creative Commons (Verified Archival Record)",
+                        "interactive_3d_available": is_transformer,
+                        "concept_3d": {
+                            "concept_type": "transformer",
+                            "title": "Transformer Neural Architecture (Vaswani et al.)",
+                            "description": "Interactive WebGL 3D inspection of Multi-Head Attention, Scaled Dot-Product, and LayerNorm residual skips."
+                        } if is_transformer else None
                     }
+
+            # Tier 2: Wikipedia Search API fallback for natural language or complex terms
+            search_query = clean_query if clean_query else resolved_title
+            search_url = f"https://en.wikipedia.org/w/rest.php/v1/search/page?q={urllib.parse.quote(search_query)}&limit=4"
+            s_resp = client.get(search_url, headers=headers)
+            if s_resp.status_code == 200:
+                pages = s_resp.json().get("pages", [])
+                for p in pages:
+                    key = p.get("key")
+                    if not key:
+                        continue
+                    c_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(key)}"
+                    c_resp = client.get(c_url, headers=headers)
+                    if c_resp.status_code == 200:
+                        c_data = c_resp.json()
+                        img_url = (c_data.get("originalimage") or {}).get("source") or (c_data.get("thumbnail") or {}).get("source")
+                        if img_url:
+                            is_transformer = "transformer" in key.lower() or "transformer" in (c_data.get("title") or "").lower()
+                            return {
+                                "status": "success",
+                                "title": c_data.get("title", key),
+                                "description": c_data.get("description", "Archival Academic Subject"),
+                                "extract": c_data.get("extract", ""),
+                                "image_url": img_url,
+                                "thumbnail_url": (c_data.get("thumbnail") or {}).get("source", img_url),
+                                "page_url": (c_data.get("content_urls", {}).get("desktop", {}).get("page") or f"https://en.wikipedia.org/wiki/{key}"),
+                                "source": "Wikimedia Commons / Open Knowledge Archive",
+                                "license": "Public Domain / Creative Commons (Verified Archival Record)",
+                                "interactive_3d_available": is_transformer,
+                                "concept_3d": {
+                                    "concept_type": "transformer",
+                                    "title": "Transformer Neural Architecture (Vaswani et al.)",
+                                    "description": "Interactive WebGL 3D inspection of Multi-Head Attention, Scaled Dot-Product, and LayerNorm residual skips."
+                                } if is_transformer else None
+                            }
     except Exception as e:
         logger.warning(f"Academic media fetch failed for '{clean_query}': {e}")
 
     return {
         "status": "not_found",
         "query": clean_query,
-        "message": f"No high-resolution archival portrait found in the Open Knowledge Archive for '{clean_query}'.",
+        "message": f"No high-resolution archival portrait or diagram found in the Open Knowledge Archive for '{clean_query}'.",
     }
 
 
@@ -763,12 +862,12 @@ GEMINI_AGENT_TOOLS = [
             },
             {
                 "name": "fetch_academic_media",
-                "description": "Fetch verified archival portraits, photographs, and historical imagery of authors, scholars, scientists, or academic subjects (e.g. Oscar Wilde, Alan Turing, Ada Lovelace, Isaac Newton) from the Open Knowledge Archive ($0.00 token cost, authentic public domain records).",
+                "description": "Fetch verified archival schematics, diagrams, portraits, and photographs of authors, scientists, historical figures, or foundational computational/scientific architectures (e.g. Transformer architecture, ENIAC, Apollo guidance computer, DNA, Rosetta Stone, Oscar Wilde, Alan Turing) from the Open Knowledge Archive ($0.00 token cost, authentic public domain / CC records).",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
-                        "query": {"type": "STRING", "description": "Name of the author, historical figure, or academic subject (e.g. 'Oscar Wilde', 'Alan Turing')"},
-                        "subject_hint": {"type": "STRING", "description": "Optional category or context (e.g. 'author', 'scientist', 'mathematician')"},
+                        "query": {"type": "STRING", "description": "Name of the entity, author, scientific artifact, or computational architecture (e.g. 'Transformer (deep learning)', 'Oscar Wilde', 'ENIAC', 'Rosetta Stone')"},
+                        "subject_hint": {"type": "STRING", "description": "Optional category or context (e.g. 'architecture', 'scientist', 'artifact', 'author')"},
                     },
                     "required": ["query"],
                 },
@@ -1082,9 +1181,10 @@ def execute_librarian_agent_rag(
                 "- get_spatial_resource: Get floor plan wayfinding coordinates\n"
                 "- get_library_policy: Look up borrowing rules\n"
                 "- visualize_3d_concept: Generate interactive 3D WebGL models for scientific/engineering concepts (transformers, neural networks, distributed clusters, molecules, quantum bloch spheres)\n"
-                "- fetch_academic_media: Fetch verified archival portraits, photographs, and historical imagery of authors, scholars, scientists, or academic subjects (e.g. Oscar Wilde, Alan Turing, Ada Lovelace, Isaac Newton) from the Open Knowledge Archive ($0.00 token cost, authentic public domain records)\n\n"
+                "- fetch_academic_media: Fetch verified archival schematics, diagrams, portraits, and photographs of authors, scientists, historical figures, or foundational computational/scientific architectures (e.g. Transformer architecture, ENIAC, Apollo Guidance Computer, DNA, Rosetta Stone, Oscar Wilde, Alan Turing) from the Open Knowledge Archive ($0.00 token cost, authentic public domain / CC records)\n\n"
                 "CRITICAL GOVERNANCE ON MEDIA & IMAGES:\n"
-                "- If the patron asks for an image, portrait, photograph, or visual likeness of an author, scientist, historical figure, or academic subject (e.g. 'image of Oscar Wilde', 'photo of Alan Turing'), ALWAYS CALL 'fetch_academic_media'. Never claim that you cannot display or generate images when this tool is available.\n\n"
+                "- If the patron asks for an image, portrait, photograph, schematic, or diagram of an author, scientist, historical figure, or computational/scientific architecture (e.g. 'image of Oscar Wilde', 'photo of Alan Turing', 'image of transformer used in LLMs', 'picture of ENIAC', 'diagram of Apollo Guidance Computer'), ALWAYS CALL 'fetch_academic_media'. Never claim that you cannot display or generate images when this tool is available.\n"
+                "- The Open Knowledge Archive contains BOTH authentic historical photographs AND canonical academic schematics / architectural diagrams (such as the Transformer architecture diagram from Vaswani et al.). Never claim computational concepts lack images; pass the entity name to 'fetch_academic_media' (e.g. query='Transformer (deep learning)' or query='transformer architecture').\n\n"
                 "CRITICAL GOVERNANCE ON 3D VISUALIZATION:\n"
                 "- ONLY call the 'visualize_3d_concept' tool if the patron EXPLICITLY asks or orders a 3D model, visualization, or diagram (e.g. 'show 3d model', 'visualize in 3d', 'render 3d', 'generate 3d diagram', 'show 3d architecture').\n"
                 "- If the patron asks to explain, teach, or discuss a topic without specifically requesting a 3D visualization, DO NOT call 'visualize_3d_concept'. Instead, provide a thorough, articulate, academic textual explanation with mathematical equations and suggest they can ask for a 3D visualization if desired.\n"
@@ -1211,9 +1311,11 @@ def execute_librarian_agent_rag(
                         if f_name == "visualize_3d_concept" and "concept_type" in t_res:
                             concept_3d = t_res
 
-                        # If academic media returned, capture media card
+                        # If academic media returned, capture media card and optional 3D spec
                         if f_name == "fetch_academic_media" and t_res.get("status") == "success":
                             media_card = t_res
+                            if t_res.get("concept_3d") and not concept_3d:
+                                concept_3d = t_res.get("concept_3d")
 
                         # Feed function response back to Gemini
                         contents.append({
@@ -1296,11 +1398,12 @@ def execute_librarian_agent_rag(
     # ── 2. DETERMINISTIC WORKFLOW ROUTING (FALLBACK / OFFLINE) ───────────────────
 
     # 0. Conversational Social Intents (No unsolicited book searches)
-    is_conceptual = any(k in normalized for k in [
+    has_media_request = any(k in normalized for k in ["image", "photo", "portrait", "picture", "schematic", "drawing", "photograph"])
+    is_conceptual = (any(k in normalized for k in [
         "understand", "explain", "concept", "transformer", "neural", "deep learning", 
         "architecture", "what is", "how does", "tell me about", "visualize", "3d", 
         "diagram", "paper", "research", "quantum", "bloch", "molecule", "benzene", "cluster", "raft"
-    ])
+    ]) and not has_media_request)
     is_greeting = any(re.search(rf"\b{g}\b", normalized) for g in ["hello", "hi", "hey"]) and not is_conceptual
     is_thanks = any(re.search(rf"\b{t}\b", normalized) for t in ["thank", "thanks"]) and not is_conceptual
     is_help = (
@@ -1547,23 +1650,30 @@ def execute_librarian_agent_rag(
 
     # 0e. Academic Media & Portrait Intent (Open Knowledge Archive)
     is_media_intent = any(k in normalized for k in [
-        "image of", "photo of", "portrait of", "picture of", "photograph of",
-        "show image", "show photo", "show portrait", "show picture", "an image of", "a photo of",
-        "provide me with an image", "provide an image"
+        "image of", "photo of", "portrait of", "picture of", "photograph of", "diagram of", "schematic of",
+        "show image", "show photo", "show portrait", "show picture", "show diagram", "an image of", "a photo of",
+        "provide me with an image", "provide me with the image", "provide an image", "provide the image",
+        "give me an image", "give me a picture", "give me a photo"
     ]) or (
-        any(w in normalized for w in ["image", "photo", "portrait", "picture"]) and
-        any(w in normalized for w in ["wilde", "oscar", "turing", "lovelace", "darwin", "curie", "einstein", "feynman", "author", "scientist", "writer", "poet", "cover", "jacket"])
+        any(w in normalized for w in ["image", "photo", "portrait", "picture", "diagram", "schematic"]) and
+        any(w in normalized for w in ["wilde", "oscar", "turing", "lovelace", "darwin", "curie", "einstein", "feynman", "author", "scientist", "writer", "poet", "cover", "jacket", "transformer", "llm", "neural", "eniac", "jwst", "apollo", "dna", "rosetta"])
     )
     if is_media_intent:
         subject_query = query.strip()
         for pfx in [
-            "and provide me with an image of", "provide me with an image of", "provide an image of",
+            "and please provide me with the image of", "and please provide me with an image of",
+            "please provide me with the image of", "please provide me with an image of",
+            "please provide the image of", "please provide an image of",
+            "please give me a picture of", "please give me an image of", "please give me a photo of",
+            "please show me a picture of", "please show me an image of", "please show me a photo of",
+            "and provide me with an image of", "provide me with the image of", "provide me with an image of",
+            "provide the image of", "provide an image of",
             "give me an image of", "give me a picture of", "give me a photo of", "give me a portrait of",
             "show me an image of", "show me a picture of", "show me a photo of", "show me a portrait of",
             "show an image of", "show a picture of", "show a photo of", "show a portrait of",
-            "an image of", "a photo of", "a picture of", "a portrait of",
-            "image of", "photo of", "portrait of", "picture of", "photograph of",
-            "show image", "show photo", "show portrait", "show picture"
+            "an image of", "the image of", "a picture of", "the picture of", "a photo of", "the photo of",
+            "image of", "photo of", "portrait of", "picture of", "photograph of", "diagram of", "schematic of",
+            "show image", "show photo", "show portrait", "show picture", "show diagram"
         ]:
             if pfx in normalized:
                 idx = normalized.find(pfx)
@@ -1581,17 +1691,32 @@ def execute_librarian_agent_rag(
                 action_type="academic_media",
                 status="success",
                 title=f"Archival Record: {t_res.get('title')}",
-                description=f"Retrieved authentic portrait from {t_res.get('source')}.",
+                description=f"Retrieved authentic record from {t_res.get('source')}.",
                 data=t_res,
             )
             agent_actions.append(action)
+            is_3d = t_res.get("interactive_3d_available") or bool(t_res.get("concept_3d"))
+            extra_3d_msg = (
+                "\n\n✨ **Interactive 3D WebGL Neural Explorer Available**: We have also prepared an interactive 3D model of this architecture. "
+                "Click **'Launch 3D Explorer'** below or ask **'Show 3D model'** to inspect attention weights and tensor layers in real time!"
+                if is_3d else ""
+            )
             answer = (
-                f"🖼️ **Archival Portrait & Biographical Record: {t_res.get('title')}**\n\n"
+                f"🖼️ **Archival Reference Record & Diagram: {t_res.get('title')}**\n\n"
                 f"{t_res.get('description', '')}\n\n"
                 f"{t_res.get('extract', '')}\n\n"
                 f"• **Source**: [{t_res.get('source')}]({t_res.get('page_url')})\n"
                 f"• **License**: {t_res.get('license')}"
+                f"{extra_3d_msg}"
             )
+            followups = [
+                f"Search library monographs on {t_res.get('title')}",
+                f"Find research literature on {t_res.get('title')}",
+            ]
+            if is_3d:
+                followups.insert(0, "⚡ Launch 3D Neural Explorer")
+                followups.append("Explain attention heads mathematically")
+
             return EnhancedCopilotResponse(
                 answer=answer,
                 intent="ACADEMIC_MEDIA_RETRIEVAL",
@@ -1600,10 +1725,8 @@ def execute_librarian_agent_rag(
                 tool_calls=tool_calls,
                 agent_actions=agent_actions,
                 media_card=t_res,
-                suggested_followups=[
-                    f"Search library monographs by {t_res.get('title')}",
-                    f"Find biographical research on {t_res.get('title')}",
-                ],
+                concept_3d=t_res.get("concept_3d"),
+                suggested_followups=followups,
             )
 
     # A. Reserve study space
