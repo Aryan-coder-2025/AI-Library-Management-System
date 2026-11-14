@@ -3,18 +3,16 @@ Comprehensive Academic Technical Report Generator for CSE 276.
 Produces a rigorous, 30+ page PDF document for Athenaeum AI 2.0.
 Author: Aryan Dutta (Lead Architecture & Backend Engineering)
 
-Conforms strictly to:
-- Times New Roman typography (16pt bold headings, 14pt bold subheadings, 11.5pt body with 1.5 line spacing)
-- Semi-half page declaration with blank faculty supervisor approval lines
-- One-page Dotted Index (Table of Contents) excluding Title & Declaration, with page numbers starting from 'i) Introduction' as Page 1
-- Deep technical methodology (RRF k=60, Cosine Vector Spaces, BM25, Kalman filtering, A* pathfinding, StateGraph multi-agents)
-- Explicit Multimodal processing taxonomy (Cloud VLM Gemini 1.5/GPT-4o/Whisper vs Local pypdf/python-docx/python-pptx)
-- Grounded benchmark methodology (Precision@5 ground truth, httpx async load testing script, illustrative Koha/DSpace comparison)
-- SQLite WAL concurrency mechanics (BEGIN IMMEDIATE writer locks, serialization of write transactions, prevention of SQLITE_BUSY upgrade conflicts)
-- Relational schema completeness (reservations table with user_id/patron_id, start_time, end_time, status, checked_in_at + 3-active-loans transactional limit in atomic_write)
-- Calibrated terminology ("Low-Latency User Experience", "Reduces visible layout shifts", "Passed all 423 tests in recorded run", "Modular, production-oriented architecture")
-- 19 comprehensive peer-reviewed and framework citations in References & Bibliography
-- Exact environment software package versions verified against pip and package.json
+Final Revision conforming to all faculty and peer review feedback:
+1. Koha Database Concurrency Correction: Factual description of Koha's MySQL/MariaDB InnoDB engine with connection pool contention during peak surges (removed inaccurate SQLite deadlock attribution).
+2. OpenAlex Publication Attribution: Described as "250M+ scholarly works indexed by OpenAlex" across abstract, objectives, figures, and conclusions (not exclusively "preprints").
+3. Comparative Benchmark Rigor: Replaced unreferenced numerical metrics with qualitative architectural capability comparisons across Koha ILS 23.11, DSpace 7.6, and Athenaeum AI 2.0.
+4. Reservation Schema Consistency: Standardized strictly on `user_id` (foreign key to `users.id`) and documented atomic time-slot overlap prevention query logic in `services/spaces.py`.
+5. MediaRecorder to Whisper Pipeline Clarification: Documented the 5-step workflow (Client MediaRecorder audio capture -> Multipart upload -> Groq Whisper-large-v3 transcription -> Transcribed text -> Copilot StateGraph AI analysis).
+6. Package Inventory Accuracy: Removed duplicate HTTPX2; verified all versions against runtime lockfiles (FastAPI 0.162.0, SQLAlchemy 2.1.6, Pydantic 2.14.1, PyTorch 2.14.1, React 19.3.1, TypeScript 6.0.3, Three.js 0.187.0).
+7. Mathematical A* Heuristic Admissibility: Formally proved that heuristic h(n) <= h*(n) using compatible normalized coordinate units and non-negative vertical transition latencies (tau_wait >= 0).
+8. Semi-half page declaration with blank faculty approval lines.
+9. Two-pass page numbering with exact Index synchronization starting at Page 1 at Section i) Introduction.
 """
 import os
 import shutil
@@ -195,8 +193,8 @@ def build_pdf_story(page_dict=None):
     )
 
     # Dedicated table paragraph styles for dense, crisp formatting
-    t_body = ParagraphStyle("TBody", fontName="Times-Roman", fontSize=9.5, leading=13.5, textColor=colors.HexColor("#1e293b"))
-    t_bold = ParagraphStyle("TBold", fontName="Times-Bold", fontSize=9.5, leading=13.5, textColor=colors.HexColor("#0f172a"))
+    t_body = ParagraphStyle("TBody", fontName="Times-Roman", fontSize=9, leading=13, textColor=colors.HexColor("#1e293b"))
+    t_bold = ParagraphStyle("TBold", fontName="Times-Bold", fontSize=9, leading=13, textColor=colors.HexColor("#0f172a"))
     
     # Dedicated index styles to ensure single-page fit on physical page 3
     idx_item_style = ParagraphStyle("IdxItem", fontName="Times-Roman", fontSize=9, leading=11, spaceAfter=0, textColor=colors.HexColor("#1e293b"))
@@ -305,10 +303,10 @@ def build_pdf_story(page_dict=None):
         ("   4.2 Patron Unified Workspace & Circulation Lifecycle (Photo 1)", str(get_log_p("sub_4_2", 21))),
         ("   4.3 Interactive 3D WebGL Neural Explorer & Copilot Integration (Photo 2)", str(get_log_p("sub_4_3", 22))),
         ("   4.4 Multimodal Omnichannel Research Ingestion & Multi-Engine Selector (Photo 3)", str(get_log_p("sub_4_4", 23))),
-        ("   4.5 Stable Server-Side Pagination & Global Preprints Corpus (Photo 4)", str(get_log_p("sub_4_5", 24))),
+        ("   4.5 Stable Server-Side Pagination & Global Scholarly Works Corpus (Photo 4)", str(get_log_p("sub_4_5", 24))),
         ("   4.6 Spatial Study Pods, Heatmap Telemetry & Wayfinding Navigation (Photo 5)", str(get_log_p("sub_4_6", 25))),
         ("   4.7 Quantitative Performance Benchmarks & Empirical Test Conditions", str(get_log_p("sub_4_7", 26))),
-        ("   4.8 Illustrative Comparative Architectural Evaluation Against Legacy Systems", str(get_log_p("sub_4_8", 27))),
+        ("   4.8 Qualitative Comparative Architectural Evaluation Against Legacy Systems", str(get_log_p("sub_4_8", 27))),
         ("v) Future Scope", str(get_log_p("v_future", 28))),
         ("   5.1 Federated Multi-Institutional Inter-Library Blockchain Ledgers", str(get_log_p("sub_5_1", 28))),
         ("   5.2 Client-Side WebGPU Neural Execution & Offline Edge Wayfinding", str(get_log_p("sub_5_2", 28))),
@@ -368,7 +366,7 @@ def build_pdf_story(page_dict=None):
         "relational indexing over rigid bibliographic standard formats (e.g., MARC21, ISO 2709). While effective for deterministic bibliographic record-keeping, "
         "these traditional engines exhibit fundamental architectural limitations when dealing with unstructured research inputs: handwritten equations, "
         "vector embeddings, architectural schematics, audio lecture recordings, or multimodal research documents. Furthermore, the modern academic landscape "
-        "has witnessed an explosive growth in preprint literature, with platforms like OpenAlex (250M+ works as of 2026), Cornell arXiv (2.4M+ preprints), "
+        "has witnessed an explosive growth in digital scholarship, with platforms like OpenAlex (250M+ works as of 2026), Cornell arXiv (2.4M+ preprints), "
         "and Crossref (150M+ DOI records) indexing over 250 million scholarly publications accessed via live REST API queries. "
         "Patrons navigating physical library stacks lack real-time digital bridges capable of mapping an uploaded research paper directly to physical shelving locations "
         "while simultaneously querying global repositories for peer-reviewed citations.",
@@ -394,7 +392,7 @@ def build_pdf_story(page_dict=None):
         body_style
     ))
     story.append(Paragraph("<b>1. Dual-Channel Hybrid Retrieval with Reciprocal Rank Fusion (RRF $k=60$):</b> Synthesize high-dimensional dense vector embeddings (384-dimensional latent semantic space generated via <code>sentence-transformers/all-MiniLM-L6-v2</code>) with high-precision lexical token matching (BM25 with domain-specific tokenization). The system must deterministically merge lexical and semantic rank lists to eliminate vocabulary mismatch while preventing zero-match keyword queries.", bullet_style))
-    story.append(Paragraph("<b>2. Omnichannel Multimodal Research Disambiguation:</b> Ingest heterogeneous academic media—including whiteboard diagrams, LaTeX mathematical equations, audio recordings, PDF research papers, PowerPoint slide decks (.pptx), and Word documents (.docx)—via an intelligent multi-engine selector (supporting Groq Llama 3.3 70B, OpenAI GPT-4o, Anthropic Claude 3.5 Haiku, Google Gemini 1.5, and zero-cost local Python fallbacks). The system must extract core concepts, sanitize search keywords, and federate queries across campus monographs and 250M+ global works.", bullet_style))
+    story.append(Paragraph("<b>2. Omnichannel Multimodal Research Disambiguation:</b> Ingest heterogeneous academic media—including whiteboard diagrams, LaTeX mathematical equations, audio recordings, PDF research papers, PowerPoint slide decks (.pptx), and Word documents (.docx)—via an intelligent multi-engine selector (supporting Groq Llama 3.3 70B, OpenAI GPT-4o, Anthropic Claude 3.5 Haiku, Google Gemini 1.5, and zero-cost local Python fallbacks). The system must extract core concepts, sanitize search keywords, and federate queries across campus monographs and 250M+ scholarly works indexed by OpenAlex.", bullet_style))
     story.append(Paragraph("<b>3. Autonomous Multi-Agent StateGraph Copilot:</b> Implement an autonomous library agent capable of multi-step tool execution (catalog discovery, book renewal, reserve validation, 3D WebGL neural scene invocation) via a cyclical state graph with full action tracing, latency verification, and academic disambiguation.", bullet_style))
     story.append(Paragraph("<b>4. Spatial-Semantic Wayfinding & IoT Telemetry:</b> Model physical library floors using planar Cartesian coordinates ($x, y, z$). Implement Euclidean clustering, multi-floor wayfinding graphs, and discrete Kalman filtering over live telemetry streams to provide real-time occupancy heatmaps, quiet-zone detection, and study pod reservation locks.", bullet_style))
     story.append(Paragraph("<b>5. ACID Concurrency & High-Assurance Operational Resilience:</b> Enforce transactional integrity across high-concurrency circulation desks using immediate writer locks via <code>BEGIN IMMEDIATE</code> in SQLite WAL mode, serializing competing write transactions during peak monograph borrowing. The platform passed all 423 automated tests in the recorded test run.", bullet_style))
@@ -435,7 +433,7 @@ def build_pdf_story(page_dict=None):
         ["External Discovery", "Siloed to internal physical holdings; external databases require separate federated search.", "Unified federation across local catalog, OpenAlex (250M+ works), arXiv preprints, and Crossref DOIs."],
         ["Spatial Intelligence", "Static textual shelf location strings (e.g., 'Stack 4B, Shelf 2'); no indoor routing.", "Cartesian coordinate mapping ($x,y,z$), Euclidean clustering, A* pathfinding, and live 3D WebGL exploration."],
         ["Occupancy Telemetry", "Periodic manual headcounts; static occupancy assumptions.", "Real-time IoT telemetry ingestion; discrete Kalman filtering; dynamic quiet-zone detection."],
-        ["Circulation Concurrency", "Vulnerable to write contention and race conditions during peak monograph borrowing.", "ACID transactions with SQLite WAL mode and <code>BEGIN IMMEDIATE</code> serialization."]
+        ["Circulation Concurrency", "Vulnerable to write contention and connection pool exhaustion under peak borrowing surges.", "ACID transactions with SQLite WAL mode and <code>BEGIN IMMEDIATE</code> writer lock serialization."]
     ]
     matrix_table = Table([[Paragraph(f"<b>{c}</b>" if idx == 0 else c, t_bold if idx == 0 else t_body) for c in row] for idx, row in enumerate([comp_headers] + comp_rows)], colWidths=[110, 185, 192])
     matrix_table.setStyle(TableStyle([
@@ -463,7 +461,7 @@ def build_pdf_story(page_dict=None):
         body_style
     ))
     story.append(Paragraph("<b>1. The Semantic Gap & Vocabulary Mismatch Problem:</b> Standard lexical search engines rely on exact token overlap. If a student queries <i>'generative adversarial nets'</i>, an exact match engine fails to rank authoritative books entitled <i>'Deep Generative Models'</i> or <i>'Synthetic Neural Sampling'</i> unless explicit manual cross-references exist. This creates artificial research barriers.", bullet_style))
-    story.append(Paragraph("<b>2. Monolithic Relational Fragility:</b> Traditional OPACs run complex multi-table SQL joins across normalized catalog tables on every keystroke. Under peak campus traffic (such as final exam registration), database connection pools saturate, resulting in high query latencies and catastrophic service lockups.", bullet_style))
+    story.append(Paragraph("<b>2. Monolithic Relational Fragility:</b> Traditional OPACs run complex multi-table SQL joins across normalized catalog tables on every keystroke. Under peak campus traffic (such as final exam registration), database connection pools saturate, resulting in high query latencies and service lockups.", bullet_style))
     story.append(Paragraph("<b>3. Zero Spatial-Physical Integration:</b> Even when a student locates a book record in an OPAC, the system provides no spatial guidance. The patron is left to wander multi-story library stacks searching for Dewey Decimal numbers, with zero visibility into whether adjacent study pods or quiet desks are currently occupied.", bullet_style))
     story.append(PageBreak())
 
@@ -476,7 +474,7 @@ def build_pdf_story(page_dict=None):
         body_style
     ))
     story.append(Paragraph("• <b>Internal Catalog Management:</b> High-speed indexing and vector embedding of 1,500 core academic monographs across 10 disciplines (Computer Science, Electrical Engineering, Physics, Mathematics, Biology, Chemistry, Mechanical Engineering, Economics, Philosophy, and Literature).", bullet_style))
-    story.append(Paragraph("• <b>Live External Scholarly Repositories:</b> Real-time federated query execution against OpenAlex, Cornell arXiv, and Crossref REST APIs, retrieving verified peer-reviewed preprints, author metadata, publication dates, and open-access download URLs.", bullet_style))
+    story.append(Paragraph("• <b>Live External Scholarly Repositories:</b> Real-time federated query execution against OpenAlex, Cornell arXiv, and Crossref REST APIs, retrieving verified peer-reviewed articles, author metadata, publication dates, and open-access download URLs.", bullet_style))
     story.append(Paragraph("• <b>Spatial Library Modeling:</b> Precision Cartesian mapping across four architectural tiers (Ground, 1st, 2nd, and 3rd floors) comprising 12 study rooms, 60 study pods, 4 service zones, and 24 primary book stack ranges.", bullet_style))
     story.append(Paragraph("• <b>Real-Time Telemetry & Environmental Sensing:</b> Simulation and ingestion of acoustic decibel streams, infrared motion sensors, and seat occupancy gates filtered through discrete Kalman estimation algorithms.", bullet_style))
     story.append(Paragraph("• <b>Concurrency & Multi-Tenancy:</b> Sub-50ms transaction handling supporting concurrent patron sessions under SQLite Write-Ahead Logging (WAL) mode.", bullet_style))
@@ -489,7 +487,7 @@ def build_pdf_story(page_dict=None):
         "To ground the system design in genuine academic workflows, three canonical failure modes of existing systems were analyzed:",
         body_style
     ))
-    story.append(Paragraph("<b>Case Study A — The Cross-Disciplinary Student Inquiry:</b> An undergraduate researcher in computational neuroscience requires literature on how recurrent neural networks simulate hippocampal place cells. Searching an existing library OPAC for <i>'hippocampal place cells in recurrent networks'</i> yields 0 results because no single book title contains that exact phrase. In Athenaeum AI 2.0, dense vector similarity maps the inquiry directly to relevant monographs in both Neural Computation and Cognitive Biology, while the external aggregator fetches the latest 2026 bioRxiv preprints.", bullet_style))
+    story.append(Paragraph("<b>Case Study A — The Cross-Disciplinary Student Inquiry:</b> An undergraduate researcher in computational neuroscience requires literature on how recurrent neural networks simulate hippocampal place cells. Searching an existing library OPAC for <i>'hippocampal place cells in recurrent networks'</i> yields 0 results because no single book title contains that exact phrase. In Athenaeum AI 2.0, dense vector similarity maps the inquiry directly to relevant monographs in both Neural Computation and Cognitive Biology, while the external aggregator fetches the latest 2026 OpenAlex and bioRxiv papers.", bullet_style))
     story.append(Paragraph("<b>Case Study B — The Multimodal Whiteboard Encounter:</b> A graduate student photographs a professor's whiteboard diagram depicting a distributed consensus state machine with LaTeX equations ($f < \\frac{n}{3}$). Traditional library systems offer zero ingestion capability for visual media. Athenaeum AI's Multimodal Omnichannel Ingestion parses the diagram, extracts the Byzantine Fault Tolerance formulation, queries the internal catalog for distributed systems monographs, and routes the student directly to Shelf Range 2B on Floor 2.", bullet_style))
     story.append(Paragraph("<b>Case Study C — The Exam-Week Concurrency Crunch:</b> During midterm week, dozens of students simultaneously attempt to reserve study pod SP-102. In legacy systems lacking serialized transactions, race conditions result in multiple double-bookings and student friction. Athenaeum AI's SQLite <code>BEGIN IMMEDIATE</code> atomic lock serializes checkout requests, granting the reservation to the first connection and immediately returning an informative HTTP 409 Conflict with suggested alternative pods.", bullet_style))
     story.append(PageBreak())
@@ -696,7 +694,7 @@ def build_pdf_story(page_dict=None):
         math_style
     ))
     story.append(Paragraph(
-        "Where $\\omega_z = 100.0$ applies a severe vertical penalty for inter-floor traversal (vertical travel via stairwells or elevators). "
+        "Where $\\omega_z = 100.0$ applies a vertical penalty for inter-floor traversal (vertical travel via stairwells or elevators). "
         "To compute study pod cluster centroids for group collaboration, the spatial service computes the 2D geometric centroid $C_k = (\\bar{x}_k, \\bar{y}_k)$:",
         body_style
     ))
@@ -708,8 +706,19 @@ def build_pdf_story(page_dict=None):
         "Wayfinding routing traverses an A* pathfinding graph connecting library entry portals, circulation desks, elevator shafts, "
         "and individual monograph stacks. In the topological graph $G = (V, E)$, vertical transportation portals (staircases and elevator shafts) "
         "are modeled as specialized bidirectional inter-floor transition edges $e = (u, v)$ where $z_u \\neq z_v$. Each vertical edge carries an added traversal cost "
-        "$\\text{cost}(e) = \\omega_z \\cdot |z_u - z_v| + \\tau_{\\text{wait}}$, reflecting the physical latency of vertical movement. "
-        "The A* heuristic function evaluates: $f(n) = g(n) + h(n)$, where $h(n) = \\sqrt{(x_n - x_{\\text{dest}})^2 + (y_n - y_{\\text{dest}})^2} + \\omega_z \\cdot |z_n - z_{\\text{dest}}|$.",
+        "$\\text{cost}(e) = \\omega_z \\cdot |z_u - z_v| + \\tau_{\\text{wait}}$, where $\\tau_{\\text{wait}} \\ge 0$ reflects physical dispatch latency. "
+        "The A* heuristic function evaluates $f(n) = g(n) + h(n)$, where:",
+        body_style
+    ))
+    story.append(Paragraph(
+        "$$h(n) = \\sqrt{(x_n - x_{\\text{dest}})^2 + (y_n - y_{\\text{dest}})^2} + \\omega_z \\cdot |z_n - z_{\\text{dest}}|$$",
+        math_style
+    ))
+    story.append(Paragraph(
+        "<b>Mathematical Admissibility Proof:</b> For A* to guarantee an optimal path, $h(n)$ must never overestimate the true remaining cost: $h(n) \\le h^*(n)$. "
+        "Because horizontal planar coordinates and vertical floor tiers are normalized into compatible distance units, straight-line 2D Euclidean distance "
+        "is the absolute lower bound on planar routing. Furthermore, since elevator dispatch latency $\\tau_{\\text{wait}} \\ge 0$, the heuristic estimate "
+        "$h(n)$ strictly satisfies $h(n) \\le \\text{cost}^*(n)$ across all nodes, guaranteeing mathematical admissibility and shortest-path optimality.",
         body_style
     ))
     story.append(PageBreak())
@@ -772,7 +781,8 @@ def build_pdf_story(page_dict=None):
     ))
     story.append(Paragraph(
         "To handle heterogeneous academic media without ambiguity or conflation of library roles, the platform implements a strict two-tier processing taxonomy: "
-        "<br/>• <b>Cloud Vision-Language Multimodal APIs:</b> Complex research diagrams, whiteboard snapshots, handwritten mathematical equations, and spoken audio lecture recordings are routed to multimodal LLM vision endpoints. Specifically, image diagrams and handwritten equations are dispatched to the Google Gemini 1.5 Flash/Pro Multimodal Vision API (<code>generativelanguage.googleapis.com</code>) or OpenAI GPT-4o Vision (<code>api.openai.com/v1/chat/completions</code>) with prompts instructing the extraction of LaTeX math syntax (<code>extracted_latex</code>) and core conceptual keywords. Audio inquiries and lecture clips are transcribed using Groq's high-speed Whisper API (<code>whisper-large-v3</code> at <code>api.groq.com/openai/v1/audio/transcriptions</code>) or client-side Web Audio MediaRecorder streams. "
+        "<br/>• <b>Cloud Vision-Language Multimodal APIs:</b> Complex research diagrams, whiteboard snapshots, handwritten mathematical equations, and spoken audio lecture recordings are routed to multimodal LLM vision endpoints. Specifically, image diagrams and handwritten equations are dispatched to the Google Gemini 1.5 Flash/Pro Multimodal Vision API (<code>generativelanguage.googleapis.com</code>) or OpenAI GPT-4o Vision (<code>api.openai.com/v1/chat/completions</code>) with prompts instructing the extraction of LaTeX math syntax (<code>extracted_latex</code>) and core conceptual keywords. "
+        "<br/>• <b>End-to-End Audio Speech Transcription Pipeline:</b> Audio lecture clips and voice inquiries follow a clear 5-stage pipeline: (1) Client browser captures audio via the Web <code>MediaRecorder</code> API as compressed WebM/PCM buffers; (2) Audio is streamed via multipart upload to the FastAPI gateway; (3) The gateway routes the payload to the cloud Groq Whisper API (<code>whisper-large-v3</code> at <code>api.groq.com/openai/v1/audio/transcriptions</code>); (4) Whisper performs speech-to-text transcription, returning verbatim text; and (5) The text string is injected into the Copilot StateGraph agent for intent classification and catalog search. MediaRecorder serves solely as the audio capture mechanism; all acoustic transcription is performed by Groq Whisper. "
         "<br/>• <b>Local Zero-Cost Text Parsing:</b> For digital document formats (PDF papers, Word documents, PowerPoint presentations), raw structured text and table metadata are extracted server-side using <code>pypdf</code>, <code>python-docx</code>, and <code>python-pptx</code>. This local extraction runs at $0.00 compute cost with zero network latency. The Python Imaging Library (<code>Pillow</code>) is utilized exclusively for image decoding, format validation, and thumbnail downscaling, and is never used as an OCR or speech engine.",
         body_style
     ))
@@ -830,8 +840,8 @@ def build_pdf_story(page_dict=None):
         ["loans", "id, student_id, copy_id", "INTEGER, FOREIGN KEYS", "Active borrowing record; student limit enforced via application checks"],
         ["loans", "due_date, returned_at", "DATE, DATETIME NULLABLE", "Circulation lifecycle; partial unique index enforces single active loan per copy"],
         ["study_seats", "id, floor, seat_number", "INTEGER, INT, VARCHAR", "Physical seat identifier across Floor tiers 0, 1, 2, 3 with (x,y) coordinates"],
-        ["reservations", "id, user_id, resource_type", "INT PK, INT FK, VARCHAR(20)", "Reservation owner (patron_id FK to users.id) and resource type ('seat'/'room')"],
-        ["reservations", "start_time, end_time", "DATETIME, DATETIME", "Booking slot; transactional query prevents overlapping active bookings"],
+        ["reservations", "id, user_id, resource_type", "INT PK, INT FK, VARCHAR(20)", "Reservation owner (user_id FK to users.id) and resource type ('seat'/'room')"],
+        ["reservations", "start_time, end_time", "DATETIME, DATETIME", "Booking slot; transactional overlap check prevents double-booking"],
         ["reservations", "status, checked_in_at", "VARCHAR(20), DATETIME NULL", "Status ('active','completed','cancelled'); 15-min auto-expiry sweep"]
     ]
     s_table = Table([[Paragraph(f"<b>{c}</b>" if idx == 0 else c, t_bold if idx == 0 else t_body) for c in row] for idx, row in enumerate(schema_data)], colWidths=[85, 110, 125, 167])
@@ -843,14 +853,13 @@ def build_pdf_story(page_dict=None):
         ('BOTTOMPADDING', (0,0), (-1,-1), 1.8),
     ]))
     story.append(s_table)
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 5))
     story.append(Paragraph(
-        "<b>Circulation Constraint Enforcement Architecture:</b> The platform enforces borrowing limits and copy availability via a two-layer defense. "
-        "The three-active-loans policy for students (and 10 for faculty) is enforced via <i>application-level transactional validation</i> inside "
-        "<code>services/loans.py</code> within an <code>atomic_write(db)</code> block: the service queries <code>get_student_active_loan_count()</code> "
-        "and raises an HTTP 400 error if the quota is exceeded. Simultaneously, a <i>database-enforced partial unique index</i> "
-        "(<code>uix_one_active_loan_per_copy</code> on <code>copy_id</code> where <code>returned_at IS NULL</code>) guarantees at the storage engine level "
-        "that a physical book copy cannot have more than one unreturned active loan under any concurrency condition.",
+        "<b>Reservation & Borrowing Invariant Enforcement:</b> Every reservation record is anchored to the patron's unique surrogate key (<code>user_id</code>, foreign key referencing <code>users.id</code> with <code>RESTRICT</code> integrity). "
+        "To prevent overlapping bookings of physical seats or collaboration rooms, the spatial reservation service in <code>services/spaces.py</code> executes an atomic conflict check query within an <code>atomic_write(db)</code> transaction prior to commit: "
+        "<code>SELECT COUNT(id) FROM reservations WHERE resource_id = ? AND status = 'active' AND (start_time &lt; :new_end AND end_time &gt; :new_start);</code> "
+        "If the query returns a count greater than zero, the transaction rolls back and raises an HTTP 409 Conflict exception. "
+        "Simultaneously, the three-active-loans policy for students is enforced via application-level transactional validation in <code>services/loans.py</code>: the service checks <code>get_student_active_loan_count()</code> and raises an HTTP 400 error if active loans exceed policy, while a database partial unique index (<code>uix_one_active_loan_per_copy</code> on <code>copy_id</code> where <code>returned_at IS NULL</code>) guarantees that no physical book copy can have more than one unreturned active loan under any concurrency condition.",
         body_style
     ))
     story.append(PageBreak())
@@ -873,7 +882,7 @@ def build_pdf_story(page_dict=None):
         ["PyTorch (torch)", "2.14.1", "Tensor computation backend powering dense cosine vector calculations"],
         ["NumPy & SciPy", "2.4.6 / 1.17.1", "Vectorized math, inner dot products, Euclidean spatial distance matrices"],
         ["ReportLab", "5.1.0", "Enterprise-grade PDF rendering engine; custom two-pass Platypus canvas"],
-        ["HTTPX & HTTPX2", "0.28.1 / 2.16.0", "Asynchronous HTTP client for OpenAlex, arXiv, Crossref, and LLM APIs"],
+        ["HTTPX", "0.28.1", "Asynchronous HTTP client for OpenAlex, arXiv, Crossref, and cloud LLM APIs"],
         ["pypdf", "7.0.0", "Native server-side PDF text extraction stream parsing for local fallback mode"],
         ["python-docx & python-pptx", "1.2.0 / 1.0.2", "Native structured text frame extraction from Word (.docx) & Slides (.pptx)"],
         ["Pillow (PIL)", "13.0.0", "Image decoding, resolution normalization, and multimodal thumbnail generation"],
@@ -992,18 +1001,18 @@ def build_pdf_story(page_dict=None):
 
     # Logical Page 24 - SCREENSHOT 4: Server-Side Pagination
     story.append(PageTracker("sub_4_5", page_dict))
-    story.append(Paragraph("4.5 Stable Server-Side Pagination & Global Preprints Corpus (Photo 4)", h2_style))
+    story.append(Paragraph("4.5 Stable Server-Side Pagination & Global Scholarly Works Corpus (Photo 4)", h2_style))
     story.append(Paragraph(
         "Figure 4 captures the live multimodal research results interface. The system concurrently displays matching university library "
-        "monographs on campus shelves alongside 50 retrieved scholarly preprints from arXiv and OpenAlex. "
-        "The interface features stable, layout-shift-free server-side pagination (5 preprints per page), direct PDF download links, "
+        "monographs on campus shelves alongside 50 retrieved scholarly works and preprints from OpenAlex and arXiv. "
+        "The interface features stable, layout-shift-free server-side pagination (5 papers per page), direct PDF download links, "
         "DOI resolution hyperlinks, and one-click shelf wayfinding triggers.",
         body_style
     ))
     img4_path = os.path.join(UPLOAD_DIR, "media_1794668858088_32d10d17.jpg")
     if os.path.exists(img4_path):
         story.append(Image(img4_path, width=480, height=295))
-        story.append(Paragraph("<b>Figure 4:</b> Omnichannel Search Results Displaying Cross-Federated Monograph Holdings and arXiv/OpenAlex Preprints.", caption_style))
+        story.append(Paragraph("<b>Figure 4:</b> Omnichannel Search Results Displaying Cross-Federated Monograph Holdings and OpenAlex/arXiv Works.", caption_style))
     story.append(PageBreak())
 
     # Logical Page 25 - SCREENSHOT 5: Spatial Floor Map
@@ -1038,31 +1047,30 @@ def build_pdf_story(page_dict=None):
     ))
     story.append(PageBreak())
 
-    # Logical Page 27 - Comparative Evaluation
+    # Logical Page 27 - Qualitative Comparative Evaluation
     story.append(PageTracker("sub_4_8", page_dict))
-    story.append(Paragraph("4.8 Illustrative Comparative Architectural Evaluation Against Legacy Systems", h2_style))
+    story.append(Paragraph("4.8 Qualitative Comparative Architectural Evaluation Against Legacy Systems", h2_style))
     story.append(Paragraph(
-        "The following comparative table contrasts Athenaeum AI 2.0 with traditional academic library platforms (Koha ILS 23.11 and DSpace 7.6). "
-        "Values for Koha and DSpace are drawn from published domain literature and standard architectural capabilities under default indexing configurations, "
-        "presented here as an illustrative architectural comparison rather than direct co-located empirical measurements:",
+        "The following comparative matrix contrasts the architectural capabilities of Athenaeum AI 2.0 with leading production systems in academic libraries (Koha ILS 23.11 and DSpace 7.6). "
+        "To maintain rigorous scientific standards, this comparison examines fundamental system architectures, database designs, and indexing paradigms based on documented system specifications:",
         body_style
     ))
 
     comp_data = [
-        ["Benchmark Dimension / Metric", "Koha ILS 23.11", "DSpace 7.6", "Athenaeum AI 2.0"],
-        ["Mean Search Precision@5", "0.42 (exact keywords)", "0.58 (metadata only)", "<b>0.94 (RRF k=60 hybrid)</b>"],
-        ["Cross-Domain Discovery Recall", "0.28 (zero on typos)", "0.36 (lexical tags)", "<b>0.91 (dense vector space)</b>"],
-        ["Document Ingestion Time", "Manual librarian entry", "Manual batch ingest", "<b><300ms (Groq / Local pypdf)</b>"],
-        ["Spatial Wayfinding Accuracy", "None (text string shelf)", "None (room code)", "<b>Exact (x,y) coordinates & A*</b>"],
-        ["Peak Concurrency Handling", "Deadlocks on SQLite", "Row-level DB lock", "<b>Immediate Writer Lock WAL</b>"]
+        ["Architectural Dimension", "Koha ILS 23.11 (Standard)", "DSpace 7.6 Repository", "Athenaeum AI 2.0 Platform"],
+        ["Search & Ranking Paradigm", "Relational SQL LIKE / Zebra or Elasticsearch keyword indexing; brittle to vocabulary mismatch.", "Lucene / Solr inverted text index over Dublin Core metadata fields; exact term matching with facet filters.", "Dual-Channel Reciprocal Rank Fusion ($k=60$) combining lexical BM25 with 384-dim dense vector cosine similarity."],
+        ["Cross-Domain Semantic Discovery", "Relies entirely on manual MARC21 subject authority records; zero latent conceptual cross-indexing.", "Dependent on manually assigned Dublin Core taxonomy tags and author-submitted keywords.", "Latent semantic vector space (MiniLM-L6-v2); autonomously maps conceptual inquiries across academic disciplines."],
+        ["Multimodal Document Processing", "Completely absent; manual librarian cataloguing of bibliographic metadata records.", "Passive bitstream attachment storage; no autonomous visual, equation, or audio extraction.", "Omnichannel multimodal analysis (Gemini 1.5/GPT-4o/Whisper for diagrams, equations, audio; local zero-cost text parsers)."],
+        ["Spatial Guidance & Indoor Routing", "Static alphanumeric shelf string (e.g. 'Stack 4B, Shelf 2'); no indoor coordinate routing.", "Absent (digital repository without physical library facility or stack integration).", "Planar Cartesian coordinate geometry ($x,y,z$), Euclidean clustering, A* pathfinding, and interactive 3D WebGL scenes."],
+        ["Database Concurrency & Scalability", "MySQL / MariaDB (InnoDB row locking); connection pool contention during peak campus borrowing surges.", "PostgreSQL object-relational transactions; connection pool overhead on heavy concurrent digital bitstream transfers.", "SQLite Write-Ahead Logging (WAL) with <code>BEGIN IMMEDIATE</code> writer lock serialization and zero connection pool exhaustion."]
     ]
-    cp_table = Table([[Paragraph(f"<b>{c}</b>" if idx == 0 else c, t_bold if idx == 0 else t_body) for c in row] for idx, row in enumerate(comp_data)], colWidths=[140, 110, 110, 127])
+    cp_table = Table([[Paragraph(f"<b>{c}</b>" if idx == 0 else c, t_bold if idx == 0 else t_body) for c in row] for idx, row in enumerate(comp_data)], colWidths=[105, 125, 125, 132])
     cp_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f1f5f9")),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
     ]))
     story.append(cp_table)
     story.append(PageBreak())
@@ -1124,7 +1132,7 @@ def build_pdf_story(page_dict=None):
         body_style
     ))
     story.append(Paragraph("1. <b>Dual-Channel Hybrid Fusion ($k=60$)</b> mathematically combines dense vector semantic representations with lexical token frequencies, improving ranking consistency on complex multi-disciplinary research inquiries.", bullet_style))
-    story.append(Paragraph("2. <b>Omnichannel Multimodal Ingestion</b> empowers scholars to bridge physical library stacks with 250M+ global scholarly preprints via diagrams, speech, or raw documents in under 300ms.", bullet_style))
+    story.append(Paragraph("2. <b>Omnichannel Multimodal Ingestion</b> empowers scholars to bridge physical library stacks with 250M+ scholarly works indexed by OpenAlex (alongside arXiv preprints and Crossref DOIs) via diagrams, speech, or raw documents in sub-second response times.", bullet_style))
     story.append(Paragraph("3. <b>Spatial-Semantic Modeling</b> unifies physical study space occupancy with digital circulation records, providing real-time wayfinding and quiet-zone telemetry.", bullet_style))
     story.append(Paragraph("4. <b>ACID Concurrency Isolation</b> via SQLite WAL mode and <code>BEGIN IMMEDIATE</code> writer locks safeguards monograph checkouts against inventory overselling.", bullet_style))
     story.append(Paragraph("5. <b>High-Assurance Software Quality</b> is verified through a comprehensive 423-test automated regression suite passing all 423 tests in the recorded run.", bullet_style))
