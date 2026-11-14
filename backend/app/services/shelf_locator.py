@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.models import Book, LibraryFloor
-from app.schemas import BookShelfLocationResponse, ShelfBookNeighbor
+from app.schemas import (
+    BookShelfLocationResponse,
+    ShelfBookNeighbor,
+    ShelfReadingAuditResponse,
+    ExitGateVerificationResponse,
+)
 
 
 CATEGORY_STACK_MAP = {
@@ -338,3 +343,310 @@ def report_book_missing_service(
         return {
             "message": f"Shelf audit report logged for '{book.title}'. Physical copy status marked for staff inspection to prevent ghost availability."
         }
+
+
+def perform_shelf_reading_audit_service(
+    db: Session,
+    audited_aisle: str,
+    barcode: str,
+    auditor_id: Optional[int] = None,
+) -> ShelfReadingAuditResponse:
+    """
+    Performs real-time shelf reading audit along a library aisle.
+    Detects if a book is misplaced, verified in place, or a recovered missing item.
+    """
+    from app.database import atomic_write
+    from app.models import Book, BookCopy, InventoryEvent, User
+
+    clean_code = barcode.strip()
+
+    # Match copy_code first
+    copy = db.query(BookCopy).filter(BookCopy.copy_code == clean_code).first()
+
+    # Match ISBN or partial copy code if not found directly
+    if not copy:
+        clean_isbn = clean_code.replace("-", "").replace(" ", "")
+        book_match = db.query(Book).filter(Book.isbn == clean_isbn).first()
+        if book_match:
+            copy = db.query(BookCopy).filter(BookCopy.book_id == book_match.id).first()
+
+    if not copy:
+        copy = db.query(BookCopy).filter(BookCopy.copy_code.ilike(f"%{clean_code}%")).first()
+
+    if not copy:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No monograph copy matching barcode '{clean_code}' was found in library records.",
+        )
+
+    book = db.query(Book).filter(Book.id == copy.book_id).first()
+    if not book:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Parent monograph record for copy '{copy.copy_code}' not found.",
+        )
+
+    loc = locate_book_on_shelf_service(db, book.id)
+    expected_aisle = loc.aisle
+    was_flagged = copy.operational_status in ("maintenance", "lost")
+
+    with atomic_write(db):
+        auditor = None
+        if auditor_id:
+            auditor = db.query(User).filter(User.id == auditor_id).first()
+        if not auditor:
+            auditor = db.query(User).first()
+        if not auditor:
+            auditor = User(
+                email="system_audit@athenaeum.edu",
+                full_name="System Inventory Auditor",
+                hashed_password="!",
+                role="librarian",
+                is_active=True,
+            )
+            db.add(auditor)
+            db.flush()
+
+        auditor_id_val = auditor.id
+        is_correct_aisle = (audited_aisle.strip().lower() == expected_aisle.strip().lower())
+        event = None
+
+        if not is_correct_aisle:
+            status_code = "misplaced"
+            floor_short = loc.floor_name.split("—")[0].strip() if "—" in loc.floor_name else f"Floor {loc.floor_number}"
+            action_suggested = f"Route to Reshelving Cart -> Transfer to {expected_aisle} ({floor_short})"
+            msg = (
+                f"🚨 MISPLACED MONOGRAPH DETECTED! '{book.title}' ({copy.copy_code}) found in {audited_aisle}, "
+                f"but belongs in {expected_aisle}, {loc.bay}, {loc.shelf_tier_name}, Slot #{loc.slot_number}."
+            )
+            event = InventoryEvent(
+                copy_id=copy.id,
+                auditor_id=auditor_id_val,
+                event_type="shelf_audit_misplaced",
+                previous_status=copy.operational_status,
+                new_status=copy.operational_status,
+                notes=f"Misplaced in {audited_aisle}; belongs in {expected_aisle}",
+            )
+            db.add(event)
+        elif was_flagged:
+            status_code = "recovered"
+            action_suggested = f"Restore to Active Stacks (Slot #{loc.slot_number})"
+            msg = (
+                f"🎉 PREVIOUSLY MISSING ITEM RECOVERED! '{book.title}' ({copy.copy_code}) verified on {audited_aisle}. "
+                f"Status restored to available inventory."
+            )
+            prev = copy.operational_status
+            copy.operational_status = "available"
+            copy.notes = "Recovered during aisle shelf reading."
+            event = InventoryEvent(
+                copy_id=copy.id,
+                auditor_id=auditor_id_val,
+                event_type="shelf_audit_recovered",
+                previous_status=prev,
+                new_status="available",
+                notes=f"Found and verified on {audited_aisle} during staff shelf audit.",
+            )
+            db.add(event)
+        else:
+            status_code = "verified_in_place"
+            action_suggested = "None (Item in Correct Shelf Location)"
+            msg = (
+                f"✅ VERIFIED IN PLACE: '{book.title}' ({copy.copy_code}) correctly shelved on {expected_aisle}, "
+                f"{loc.shelf_tier_name}, Slot #{loc.slot_number}."
+            )
+            event = InventoryEvent(
+                copy_id=copy.id,
+                auditor_id=auditor_id_val,
+                event_type="shelf_audit_verified",
+                previous_status=copy.operational_status,
+                new_status=copy.operational_status,
+                notes=f"Verified in place on {audited_aisle} (Bay {loc.bay}, Slot #{loc.slot_number}).",
+            )
+            db.add(event)
+
+    return ShelfReadingAuditResponse(
+        status=status_code,
+        copy_code=copy.copy_code,
+        book_title=book.title,
+        book_id=book.id,
+        category=book.category,
+        dewey_call_number=loc.call_number,
+        audited_aisle=audited_aisle,
+        expected_floor=loc.floor_number,
+        expected_aisle=loc.aisle,
+        expected_bay=loc.bay,
+        expected_tier=loc.shelf_tier_name,
+        expected_slot=loc.slot_number,
+        action_suggested=action_suggested,
+        message=msg,
+        audit_event_id=event.id if event else None,
+    )
+
+
+def execute_reshelve_action_service(
+    db: Session,
+    copy_code: str,
+    action: str = "route_to_cart",
+    user_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Handles physical reshelving buffer transitions:
+    - 'route_to_cart': marks copy as 'in_reshelving' on mobile cart.
+    - 'mark_on_shelf': verifies book placed back into its designated shelf slot, marking 'available'.
+    """
+    from app.database import atomic_write
+    from app.models import BookCopy, InventoryEvent, User
+
+    with atomic_write(db):
+        copy = db.query(BookCopy).filter(BookCopy.copy_code == copy_code.strip()).first()
+        if not copy:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Book copy '{copy_code}' not found.",
+            )
+
+        auditor = db.query(User).filter(User.id == user_id).first() if user_id else db.query(User).first()
+        if not auditor:
+            auditor = User(
+                email="system_audit@athenaeum.edu",
+                full_name="System Inventory Auditor",
+                hashed_password="!",
+                role="librarian",
+                is_active=True,
+            )
+            db.add(auditor)
+            db.flush()
+        auditor_id_val = auditor.id
+        prev_status = copy.operational_status
+
+        if action == "route_to_cart":
+            copy.operational_status = "in_reshelving"
+            copy.notes = "Placed on mobile reshelving cart for redistribution."
+            new_status = "in_reshelving"
+            event_type = "reshelving_cart_load"
+            msg = f"Item {copy.copy_code} loaded onto Circulation Reshelving Cart #1."
+        else:
+            copy.operational_status = "available"
+            copy.notes = "Verified returned to home shelf slot."
+            new_status = "available"
+            event_type = "reshelving_completed"
+            msg = f"Item {copy.copy_code} verified returned to designated shelf tier."
+
+        event = InventoryEvent(
+            copy_id=copy.id,
+            auditor_id=auditor_id_val,
+            event_type=event_type,
+            previous_status=prev_status,
+            new_status=new_status,
+            notes=msg,
+        )
+        db.add(event)
+
+    return {
+        "copy_code": copy.copy_code,
+        "operational_status": copy.operational_status,
+        "message": msg,
+    }
+
+
+def verify_exit_gate_service(
+    db: Session,
+    copy_code: str,
+) -> ExitGateVerificationResponse:
+    """
+    Simulates physical RFID / Acousto-Magnetic security pedestals at library exits.
+    Validates if an item passing the gate has an active unreturned loan.
+    """
+    from datetime import datetime
+    from app.models import BookCopy, Book, Loan, User, InventoryEvent
+    from app.database import atomic_write
+
+    clean_code = copy_code.strip()
+    copy = db.query(BookCopy).filter(BookCopy.copy_code == clean_code).first()
+    if not copy:
+        clean_isbn = clean_code.replace("-", "").replace(" ", "")
+        book = db.query(Book).filter(Book.isbn == clean_isbn).first()
+        if book:
+            copy = db.query(BookCopy).filter(BookCopy.book_id == book.id).first()
+
+    now_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if not copy:
+        return ExitGateVerificationResponse(
+            allow_exit=False,
+            alarm_triggered=True,
+            status="UNKNOWN_ITEM",
+            message=f"UNKNOWN BARCODE: Tag '{clean_code}' is not registered in university library inventory. Security gate locked.",
+            copy_code=clean_code,
+            book_title=None,
+            borrower_name=None,
+            borrower_email=None,
+            loan_id=None,
+            due_date=None,
+            timestamp=now_iso,
+        )
+
+    book = db.query(Book).filter(Book.id == copy.book_id).first()
+    book_title = book.title if book else "Unknown Monograph"
+
+    # Check for active loan
+    active_loan = db.query(Loan).filter(
+        Loan.copy_id == copy.id,
+        Loan.returned_at.is_(None),
+    ).order_by(Loan.id.desc()).first()
+
+    if active_loan:
+        borrower = db.query(User).filter(User.id == active_loan.student_id).first()
+        borrower_name = borrower.full_name if borrower else f"Student #{active_loan.student_id}"
+        borrower_email = borrower.email if borrower else None
+
+        return ExitGateVerificationResponse(
+            allow_exit=True,
+            alarm_triggered=False,
+            status="AUTHORIZED_CHECKOUT",
+            message=f"AUTHORIZED DEPARTURE: Active checkout verified for {borrower_name}. Monograph '{book_title}' is permitted to exit.",
+            copy_code=copy.copy_code,
+            book_title=book_title,
+            borrower_name=borrower_name,
+            borrower_email=borrower_email,
+            loan_id=active_loan.id,
+            due_date=str(active_loan.due_date),
+            timestamp=now_iso,
+        )
+    else:
+        with atomic_write(db):
+            admin = db.query(User).first()
+            if not admin:
+                admin = User(
+                    email="system_security@athenaeum.edu",
+                    full_name="Security Sensor Daemon",
+                    hashed_password="!",
+                    role="librarian",
+                    is_active=True,
+                )
+                db.add(admin)
+                db.flush()
+
+            event = InventoryEvent(
+                copy_id=copy.id,
+                auditor_id=admin.id,
+                event_type="security_alarm",
+                previous_status=copy.operational_status,
+                new_status=copy.operational_status,
+                notes="Unauthorized exit gate sensor trip: Book detected passing exit pedestal without active checkout loan.",
+            )
+            db.add(event)
+
+        return ExitGateVerificationResponse(
+            allow_exit=False,
+            alarm_triggered=True,
+            status="UNAUTHORIZED_ALARM",
+            message=f"🚨 SECURITY ALARM TRIGGERED! Monograph '{book_title}' ({copy.copy_code}) was detected passing the exit sensor without an active loan! Gate locked.",
+            copy_code=copy.copy_code,
+            book_title=book_title,
+            borrower_name=None,
+            borrower_email=None,
+            loan_id=None,
+            due_date=None,
+            timestamp=now_iso,
+        )

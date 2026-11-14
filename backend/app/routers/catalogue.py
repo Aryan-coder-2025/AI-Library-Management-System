@@ -22,6 +22,9 @@ from app.schemas import (
     ISBNLookupResponse,
     BookAutoCatalogIn,
     BookShelfLocationResponse,
+    ShelfReadingAuditRequest,
+    ShelfReadingAuditResponse,
+    ReshelveActionRequest,
 )
 from app.services import catalogue as catalogue_service
 from app.services import isbn_lookup as isbn_service
@@ -179,6 +182,51 @@ def report_missing_from_shelf(
         book_id=book_id,
         user_id=current_user.id if current_user else None,
         notes=notes,
+    )
+
+
+@router.post(
+    "/api/books/shelf-audit",
+    response_model=ShelfReadingAuditResponse,
+    summary="Conduct physical shelf reading audit along a target library aisle (librarian only)",
+)
+def shelf_reading_audit(
+    req: ShelfReadingAuditRequest,
+    current_user: User = Depends(require_librarian),
+    db: Session = Depends(get_write_db),
+):
+    """
+    Simulates real-world librarian shelf reading.
+    Verifies whether a scanned book is in its assigned aisle/tier/slot,
+    detects misplaced items with cross-aisle routing guidance,
+    and restores missing inventory to available status upon recovery.
+    """
+    return shelf_locator.perform_shelf_reading_audit_service(
+        db=db,
+        audited_aisle=req.audited_aisle,
+        barcode=req.barcode,
+        auditor_id=current_user.id,
+    )
+
+
+@router.post(
+    "/api/books/reshelve-action",
+    summary="Execute reshelving buffer transition (cart load or shelf restock)",
+)
+def reshelve_action(
+    req: ReshelveActionRequest,
+    current_user: User = Depends(require_librarian),
+    db: Session = Depends(get_write_db),
+):
+    """
+    Updates a physical book copy between 'in_reshelving' (on mobile cart)
+    and 'available' (verified back in shelf slot), logging an inventory audit event.
+    """
+    return shelf_locator.execute_reshelve_action_service(
+        db=db,
+        copy_code=req.copy_code,
+        action=req.action,
+        user_id=current_user.id,
     )
 
 

@@ -21,7 +21,10 @@ from app.schemas import (
     CopyStatusUpdateRequest,
     InventoryEventListResponse,
     InventoryEventResponse,
+    ExitGateVerificationRequest,
+    ExitGateVerificationResponse,
 )
+from app.services import shelf_locator
 from app.services.inventory_ops import get_copy_audit_history, process_copy_status_change
 from app.services.qr_collection import generate_book_collection_pass, verify_and_fulfill_qr_collection
 from app.services.qr_return import (
@@ -184,4 +187,35 @@ def get_copy_history(
     """Retrieves chronological inventory audit history for a physical copy."""
     events = get_copy_audit_history(db, copy_id)
     return InventoryEventListResponse(items=events, total=len(events))
+
+
+# ── Physical Exit Security & Anti-Theft Sensor Endpoints ─────────────────────
+
+@router.post(
+    "/verify-exit-gate",
+    response_model=ExitGateVerificationResponse,
+    summary="Simulate or query physical RFID/EM anti-theft security exit gate",
+)
+def verify_exit_gate(
+    req: ExitGateVerificationRequest,
+    db: Session = Depends(get_write_db),
+):
+    """
+    Automated exit gate check: Evaluates if a physical book copy passing the RFID exit gate
+    has an active loan or triggers the security theft alarm.
+    """
+    return shelf_locator.verify_exit_gate_service(db=db, copy_code=req.copy_code)
+
+
+@router.get(
+    "/verify-exit-gate/{copy_code}",
+    response_model=ExitGateVerificationResponse,
+    summary="Fast query for exit security gate sensor hardware",
+)
+def verify_exit_gate_by_code(
+    copy_code: str,
+    db: Session = Depends(get_write_db),
+):
+    """Hardware wedge query for exit security gate controllers."""
+    return shelf_locator.verify_exit_gate_service(db=db, copy_code=copy_code)
 

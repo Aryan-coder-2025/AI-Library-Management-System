@@ -416,6 +416,54 @@ class BookShelfLocationResponse(BaseModel):
     shelf_neighbors: List[ShelfBookNeighbor]
 
 
+# ── Shelf Reading Audit & Exit Security Gate Schemas ──────────────────────────
+
+class ShelfReadingAuditRequest(BaseModel):
+    audited_aisle: str = Field(..., description="Aisle currently being walked/audited, e.g. 'Aisle 1A' or 'Aisle 2B'")
+    barcode: str = Field(..., description="Scanned accession copy code (BC-0001-01) or ISBN")
+
+
+class ShelfReadingAuditResponse(BaseModel):
+    status: str  # verified_in_place, misplaced, recovered, not_found
+    copy_code: str
+    book_title: str
+    book_id: int
+    category: str
+    dewey_call_number: str
+    audited_aisle: str
+    expected_floor: int
+    expected_aisle: str
+    expected_bay: str
+    expected_tier: str
+    expected_slot: int
+    action_suggested: str
+    message: str
+    audit_event_id: Optional[int] = None
+
+
+class ReshelveActionRequest(BaseModel):
+    copy_code: str
+    action: str = Field("route_to_cart", description="'route_to_cart' or 'mark_on_shelf'")
+
+
+class ExitGateVerificationRequest(BaseModel):
+    copy_code: str = Field(..., description="Accession barcode scanned at exit sensor gate")
+
+
+class ExitGateVerificationResponse(BaseModel):
+    allow_exit: bool
+    alarm_triggered: bool
+    status: str  # AUTHORIZED_CHECKOUT, UNAUTHORIZED_ALARM, UNKNOWN_ITEM
+    message: str
+    copy_code: str
+    book_title: Optional[str] = None
+    borrower_name: Optional[str] = None
+    borrower_email: Optional[str] = None
+    loan_id: Optional[int] = None
+    due_date: Optional[str] = None
+    timestamp: str
+
+
 # ── Loan Circulation Schemas ──────────────────────────────────────────────────
 
 class LoanIssueRequest(BaseModel):

@@ -59,7 +59,7 @@ def process_copy_status_change(
         )
 
     clean_status = new_status.strip().lower()
-    if clean_status not in ("available", "maintenance", "lost", "damaged", "retired"):
+    if clean_status not in ("available", "maintenance", "lost", "damaged", "retired", "in_reshelving"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid copy status '{clean_status}'.",

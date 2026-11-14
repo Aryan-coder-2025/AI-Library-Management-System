@@ -9,6 +9,8 @@ import type {
 } from '../types/library';
 import { CopyStatusModal } from './CopyStatusModal';
 import { PhysicalBookScannerModal } from './PhysicalBookScannerModal';
+import { ShelfReadingAuditModal } from './ShelfReadingAuditModal';
+import { ExitSecurityGateModal } from './ExitSecurityGateModal';
 
 interface DisplayBook extends Book {
   match_channels?: string[];
@@ -31,6 +33,8 @@ export const LibrarianCatalogue: React.FC = () => {
 
   // Modals
   const [showPhysicalScanner, setShowPhysicalScanner] = useState(false);
+  const [showShelfAudit, setShowShelfAudit] = useState(false);
+  const [showExitGate, setShowExitGate] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [selectedBookForCopies, setSelectedBookForCopies] = useState<BookDetail | null>(null);
@@ -310,6 +314,36 @@ export const LibrarianCatalogue: React.FC = () => {
             onClick={() => setShowPhysicalScanner(true)}
           >
             <span>📷</span> Scan Physical Book (ISBN / Camera)
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: '#1e1b4b',
+              borderColor: '#4338ca',
+              color: '#a5b4fc',
+            }}
+            onClick={() => setShowShelfAudit(true)}
+          >
+            <span>🔍</span> Shelf-Reading Audit
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: '#311010',
+              borderColor: '#991b1b',
+              color: '#fca5a5',
+            }}
+            onClick={() => setShowExitGate(true)}
+          >
+            <span>🚨</span> Exit Security Gate
           </button>
           <button type="button" data-tour="librarian-add-book" className="btn btn-secondary" onClick={openAddModal}>
             + Manual Entry
@@ -865,6 +899,21 @@ export const LibrarianCatalogue: React.FC = () => {
           setSuccessNotice(`Successfully accessioned "${newBook.title}" with ${newBook.copies?.length || 0} physical copies!`);
           fetchBooks();
         }}
+      />
+
+      {/* Real-time Shelf-Reading & Misplaced Monograph Audit Modal */}
+      <ShelfReadingAuditModal
+        isOpen={showShelfAudit}
+        onClose={() => {
+          setShowShelfAudit(false);
+          fetchBooks();
+        }}
+      />
+
+      {/* Physical RFID / EM Anti-Theft Exit Gate Simulator Modal */}
+      <ExitSecurityGateModal
+        isOpen={showExitGate}
+        onClose={() => setShowExitGate(false)}
       />
     </div>
   );
