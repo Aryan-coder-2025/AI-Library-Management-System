@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { VisionResearchResponse } from '../types/library';
+import type { VisionResearchResponse, VisionCatalogueMatch, VisionPaperMatch } from '../types/library';
 
 interface VisionSearchModalProps {
   onClose: () => void;
@@ -19,8 +19,19 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<VisionResearchResponse | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  // Dynamic Multi-Page Pagination State
+  const [displayedBooks, setDisplayedBooks] = useState<VisionCatalogueMatch[]>([]);
+  const [booksTotal, setBooksTotal] = useState<number>(0);
   const [booksPage, setBooksPage] = useState<number>(1);
+  const [isFetchingBooks, setIsFetchingBooks] = useState<boolean>(false);
+  const [activeCatalogueQuery, setActiveCatalogueQuery] = useState<string>('');
+
+  const [displayedPapers, setDisplayedPapers] = useState<VisionPaperMatch[]>([]);
+  const [papersTotal, setPapersTotal] = useState<number>(0);
   const [papersPage, setPapersPage] = useState<number>(1);
+  const [isFetchingPapers, setIsFetchingPapers] = useState<boolean>(false);
+  const [activeScholarlyQuery, setActiveScholarlyQuery] = useState<string>('');
 
   // Audio Recording State
   const [isRecording, setIsRecording] = useState<boolean>(false);
@@ -215,13 +226,95 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
 
       const data: VisionResearchResponse = await res.json();
       setResults(data);
+
+      const catMatches = data.catalogue_matches || [];
+      setDisplayedBooks(catMatches);
+      setBooksTotal(catMatches.length >= 8 ? 25 : catMatches.length);
       setBooksPage(1);
+      const initialCatQ = data.analysis?.suggested_catalogue_search || data.analysis?.key_concepts?.[0] || userQuery || '';
+      setActiveCatalogueQuery(initialCatQ);
+
+      const scholMatches = data.scholarly_papers || [];
+      setDisplayedPapers(scholMatches);
+      setPapersTotal(scholMatches.length >= 10 ? 40 : scholMatches.length);
       setPapersPage(1);
+      const initialScholQ = data.analysis?.suggested_scholarly_search || data.analysis?.key_concepts?.[0] || userQuery || '';
+      setActiveScholarlyQuery(initialScholQ);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error processing media.';
       setError(msg.replace(/^\d+:\s*/, ''));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFetchPapersPage = async (targetPage: number, overrideQuery?: string) => {
+    const q = (overrideQuery !== undefined ? overrideQuery : activeScholarlyQuery) || userQuery || (results?.analysis?.key_concepts?.[0] || '');
+    if (!q.trim()) return;
+    setIsFetchingPapers(true);
+    try {
+      const res = await fetch(`/api/research/search?q=${encodeURIComponent(q.trim())}&limit=5&page=${targetPage}`);
+      if (res.ok) {
+        const json = await res.json();
+        const mapped: VisionPaperMatch[] = (json.results || []).map((p: any) => ({
+          paper_id: p.id,
+          title: p.title,
+          authors: p.authors || [],
+          year: p.publication_year,
+          venue: p.venue,
+          doi: p.doi,
+          open_access_pdf_url: p.open_access_pdf_url,
+        }));
+        setDisplayedPapers(mapped);
+        setPapersPage(targetPage);
+        if (json.total_results !== undefined) {
+          setPapersTotal(Math.max(json.total_results, mapped.length));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching papers page:', err);
+    } finally {
+      setIsFetchingPapers(false);
+    }
+  };
+
+  const handleFetchBooksPage = async (targetPage: number, overrideQuery?: string) => {
+    const q = (overrideQuery !== undefined ? overrideQuery : activeCatalogueQuery) || userQuery || (results?.analysis?.key_concepts?.[0] || '');
+    if (!q.trim()) return;
+    setIsFetchingBooks(true);
+    try {
+      const csrfToken = document.cookie
+        .split('; ')
+        .find((row) => row.startsWith('csrf_token='))
+        ?.split('=')[1] || '';
+      const headers: Record<string, string> = {};
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+      const res = await fetch(`/api/search/hybrid?q=${encodeURIComponent(q.trim())}&page_size=4&page=${targetPage}`, {
+        headers,
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const mapped: VisionCatalogueMatch[] = (json.items || []).map((b: any) => ({
+          id: b.id,
+          title: b.title,
+          author: b.author,
+          isbn: b.isbn,
+          category: b.category,
+          available_copies: b.available_copies ?? 0,
+          total_copies: b.total_copies ?? 0,
+        }));
+        setDisplayedBooks(mapped);
+        setBooksPage(targetPage);
+        if (json.total !== undefined) {
+          setBooksTotal(Math.max(json.total, mapped.length));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching books page:', err);
+    } finally {
+      setIsFetchingBooks(false);
     }
   };
 
@@ -232,6 +325,12 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
       setPreviewUrl(null);
     }
     setResults(null);
+    setDisplayedBooks([]);
+    setDisplayedPapers([]);
+    setBooksTotal(0);
+    setPapersTotal(0);
+    setBooksPage(1);
+    setPapersPage(1);
     setError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -684,21 +783,64 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
 
               {/* Local Library Catalogue Holdings */}
               <div>
-                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span>📚</span> University Library Holdings on Shelves
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400 }}>
-                    ({results.catalogue_matches.length} matching textbooks)
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span>📚</span> University Library Holdings on Shelves
+                    <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600 }}>
+                      ({booksTotal > 0 ? `${booksTotal.toLocaleString()} holdings found` : 'Catalogue holdings'})
+                    </span>
+                  </h4>
+                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                    Page <strong>{booksPage}</strong> of {Math.max(1, Math.ceil(booksTotal / 4))}
                   </span>
-                </h4>
+                </div>
 
-                {results.catalogue_matches.length === 0 ? (
+                {/* Refine Catalogue Search Input */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <input
+                    type="text"
+                    value={activeCatalogueQuery}
+                    onChange={(e) => setActiveCatalogueQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleFetchBooksPage(1, activeCatalogueQuery);
+                      }
+                    }}
+                    placeholder="Refine campus library shelf keyword (e.g. Operating Systems, Robotics)..."
+                    style={{
+                      flex: 1,
+                      background: '#080d1a',
+                      border: '1px solid #1e293b',
+                      borderRadius: '6px',
+                      padding: '0.35rem 0.65rem',
+                      fontSize: '0.78rem',
+                      color: '#f8fafc',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs"
+                    onClick={() => handleFetchBooksPage(1, activeCatalogueQuery)}
+                    style={{ padding: '0.35rem 0.75rem' }}
+                  >
+                    🔍 Filter Shelves
+                  </button>
+                </div>
+
+                {isFetchingBooks ? (
+                  <div style={{ padding: '1.5rem', textAlign: 'center', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <span className="spinner" style={{ width: '16px', height: '16px' }} />
+                    <span>Loading catalogue page {booksPage}...</span>
+                  </div>
+                ) : displayedBooks.length === 0 ? (
                   <div style={{ padding: '1rem', background: '#080d1a', borderRadius: '8px', color: '#94a3b8', fontSize: '0.85rem' }}>
-                    No exact physical copies found on library shelves for this specific formulation. Check global preprints below!
+                    No exact physical copies found on library shelves for this keyword. Explore the global papers below or refine your keyword!
                   </div>
                 ) : (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
-                      {results.catalogue_matches.slice((booksPage - 1) * 4, booksPage * 4).map((book) => {
+                      {displayedBooks.map((book) => {
                         const isAvail = book.available_copies > 0;
                         return (
                           <div
@@ -754,27 +896,56 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                       })}
                     </div>
 
-                    {/* Book Holdings Pagination */}
-                    {Math.ceil(results.catalogue_matches.length / 4) > 1 && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.6rem', padding: '0.35rem 0.6rem', background: 'rgba(8, 14, 28, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '6px' }}>
+                    {/* Dynamic Book Holdings Pagination */}
+                    {Math.ceil(booksTotal / 4) > 1 && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.75rem', padding: '0.45rem 0.75rem', background: 'rgba(8, 14, 28, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '6px' }}>
                         <button
                           type="button"
                           className="btn btn-secondary btn-xs"
-                          disabled={booksPage === 1}
-                          onClick={() => setBooksPage((p) => Math.max(1, p - 1))}
-                          style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                          disabled={booksPage === 1 || isFetchingBooks}
+                          onClick={() => handleFetchBooksPage(booksPage - 1)}
+                          style={{ padding: '4px 10px', fontSize: '0.74rem' }}
                         >
                           ◀ Prev
                         </button>
-                        <span style={{ fontSize: '0.74rem', color: '#94a3b8', fontWeight: 600 }}>
-                          Page {booksPage} of {Math.ceil(results.catalogue_matches.length / 4)} ({results.catalogue_matches.length} holdings)
-                        </span>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {[...Array(Math.min(5, Math.ceil(booksTotal / 4)))].map((_, idx) => {
+                            const totalPages = Math.max(1, Math.ceil(booksTotal / 4));
+                            const startPage = Math.max(1, Math.min(booksPage - 2, totalPages - 4));
+                            const pageNum = startPage + idx;
+                            if (pageNum > totalPages) return null;
+                            const isActive = pageNum === booksPage;
+                            return (
+                              <button
+                                key={pageNum}
+                                type="button"
+                                onClick={() => handleFetchBooksPage(pageNum)}
+                                disabled={isFetchingBooks}
+                                style={{
+                                  minWidth: '26px',
+                                  height: '26px',
+                                  borderRadius: '4px',
+                                  border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                                  background: isActive ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                                  color: isActive ? '#38bdf8' : '#94a3b8',
+                                  fontSize: '0.72rem',
+                                  fontWeight: isActive ? 700 : 500,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+                        </div>
+
                         <button
                           type="button"
                           className="btn btn-secondary btn-xs"
-                          disabled={booksPage >= Math.ceil(results.catalogue_matches.length / 4)}
-                          onClick={() => setBooksPage((p) => Math.min(Math.ceil(results.catalogue_matches.length / 4), p + 1))}
-                          style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                          disabled={booksPage >= Math.ceil(booksTotal / 4) || isFetchingBooks}
+                          onClick={() => handleFetchBooksPage(booksPage + 1)}
+                          style={{ padding: '4px 10px', fontSize: '0.74rem' }}
                         >
                           Next ▶
                         </button>
@@ -786,21 +957,64 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
 
               {/* Global Scholarly Research Papers (arXiv, OpenAlex, Crossref) */}
               <div>
-                <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span>🎓</span> Global Scholarly Preprints (arXiv / OpenAlex)
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400 }}>
-                    ({results.scholarly_papers.length} peer-reviewed papers retrieved)
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span>🎓</span> Global Scholarly Preprints (arXiv / OpenAlex)
+                    <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600 }}>
+                      ({papersTotal > 0 ? `${papersTotal.toLocaleString()} papers available` : 'Peer-reviewed articles'})
+                    </span>
+                  </h4>
+                  <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                    Page <strong>{papersPage}</strong> of {Math.max(1, Math.ceil(papersTotal / 5))}
                   </span>
-                </h4>
+                </div>
 
-                {results.scholarly_papers.length === 0 ? (
+                {/* Refine Scholarly Papers Search Input */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <input
+                    type="text"
+                    value={activeScholarlyQuery}
+                    onChange={(e) => setActiveScholarlyQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleFetchPapersPage(1, activeScholarlyQuery);
+                      }
+                    }}
+                    placeholder="Refine research topic keyword (e.g. Nanorobotics, Swarm intelligence, Bio-sensors)..."
+                    style={{
+                      flex: 1,
+                      background: '#080d1a',
+                      border: '1px solid #1e293b',
+                      borderRadius: '6px',
+                      padding: '0.35rem 0.65rem',
+                      fontSize: '0.78rem',
+                      color: '#f8fafc',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs"
+                    onClick={() => handleFetchPapersPage(1, activeScholarlyQuery)}
+                    style={{ padding: '0.35rem 0.75rem' }}
+                  >
+                    🔍 Search Preprints
+                  </button>
+                </div>
+
+                {isFetchingPapers ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <span className="spinner" style={{ width: '16px', height: '16px' }} />
+                    <span>Querying global archives for Page {papersPage}...</span>
+                  </div>
+                ) : displayedPapers.length === 0 ? (
                   <div style={{ padding: '1rem', background: '#080d1a', borderRadius: '8px', color: '#94a3b8', fontSize: '0.85rem' }}>
-                    No external scholarly preprints found for this query.
+                    No external scholarly preprints found for this page. Try searching with different keywords above.
                   </div>
                 ) : (
                   <>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                      {results.scholarly_papers.slice((papersPage - 1) * 5, papersPage * 5).map((paper) => (
+                      {displayedPapers.map((paper) => (
                         <div
                           key={paper.paper_id}
                           style={{
@@ -846,27 +1060,56 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                       ))}
                     </div>
 
-                    {/* Preprints 5-per-page Pagination */}
-                    {Math.ceil(results.scholarly_papers.length / 5) > 1 && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.75rem', padding: '0.5rem 0.85rem', background: 'rgba(8, 14, 28, 0.8)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '8px' }}>
+                    {/* Preprints 5-per-page Dynamic Pagination */}
+                    {Math.ceil(papersTotal / 5) > 1 && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.85rem', padding: '0.5rem 0.85rem', background: 'rgba(8, 14, 28, 0.8)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '8px' }}>
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
-                          disabled={papersPage === 1}
-                          onClick={() => setPapersPage((p) => Math.max(1, p - 1))}
-                          style={{ fontSize: '0.76rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          disabled={papersPage === 1 || isFetchingPapers}
+                          onClick={() => handleFetchPapersPage(papersPage - 1)}
+                          style={{ fontSize: '0.76rem', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                         >
                           <span>◀</span> Previous 5
                         </button>
-                        <span style={{ fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600 }}>
-                          Showing {(papersPage - 1) * 5 + 1}–{Math.min(papersPage * 5, results.scholarly_papers.length)} of {results.scholarly_papers.length} papers (Page {papersPage} of {Math.ceil(results.scholarly_papers.length / 5)})
-                        </span>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {[...Array(Math.min(5, Math.ceil(papersTotal / 5)))].map((_, idx) => {
+                            const totalPages = Math.max(1, Math.ceil(papersTotal / 5));
+                            const startPage = Math.max(1, Math.min(papersPage - 2, totalPages - 4));
+                            const pageNum = startPage + idx;
+                            if (pageNum > totalPages) return null;
+                            const isActive = pageNum === papersPage;
+                            return (
+                              <button
+                                key={pageNum}
+                                type="button"
+                                onClick={() => handleFetchPapersPage(pageNum)}
+                                disabled={isFetchingPapers}
+                                style={{
+                                  minWidth: '28px',
+                                  height: '28px',
+                                  borderRadius: '5px',
+                                  border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                                  background: isActive ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                                  color: isActive ? '#38bdf8' : '#94a3b8',
+                                  fontSize: '0.74rem',
+                                  fontWeight: isActive ? 700 : 500,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+                        </div>
+
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
-                          disabled={papersPage >= Math.ceil(results.scholarly_papers.length / 5)}
-                          onClick={() => setPapersPage((p) => Math.min(Math.ceil(results.scholarly_papers.length / 5), p + 1))}
-                          style={{ fontSize: '0.76rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          disabled={papersPage >= Math.ceil(papersTotal / 5) || isFetchingPapers}
+                          onClick={() => handleFetchPapersPage(papersPage + 1)}
+                          style={{ fontSize: '0.76rem', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                         >
                           Next 5 <span>▶</span>
                         </button>
