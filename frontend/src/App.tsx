@@ -26,6 +26,7 @@ import { ModelComparisonStudio } from './components/knowledge/ModelComparisonStu
 import { TeacherPortal } from './components/TeacherPortal';
 import { LibrarianIntelligenceCenter } from './components/intelligence/LibrarianIntelligenceCenter';
 import { InactivityMonitor } from './components/InactivityMonitor';
+import { SystemArchitectureAuditModal } from './components/SystemArchitectureAuditModal';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -45,6 +46,7 @@ export const App: React.FC = () => {
   // AI Copilot & Guided Tour state
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
   // Patron Profile state
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -230,6 +232,7 @@ export const App: React.FC = () => {
         onOpenTour={() => setIsTourOpen(true)}
         onOpenCopilot={() => setIsCopilotOpen(true)}
         onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenAuditModal={() => setIsAuditModalOpen(true)}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         currentTheme={theme}
         onToggleTheme={toggleTheme}
@@ -458,6 +461,7 @@ export const App: React.FC = () => {
             setSelectedBookId(id);
           }}
           onNavigateTab={(tab) => setActiveTab(tab)}
+          onOpenAuditModal={() => setIsAuditModalOpen(true)}
         />
       )}
 
@@ -497,6 +501,14 @@ export const App: React.FC = () => {
             setIsProfileOpen(false);
             setActiveTab('login');
           }}
+        />
+      )}
+
+      {/* Teacher Defense & System Architecture Audit Studio */}
+      {isAuditModalOpen && (
+        <SystemArchitectureAuditModal
+          currentUser={currentUser}
+          onClose={() => setIsAuditModalOpen(false)}
         />
       )}
 

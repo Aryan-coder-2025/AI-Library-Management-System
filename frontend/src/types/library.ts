@@ -195,6 +195,15 @@ export interface CopilotToolExecution {
   result?: Record<string, any>;
 }
 
+export interface GraphTraceNode {
+  node: string;
+  stage?: string;
+  label?: string;
+  status: string;
+  duration_ms: number;
+  details?: string;
+}
+
 export interface CopilotMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -207,6 +216,8 @@ export interface CopilotMessage {
   tool_calls?: CopilotToolExecution[];
   suggested_followups?: string[];
   concept_3d?: Record<string, any>;
+  graph_trace?: GraphTraceNode[];
+  architecture_mode?: string;
 }
 
 export interface CopilotChatResponse {
@@ -216,6 +227,8 @@ export interface CopilotChatResponse {
   sources: CopilotSource[];
   suggested_followups: string[];
   concept_3d?: Record<string, any>;
+  graph_trace?: GraphTraceNode[];
+  architecture_mode?: string;
 }
 
 

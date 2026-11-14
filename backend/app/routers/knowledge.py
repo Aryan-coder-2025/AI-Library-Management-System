@@ -25,6 +25,7 @@ from app.schemas import (
 from app.seed_data.knowledge_seed import seed_knowledge_representation
 from app.services.ai_comparison import compare_models_service
 from app.services.copilot_agent import execute_librarian_agent_rag
+from app.services.agent_graph import execute_stategraph_agent
 from app.services.knowledge import (
     get_subject_detail_service,
     get_subject_hierarchy_service,
@@ -99,7 +100,7 @@ def agent_chat(
     Supports Bring-Your-Own-Key (BYOK) for student and teacher Gemini API keys.
     """
     custom_key = payload.custom_api_key or x_gemini_api_key
-    return execute_librarian_agent_rag(
+    return execute_stategraph_agent(
         db=db,
         query=payload.message,
         current_user=current_user,

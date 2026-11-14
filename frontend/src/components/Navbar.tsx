@@ -10,6 +10,7 @@ interface NavbarProps {
   onOpenTour?: () => void;
   onOpenCopilot?: () => void;
   onOpenProfile?: () => void;
+  onOpenAuditModal?: () => void;
   onOpenCommandPalette?: () => void;
   currentTheme?: 'dark' | 'light';
   onToggleTheme?: () => void;
@@ -24,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenTour,
   onOpenCopilot: _onOpenCopilot,
   onOpenProfile,
+  onOpenAuditModal,
   onOpenCommandPalette,
   currentTheme = 'dark',
   onToggleTheme,
@@ -267,6 +269,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               aria-label="Platform Guide"
             >
               🧭
+            </button>
+          )}
+
+          {/* Defense & Architecture Audit Modal Trigger */}
+          {currentUser && onOpenAuditModal && (
+            <button
+              type="button"
+              className="navbar-icon-btn"
+              onClick={onOpenAuditModal}
+              title="System Architecture Defense & Evaluation Studio"
+              aria-label="Architecture Defense"
+              style={{
+                color: '#38bdf8',
+                borderColor: 'rgba(56, 189, 248, 0.4)',
+                background: 'rgba(56, 189, 248, 0.1)',
+              }}
+            >
+              🛡️
             </button>
           )}
 

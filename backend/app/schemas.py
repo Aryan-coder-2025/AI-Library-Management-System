@@ -1502,6 +1502,8 @@ class EnhancedCopilotResponse(BaseModel):
     agent_actions: List[CopilotAgentAction] = []
     suggested_followups: List[str] = []
     concept_3d: Optional[Dict[str, Any]] = None
+    graph_trace: Optional[List[Dict[str, Any]]] = None
+    architecture_mode: Optional[str] = "Dual-Layer Hybrid (StateGraph + ReAct)"
 
 
 class ChatMessageInput(BaseModel):

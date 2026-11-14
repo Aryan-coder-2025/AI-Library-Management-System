@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../services/apiClient';
-import type { CopilotAgentAction, CopilotMessage, CopilotSource, CopilotToolExecution, UserProfile } from '../types/library';
+import type { CopilotAgentAction, CopilotMessage, CopilotSource, CopilotToolExecution, GraphTraceNode, UserProfile } from '../types/library';
 import { VisionSearchModal } from './VisionSearchModal';
 import { ConceptCanvas3D } from './ConceptCanvas3D';
 
@@ -11,6 +11,7 @@ interface AICopilotDrawerProps {
   onOpen: () => void;
   onSelectBook: (bookId: number) => void;
   onNavigateTab?: (tab: string) => void;
+  onOpenAuditModal?: () => void;
 }
 
 const getContextualLoadingStages = (query: string): string[] => {
@@ -127,6 +128,7 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   onOpen,
   onSelectBook,
   onNavigateTab,
+  onOpenAuditModal,
 }) => {
   const [messages, setMessages] = useState<CopilotMessage[]>(() => [
     {
@@ -357,6 +359,8 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
         tool_calls: resp.tool_calls,
         suggested_followups: resp.suggested_followups,
         concept_3d: resp.concept_3d,
+        graph_trace: resp.graph_trace,
+        architecture_mode: resp.architecture_mode,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -471,6 +475,87 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
     navigator.clipboard.writeText(token);
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 2500);
+  };
+
+  const renderStateGraphTrace = (trace?: GraphTraceNode[], architectureMode?: string) => {
+    if (!trace || trace.length === 0) return null;
+    const totalLatency = trace.reduce((acc, n) => acc + (n.duration_ms || 0), 0);
+    return (
+      <details
+        className="copilot-tool-trace"
+        style={{
+          marginBottom: '0.5rem',
+          border: '1px solid rgba(56, 189, 248, 0.25)',
+          borderRadius: '8px',
+          background: 'rgba(15, 23, 42, 0.65)',
+        }}
+      >
+        <summary
+          className="copilot-tool-trace-summary"
+          style={{
+            color: '#38bdf8',
+            fontWeight: 600,
+            cursor: 'pointer',
+            padding: '0.4rem 0.6rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span>🕸️</span>
+            <span>StateGraph Pipeline ({trace.length} Nodes · {totalLatency.toFixed(1)}ms)</span>
+          </span>
+          <span style={{ fontSize: '0.65rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>
+            VERIFIED
+          </span>
+        </summary>
+        <div className="copilot-tool-trace-body" style={{ padding: '0.4rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          {architectureMode && (
+            <div style={{ fontSize: '0.7rem', color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.3rem', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Orchestration:</span>
+              <span style={{ color: '#a78bfa', fontWeight: 600 }}>{architectureMode}</span>
+            </div>
+          )}
+          {trace.map((item, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.25rem 0.45rem',
+                background: 'rgba(255,255,255,0.03)',
+                borderRadius: '4px',
+                fontSize: '0.72rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ color: item.status.includes('FLAGGED') ? '#ef4444' : '#10b981', fontSize: '0.8rem' }}>
+                  {item.status.includes('FLAGGED') ? '🛡️' : '✓'}
+                </span>
+                <span style={{ fontWeight: 600, color: '#f1f5f9' }}>{item.stage || item.label || item.node}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>{item.duration_ms}ms</span>
+                <span
+                  style={{
+                    fontSize: '0.66rem',
+                    padding: '1px 5px',
+                    borderRadius: '3px',
+                    background: item.status.includes('FLAGGED') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(56, 189, 248, 0.15)',
+                    color: item.status.includes('FLAGGED') ? '#fca5a5' : '#38bdf8',
+                    fontWeight: 600,
+                  }}
+                >
+                  {item.status}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+    );
   };
 
   const renderToolCallsTrace = (toolCalls?: CopilotToolExecution[]) => {
@@ -699,6 +784,24 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
             </div>
 
             <div className="copilot-header-actions">
+              {onOpenAuditModal && (
+                <button
+                  type="button"
+                  className="copilot-btn-icon"
+                  onClick={onOpenAuditModal}
+                  title="Architecture Defense & StateGraph Audit Studio"
+                  aria-label="Defense Studio"
+                  style={{
+                    color: '#38bdf8',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  🛡️
+                </button>
+              )}
               <button
                 type="button"
                 className="copilot-btn-icon"
@@ -826,6 +929,9 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                   </div>
                 )}
                 <div className="copilot-bubble-content">
+                  {/* Render StateGraph Pipeline Trace */}
+                  {m.graph_trace && renderStateGraphTrace(m.graph_trace, m.architecture_mode)}
+
                   {/* Render Agent Execution Activity Trace */}
                   {m.tool_calls && renderToolCallsTrace(m.tool_calls)}
 
