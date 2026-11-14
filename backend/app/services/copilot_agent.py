@@ -947,14 +947,11 @@ def execute_librarian_agent_rag(
                 "- get_patron_loans: View patron active loans\n"
                 "- get_spatial_resource: Get floor plan wayfinding coordinates\n"
                 "- get_library_policy: Look up borrowing rules\n"
-                "- visualize_3d_concept: Generate interactive 3D WebGL models for scientific/engineering concepts (neural networks, distributed clusters, molecules, quantum bloch spheres)\n\n"
-                "When the patron asks conceptual questions about transformers, attention mechanisms, or LLMs:\n"
-                "1. ALWAYS call visualize_3d_concept with concept_type='transformer_architecture'.\n"
-                "2. In your written response, explicitly explain the Transformer architecture components: Token Embeddings + Positional Encoding (E+P), "
-                "Multi-Head Attention (Q, K, V projections across parallel attention heads), curved Add & Norm Residual Skip-Connections, Position-Wise FFN, and Softmax Logits.\n"
-                "3. Point the patron to click '⛶ Fullscreen Sandbox' or the drawer expand button for the wide-canvas inspector.\n\n"
-                "When the patron asks about general neural networks or MLPs (perceptrons):\n"
-                "1. Call visualize_3d_concept with concept_type='neural_network'.\n"
+                "- visualize_3d_concept: Generate interactive 3D WebGL models for scientific/engineering concepts (transformers, neural networks, distributed clusters, molecules, quantum bloch spheres)\n\n"
+                "CRITICAL GOVERNANCE ON 3D VISUALIZATION:\n"
+                "- ONLY call the 'visualize_3d_concept' tool if the patron EXPLICITLY asks or orders a 3D model, visualization, or diagram (e.g. 'show 3d model', 'visualize in 3d', 'render 3d', 'generate 3d diagram', 'show 3d architecture').\n"
+                "- If the patron asks to explain, teach, or discuss a topic without specifically requesting a 3D visualization, DO NOT call 'visualize_3d_concept'. Instead, provide a thorough, articulate, academic textual explanation with mathematical equations and suggest they can ask for a 3D visualization if desired.\n"
+                "- When 3D IS explicitly requested for transformers, use concept_type='transformer_architecture'. For general deep learning, use concept_type='neural_network'.\n\n"
                 "When the patron asks you to do something (e.g. reserve a seat, hold a book, renew a loan, return a book, search papers), "
                 "CALL THE APPROPRIATE ACTION TOOL IMMEDIATELY! Do not just give advice when an action can be performed.\n"
                 "For compound prompts (e.g. 'find a book and reserve a desk'), execute both tools.\n"
@@ -1146,8 +1143,10 @@ def execute_librarian_agent_rag(
                        "quantum_bloch" if any(w in normalized for w in ["quantum", "bloch", "qubit", "superposition"]) else \
                        "molecule" if any(w in normalized for w in ["molecule", "benzene", "chemical", "atom"]) else None
         
+        explicit_3d = any(k in normalized for k in ["3d", "visualize", "render", "3-d", "three.js", "show model", "show 3d", "show a model", "diagram in 3d", "interactive model"])
+
         concept_payload = None
-        if concept_type:
+        if explicit_3d and concept_type:
             concept_payload = tool_visualize_3d_concept(
                 concept_type=concept_type,
                 title=f"{concept_type.replace('_', ' ').title()} Interactive Architecture",
@@ -1155,40 +1154,89 @@ def execute_librarian_agent_rag(
             )
 
         if concept_type == "transformer_architecture":
-            custom_answer = (
-                f"### 🧠 Transformer Architecture & Multi-Head Self-Attention Explained\n\n"
-                f"The **Transformer** (Vaswani et al., *'Attention Is All You Need'*) is fundamentally different from a standard Multi-Layer Perceptron (MLP). "
-                f"Instead of static dense matrix multiplications layer-by-layer, it relies on dynamic **Multi-Head Self-Attention** and **Residual Skip-Connections** to process sequence tokens in parallel.\n\n"
-                f"#### 🎨 3D Transformer Model Markings:\n"
-                f"In the **Interactive 3D WebGL Transformer Model** above (click **⛶ Fullscreen Sandbox** or expand the drawer to explore):\n\n"
-                f"1. 🟢 **Token Embeddings & Positional Encoding ($E + P$)**:\n"
-                f"   - Sinusoidal wave embeddings inject token position into dense representations without sequential loops.\n\n"
-                f"2. 🔀 **Multi-Head Attention Module ($Q, K, V$)**:\n"
-                f"   - Input projections split into **4 Parallel Attention Heads** computing dot-product affinity matrices: $\\text{{Attention}}(Q,K,V) = \\text{{softmax}}\\left(\\frac{{QK^T}}{{\\sqrt{{d_k}}}}\\right)V$.\n\n"
-                f"3. ⚡ **Curved Residual Skip-Connections (Add & LayerNorm)**:\n"
-                f"   - The glowing bypass wires looping OVER the attention block deliver $\\text{{LayerNorm}}(\\mathbf{{x}} + \\text{{Attention}}(\\mathbf{{x}}))$, preventing vanishing gradients in deep stacks.\n\n"
-                f"4. 🌺 **Position-Wise Feed-Forward Network (FFN)**:\n"
-                f"   - Dual-stage linear projections with non-linear activation ($\\text{{FFN}}(x) = \\max(0, xW_1 + b_1)W_2 + b_2$).\n\n"
-                f"5. 🔵 **Output Linear Projection & Softmax Logits**:\n"
-                f"   - Computes vocabulary probabilities $P(w_t \\mid w_{{<t}}) = \\text{{softmax}}(W_{{\\text{{vocab}}}} h_t)$ for autoregressive decoding."
-            )
+            if explicit_3d:
+                custom_answer = (
+                    f"### 🧠 Transformer Architecture & Multi-Head Self-Attention Explained\n\n"
+                    f"The **Transformer** (Vaswani et al., *'Attention Is All You Need'*) is fundamentally different from a standard Multi-Layer Perceptron (MLP). "
+                    f"Instead of static dense matrix multiplications layer-by-layer, it relies on dynamic **Multi-Head Self-Attention** and **Residual Skip-Connections** to process sequence tokens in parallel.\n\n"
+                    f"#### 🎨 3D Transformer Model Markings:\n"
+                    f"In the **Interactive 3D WebGL Transformer Model** above (click **⛶ Fullscreen Sandbox** or expand the drawer to explore):\n\n"
+                    f"1. 🟢 **Token Embeddings & Positional Encoding ($E + P$)**:\n"
+                    f"   - Sinusoidal wave embeddings inject token position into dense representations without sequential loops.\n\n"
+                    f"2. 🔀 **Multi-Head Attention Module ($Q, K, V$)**:\n"
+                    f"   - Input projections split into **4 Parallel Attention Heads** computing dot-product affinity matrices: $\\text{{Attention}}(Q,K,V) = \\text{{softmax}}\\left(\\frac{{QK^T}}{{\\sqrt{{d_k}}}}\\right)V$.\n\n"
+                    f"3. ⚡ **Curved Residual Skip-Connections (Add & LayerNorm)**:\n"
+                    f"   - The glowing bypass wires looping OVER the attention block deliver $\\text{{LayerNorm}}(\\mathbf{{x}} + \\text{{Attention}}(\\mathbf{{x}}))$, preventing vanishing gradients in deep stacks.\n\n"
+                    f"4. 🌺 **Position-Wise Feed-Forward Network (FFN)**:\n"
+                    f"   - Dual-stage linear projections with non-linear activation ($\\text{{FFN}}(x) = \\max(0, xW_1 + b_1)W_2 + b_2$).\n\n"
+                    f"5. 🔵 **Output Linear Projection & Softmax Logits**:\n"
+                    f"   - Computes vocabulary probabilities $P(w_t \\mid w_{{<t}}) = \\text{{softmax}}(W_{{\\text{{vocab}}}} h_t)$ for autoregressive decoding."
+                )
+            else:
+                custom_answer = (
+                    f"### 🧠 Transformer Architecture & Multi-Head Self-Attention\n\n"
+                    f"The **Transformer** (Vaswani et al., *'Attention Is All You Need'*) is the foundational architecture powering modern Large Language Models (LLMs). "
+                    f"Unlike recurrent neural networks (RNNs/LSTMs) that process words sequentially one by one, a Transformer processes all sequence tokens in parallel.\n\n"
+                    f"#### Core Architectural Components:\n\n"
+                    f"1. **Token Embeddings & Positional Encoding**:\n"
+                    f"   $$\\mathbf{{x}}_i = \\text{{Embedding}}(t_i) + \\text{{PE}}_{{(pos, 2i)}}$$\n"
+                    f"   Converts discrete vocabulary tokens into dense vectors ($d_{{\\text{{model}}}} = 512$) and injects fixed sinusoidal wave coordinates so the network understands word order without recurrence.\n\n"
+                    f"2. **Multi-Head Scaled Dot-Product Attention**:\n"
+                    f"   $$\\text{{Attention}}(Q, K, V) = \\text{{softmax}}\\left(\\frac{{QK^T}}{{\\sqrt{{d_k}}}}\\right)V$$\n"
+                    f"   Projects input vectors into Queries ($Q$), Keys ($K$), and Values ($V$) across parallel attention heads, allowing each word to attend to every other word in the sentence simultaneously.\n\n"
+                    f"3. **Residual Skip-Connections & Layer Normalization (Add & Norm)**:\n"
+                    f"   $$\\mathbf{{x}}' = \\text{{LayerNorm}}(\\mathbf{{x}} + \\text{{Attention}}(\\mathbf{{x}}))$$\n"
+                    f"   High-speed gradient highways that bypass the attention and feed-forward sublayers, eliminating the vanishing gradient problem in deep stacks.\n\n"
+                    f"4. **Position-Wise Feed-Forward Network (FFN)**:\n"
+                    f"   $$\\text{{FFN}}(\\mathbf{{x}}') = \\max(0, \\mathbf{{x}}' W_1 + \\mathbf{{b}}_1) W_2 + \\mathbf{{b}}_2$$\n"
+                    f"   Two linear transformations with a non-linear activation (GELU/ReLU) applied identically to each position.\n\n"
+                    f"5. **Linear Projection & Softmax Vocabulary Logits**:\n"
+                    f"   $$P(w_t \\mid w_{{<t}}) = \\text{{softmax}}(W_{{\\text{{vocab}}}} \\mathbf{{h}}_t)$$\n"
+                    f"   Unembeds the final hidden state into a normalized probability distribution across the entire vocabulary.\n\n"
+                    f"---\n"
+                    f"💡 *Would you like an interactive 3D WebGL model of this Transformer architecture? Simply ask: **'Show 3D model'** or click the suggestion below.*"
+                )
         elif concept_type == "neural_network":
-            custom_answer = (
-                f"### 🧠 Multi-Layer Perceptron (MLP) Deep Neural Network\n\n"
-                f"A classical **Deep Neural Network** is organized into sequentially connected dense layers where every neuron in layer $l$ is connected via synaptic weights to every neuron in layer $l+1$.\n\n"
-                f"1. 🟢 **Input Features Layer**: Receives raw normalized scalar inputs $\\mathbf{{x}}$.\n"
-                f"2. 🟣 **Hidden Layers**: Applies weight matrix multiplications with non-linear activation $\\mathbf{{h}} = \\sigma(W \\mathbf{{x}} + \\mathbf{{b}})$.\n"
-                f"3. 🔵 **Output Layer**: Produces prediction logits.\n\n"
-                f"I have initialized an Interactive 3D WebGL model in the panel above for you to explore the network architecture in real time."
-            )
+            if explicit_3d:
+                custom_answer = (
+                    f"### 🧠 Multi-Layer Perceptron (MLP) Deep Neural Network\n\n"
+                    f"A classical **Deep Neural Network** is organized into sequentially connected dense layers where every neuron in layer $l$ is connected via synaptic weights to every neuron in layer $l+1$.\n\n"
+                    f"1. 🟢 **Input Features Layer**: Receives raw normalized scalar inputs $\\mathbf{{x}}$.\n"
+                    f"2. 🟣 **Hidden Layers**: Applies weight matrix multiplications with non-linear activation $\\mathbf{{h}} = \\sigma(W \\mathbf{{x}} + \\mathbf{{b}})$.\n"
+                    f"3. 🔵 **Output Layer**: Produces prediction logits.\n\n"
+                    f"I have initialized an Interactive 3D WebGL model in the panel above for you to explore the network architecture in real time."
+                )
+            else:
+                custom_answer = (
+                    f"### 🧠 Multi-Layer Perceptron (MLP) Deep Neural Network\n\n"
+                    f"A classical **Deep Neural Network** is organized into sequentially connected dense layers where every neuron in layer $l$ is connected via synaptic weights to every neuron in layer $l+1$.\n\n"
+                    f"1. **Input Layer**: Receives normalized feature vector $\\mathbf{{x}} \\in \\mathbb{{R}}^d$.\n"
+                    f"2. **Dense Hidden Layers**: Computes $\\mathbf{{h}}^{{[l]}} = \\sigma(W^{{[l]}} \\mathbf{{h}}^{{[l-1]}} + \\mathbf{{b}}^{{[l]}})$ with non-linear activations such as ReLU or GELU.\n"
+                    f"3. **Output Layer**: Maps hidden activations to the target decision boundary or probability simplex.\n\n"
+                    f"---\n"
+                    f"💡 *Would you like an interactive 3D WebGL model of this neural network? Simply ask: **'Show 3D model'** or click the suggestion below.*"
+                )
         else:
             custom_answer = (
                 f"### Academic Concept Overview: {query.strip()}\n\n"
                 f"**Architectural Foundation:**\n"
                 f"The architecture incorporates multi-layered representations connected through high-dimensional mappings. "
                 f"Computational states are propagated through parameterized matrices and attention mechanisms, eliminating recurrent bottlenecks.\n\n"
-                f"I have initialized an Interactive 3D WebGL concept model in the panel above for you to explore the structural components in real time."
+                f"I have initialized an Interactive 3D WebGL concept model in the panel above for you to explore the structural components in real time." if explicit_3d else
+                f"### Academic Concept Overview: {query.strip()}\n\n"
+                f"The architecture incorporates multi-layered representations connected through high-dimensional mappings. "
+                f"Computational states are propagated through parameterized matrices and attention mechanisms, eliminating recurrent bottlenecks.\n\n"
+                f"💡 *If you would like to explore this in an interactive 3D WebGL sandbox, ask: **'Show 3D model'**.*"
             )
+
+        followups = [
+            "Search arXiv papers on this topic",
+            "Find monographs in catalogue",
+        ]
+        if not explicit_3d:
+            followups.insert(0, "🪐 Show 3D Interactive Model")
+        else:
+            followups.insert(0, "Explain mathematical loss formulation")
 
         return EnhancedCopilotResponse(
             answer=custom_answer,
@@ -1196,11 +1244,7 @@ def execute_librarian_agent_rag(
             confidence=0.95,
             provider="Athenaeum Academic Engine",
             concept_3d=concept_payload,
-            suggested_followups=[
-                "Search arXiv papers on this topic",
-                "Find monograph books in catalogue",
-                "Explain the mathematical loss formulation"
-            ],
+            suggested_followups=followups,
         )
 
     if is_chat and not has_actionable:

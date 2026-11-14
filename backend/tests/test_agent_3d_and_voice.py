@@ -49,3 +49,21 @@ def test_execute_librarian_agent_rag_3d_routing(db):
     assert resp.concept_3d is not None
     assert resp.concept_3d["concept_type"] == "neural_network"
     assert "Interactive 3D" in resp.answer
+
+def test_execute_librarian_agent_rag_concept_without_3d_request(db):
+    test_user = User(
+        id=999,
+        email="test_student@university.edu",
+        full_name="Alice Student",
+        role="student",
+        is_active=True,
+    )
+    resp: EnhancedCopilotResponse = execute_librarian_agent_rag(
+        db=db,
+        query="explain Transformers and multi-head attention",
+        current_user=test_user,
+    )
+    # Strictly ensures no 3D model unless ordered by user!
+    assert resp.concept_3d is None
+    assert "Transformer Architecture" in resp.answer
+    assert any("3D" in f for f in resp.suggested_followups)
