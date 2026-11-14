@@ -7,8 +7,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0+-D71F00.svg)](https://www.sqlalchemy.org/)
-[![Test Suite](https://img.shields.io/badge/Tests-428%20Passed%20(2%20Skipped)-success.svg)]()
-[![Academic Report](https://img.shields.io/badge/CSE%20276-28%20Page%20Report%20Verified-blue.svg)](./CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf)
+[![Test Suite](https://img.shields.io/badge/Tests-440%20Passed%20(2%20Skipped)-success.svg)]()
+[![Academic Report](https://img.shields.io/badge/CSE%20276-34%20Page%20Report%20Verified-blue.svg)](./CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf)
 [![License](https://img.shields.io/badge/License-Pending%20Institutional%20Approval-lightgrey.svg)]()
 
 **Athenaeum** is an enterprise-grade academic library automation and intelligence platform. It bridges physical resource circulation—monograph barcode tracking, patron quotas, study-space bookings, and course reserves—with modern dense semantic discovery, multi-floor interactive spatial wayfinding, external scholarly aggregation, an autonomous multi-step tool-executing AI Copilot, and multimodal omnichannel research discovery across audio lecture clips, PDFs, slide decks, and diagrams.
@@ -308,7 +308,7 @@ pytest backend\tests -q
 
 **Verified Test Snapshot (November 14, 2026):**
 ```
-============================= 423 passed, 2 skipped in 499.89s =============================
+============================= 440 passed, 2 skipped in 428.28s =============================
 ```
 - **0 Failures**: 100% green coverage across authentication, hybrid search, circulation, holds, spatial routing, multimodal research, multi-agent copilot, and migrations.
 - **2 Skipped**: Windows non-admin symlink assertions (`test_database_protection.py:158`, `test_seed_safety.py:125`).
