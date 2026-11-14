@@ -169,6 +169,60 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
+  // BYOK (Bring Your Own Key) State
+  const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
+  const [personalKey, setPersonalKey] = useState<string>(() => {
+    return typeof window !== 'undefined' ? (localStorage.getItem('patron_custom_gemini_key') || '') : '';
+  });
+  const [isKeySaved, setIsKeySaved] = useState<boolean>(() => {
+    return typeof window !== 'undefined' ? Boolean(localStorage.getItem('patron_custom_gemini_key')) : false;
+  });
+  const [keyTesting, setKeyTesting] = useState<boolean>(false);
+  const [keyMessage, setKeyMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleTestKey = async () => {
+    if (!personalKey.trim()) {
+      setKeyMessage({ type: 'error', text: 'Please enter a Gemini API Key to test.' });
+      return;
+    }
+    setKeyTesting(true);
+    setKeyMessage(null);
+    try {
+      const res = await apiFetch<{ valid: boolean; provider: string; message: string }>('/api/copilot/verify-key', {
+        method: 'POST',
+        body: JSON.stringify({ api_key: personalKey.trim(), provider: 'gemini' }),
+      });
+      if (res.valid) {
+        setKeyMessage({ type: 'success', text: `Key verified successfully! (${res.message})` });
+      } else {
+        setKeyMessage({ type: 'error', text: res.message });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to test key';
+      setKeyMessage({ type: 'error', text: msg.replace(/^\d+:\s*/, '') });
+    } finally {
+      setKeyTesting(false);
+    }
+  };
+
+  const handleSaveKey = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!personalKey.trim()) {
+      setKeyMessage({ type: 'error', text: 'API key cannot be empty.' });
+      return;
+    }
+    localStorage.setItem('patron_custom_gemini_key', personalKey.trim());
+    setIsKeySaved(true);
+    setKeyMessage({ type: 'success', text: 'Personal API key active! All Copilot queries & OCR will use your key.' });
+  };
+
+  const handleClearKey = () => {
+    localStorage.removeItem('patron_custom_gemini_key');
+    setPersonalKey('');
+    setIsKeySaved(false);
+    setKeyMessage({ type: 'success', text: 'Personal key cleared. Reverted to institutional server default.' });
+  };
+
   const stopSpeaking = () => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -806,6 +860,40 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
                 type="button"
                 className="copilot-btn-icon"
                 onClick={() => {
+                  setKeyMessage(null);
+                  setShowKeyModal(true);
+                }}
+                title={isKeySaved ? 'Personal Gemini API Key Active (Click to edit)' : 'Configure Personal AI Key (BYOK)'}
+                aria-label="Configure AI Key"
+                style={{
+                  fontSize: '0.92rem',
+                  color: isKeySaved ? '#10b981' : '#94a3b8',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                }}
+              >
+                🔑
+                {isKeySaved && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '2px',
+                      right: '2px',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      backgroundColor: '#10b981',
+                      boxShadow: '0 0 6px #10b981',
+                    }}
+                  />
+                )}
+              </button>
+              <button
+                type="button"
+                className="copilot-btn-icon"
+                onClick={() => {
                   if (isVoiceEnabled && typeof window !== 'undefined' && window.speechSynthesis) {
                     window.speechSynthesis.cancel();
                   }
@@ -1130,6 +1218,178 @@ export const AICopilotDrawer: React.FC<AICopilotDrawerProps> = ({
           onClose={() => setShowVisionModal(false)}
           onSelectBook={onSelectBook}
         />
+      )}
+
+      {showKeyModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999999,
+            backgroundColor: 'rgba(3, 7, 18, 0.85)',
+            backdropFilter: 'blur(10px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowKeyModal(false);
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#0c1322',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              borderRadius: '14px',
+              maxWidth: '460px',
+              width: '100%',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+              padding: '1.5rem',
+              color: '#f8fafc',
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ fontSize: '1.25rem' }}>🔑</span>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc' }}>
+                  AI Key Settings (BYOK)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowKeyModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: '1.2rem',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Status Pill */}
+            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '3px 10px',
+                  borderRadius: '999px',
+                  fontWeight: 600,
+                  backgroundColor: isKeySaved ? 'rgba(34, 197, 94, 0.18)' : 'rgba(56, 189, 248, 0.18)',
+                  color: isKeySaved ? '#4ade80' : '#38bdf8',
+                  border: `1px solid ${isKeySaved ? 'rgba(34, 197, 94, 0.4)' : 'rgba(56, 189, 248, 0.4)'}`,
+                }}
+              >
+                {isKeySaved ? '● Personal Key Active' : '● Institutional Server Default'}
+              </span>
+            </div>
+
+            <p style={{ fontSize: '0.84rem', color: '#94a3b8', lineHeight: 1.5, marginBottom: '1rem' }}>
+              Bring Your Own Key (BYOK) allows you to use your personal Google Gemini API key. It is saved <strong>only inside your browser's local storage</strong> and is never sent or stored on the central database.
+            </p>
+
+            {keyMessage && (
+              <div
+                style={{
+                  padding: '0.6rem 0.85rem',
+                  borderRadius: '8px',
+                  marginBottom: '1rem',
+                  fontSize: '0.82rem',
+                  backgroundColor: keyMessage.type === 'success' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: keyMessage.type === 'success' ? '#4ade80' : '#f87171',
+                  border: `1px solid ${keyMessage.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                }}
+              >
+                {keyMessage.text}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '0.35rem', fontWeight: 600 }}>
+                  Google Gemini API Key
+                </label>
+                <input
+                  type="password"
+                  value={personalKey}
+                  onChange={(e) => setPersonalKey(e.target.value)}
+                  placeholder="AIzaSy... (Paste Gemini Key)"
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                    color: '#f8fafc',
+                    fontSize: '0.88rem',
+                    fontFamily: 'monospace',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                <button
+                  type="button"
+                  onClick={() => handleSaveKey()}
+                  disabled={!personalKey.trim()}
+                  className="btn btn-primary btn-sm"
+                  style={{ flex: 1, padding: '0.5rem 0.8rem' }}
+                >
+                  Save Key
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTestKey}
+                  disabled={keyTesting || !personalKey.trim()}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '0.5rem 0.8rem' }}
+                >
+                  {keyTesting ? 'Testing...' : '⚡ Test Key'}
+                </button>
+                {isKeySaved && (
+                  <button
+                    type="button"
+                    onClick={handleClearKey}
+                    className="btn btn-outline btn-sm"
+                    style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.35)' }}
+                  >
+                    Clear & Revert
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: '1.25rem',
+                paddingTop: '0.85rem',
+                borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                fontSize: '0.76rem',
+                color: '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>Don't have a personal key?</span>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}
+              >
+                Get Free Gemini Key (30s) ↗
+              </a>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
