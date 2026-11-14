@@ -858,18 +858,46 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                   </button>
                 </div>
 
-                {isFetchingBooks ? (
-                  <div style={{ padding: '1.5rem', textAlign: 'center', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span className="spinner" style={{ width: '16px', height: '16px' }} />
-                    <span>Loading catalogue page {booksPage}...</span>
-                  </div>
-                ) : displayedBooks.length === 0 ? (
-                  <div style={{ padding: '1rem', background: '#080d1a', borderRadius: '8px', color: '#94a3b8', fontSize: '0.85rem' }}>
-                    No exact physical copies found on library shelves for this keyword. Explore the global papers below or refine your keyword!
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
+                {/* University Library Holdings Container (Stable Height & No Flickering) */}
+                <div style={{ position: 'relative', minHeight: '180px' }}>
+                  {isFetchingBooks && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        zIndex: 10,
+                        background: 'rgba(8, 13, 26, 0.65)',
+                        backdropFilter: 'blur(2px)',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        color: '#38bdf8',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span className="spinner" style={{ width: '16px', height: '16px' }} />
+                      <span>Loading catalogue page {booksPage}...</span>
+                    </div>
+                  )}
+
+                  {displayedBooks.length === 0 && !isFetchingBooks ? (
+                    <div style={{ padding: '1rem', background: '#080d1a', borderRadius: '8px', color: '#94a3b8', fontSize: '0.85rem' }}>
+                      No exact physical copies found on library shelves for this keyword. Explore the global papers below or refine your keyword!
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                        gap: '0.75rem',
+                        opacity: isFetchingBooks ? 0.45 : 1,
+                        transition: 'opacity 0.15s ease',
+                        pointerEvents: isFetchingBooks ? 'none' : 'auto',
+                      }}
+                    >
                       {displayedBooks.map((book) => {
                         const isAvail = book.available_copies > 0;
                         return (
@@ -925,63 +953,63 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                         );
                       })}
                     </div>
+                  )}
+                </div>
 
-                    {/* Dynamic Book Holdings Pagination */}
-                    {Math.ceil(booksTotal / 4) > 1 && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.75rem', padding: '0.45rem 0.75rem', background: 'rgba(8, 14, 28, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '6px' }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-xs"
-                          disabled={booksPage === 1 || isFetchingBooks}
-                          onClick={() => handleFetchBooksPage(booksPage - 1)}
-                          style={{ padding: '4px 10px', fontSize: '0.74rem' }}
-                        >
-                          ◀ Prev
-                        </button>
+                {/* Dynamic Book Holdings Pagination (Always Stable Under Cursor) */}
+                {Math.ceil(booksTotal / 4) > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.75rem', padding: '0.45rem 0.75rem', background: 'rgba(8, 14, 28, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-xs"
+                      disabled={booksPage === 1 || isFetchingBooks}
+                      onClick={() => handleFetchBooksPage(booksPage - 1)}
+                      style={{ padding: '4px 10px', fontSize: '0.74rem', cursor: booksPage === 1 || isFetchingBooks ? 'not-allowed' : 'pointer' }}
+                    >
+                      ◀ Prev
+                    </button>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          {[...Array(Math.min(5, Math.ceil(booksTotal / 4)))].map((_, idx) => {
-                            const totalPages = Math.max(1, Math.ceil(booksTotal / 4));
-                            const startPage = Math.max(1, Math.min(booksPage - 2, totalPages - 4));
-                            const pageNum = startPage + idx;
-                            if (pageNum > totalPages) return null;
-                            const isActive = pageNum === booksPage;
-                            return (
-                              <button
-                                key={pageNum}
-                                type="button"
-                                onClick={() => handleFetchBooksPage(pageNum)}
-                                disabled={isFetchingBooks}
-                                style={{
-                                  minWidth: '26px',
-                                  height: '26px',
-                                  borderRadius: '4px',
-                                  border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
-                                  background: isActive ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
-                                  color: isActive ? '#38bdf8' : '#94a3b8',
-                                  fontSize: '0.72rem',
-                                  fontWeight: isActive ? 700 : 500,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                {pageNum}
-                              </button>
-                            );
-                          })}
-                        </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {[...Array(Math.min(5, Math.ceil(booksTotal / 4)))].map((_, idx) => {
+                        const totalPages = Math.max(1, Math.ceil(booksTotal / 4));
+                        const startPage = Math.max(1, Math.min(booksPage - 2, totalPages - 4));
+                        const pageNum = startPage + idx;
+                        if (pageNum > totalPages) return null;
+                        const isActive = pageNum === booksPage;
+                        return (
+                          <button
+                            key={pageNum}
+                            type="button"
+                            onClick={() => handleFetchBooksPage(pageNum)}
+                            disabled={isFetchingBooks}
+                            style={{
+                              minWidth: '26px',
+                              height: '26px',
+                              borderRadius: '4px',
+                              border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                              background: isActive ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                              color: isActive ? '#38bdf8' : '#94a3b8',
+                              fontSize: '0.72rem',
+                              fontWeight: isActive ? 700 : 500,
+                              cursor: isFetchingBooks ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-xs"
-                          disabled={booksPage >= Math.ceil(booksTotal / 4) || isFetchingBooks}
-                          onClick={() => handleFetchBooksPage(booksPage + 1)}
-                          style={{ padding: '4px 10px', fontSize: '0.74rem' }}
-                        >
-                          Next ▶
-                        </button>
-                      </div>
-                    )}
-                  </>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-xs"
+                      disabled={booksPage >= Math.ceil(booksTotal / 4) || isFetchingBooks}
+                      onClick={() => handleFetchBooksPage(booksPage + 1)}
+                      style={{ padding: '4px 10px', fontSize: '0.74rem', cursor: booksPage >= Math.ceil(booksTotal / 4) || isFetchingBooks ? 'not-allowed' : 'pointer' }}
+                    >
+                      Next ▶
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1036,18 +1064,46 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                   </button>
                 </div>
 
-                {isFetchingPapers ? (
-                  <div style={{ padding: '2rem', textAlign: 'center', color: '#38bdf8', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span className="spinner" style={{ width: '16px', height: '16px' }} />
-                    <span>Querying global archives for Page {papersPage}...</span>
-                  </div>
-                ) : displayedPapers.length === 0 ? (
-                  <div style={{ padding: '1rem', background: '#080d1a', borderRadius: '8px', color: '#94a3b8', fontSize: '0.85rem' }}>
-                    No external scholarly preprints found for this page. Try searching with different keywords above.
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {/* Preprints Container (Stable Height & Zero Layout Thrashing) */}
+                <div style={{ position: 'relative', minHeight: '260px' }}>
+                  {isFetchingPapers && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        zIndex: 10,
+                        background: 'rgba(8, 13, 26, 0.65)',
+                        backdropFilter: 'blur(2px)',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        color: '#38bdf8',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span className="spinner" style={{ width: '16px', height: '16px' }} />
+                      <span>Fetching papers for Page {papersPage}...</span>
+                    </div>
+                  )}
+
+                  {displayedPapers.length === 0 && !isFetchingPapers ? (
+                    <div style={{ padding: '1rem', background: '#080d1a', borderRadius: '8px', color: '#94a3b8', fontSize: '0.85rem' }}>
+                      No external scholarly preprints found for this page. Try searching with different keywords above.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.6rem',
+                        opacity: isFetchingPapers ? 0.45 : 1,
+                        transition: 'opacity 0.15s ease',
+                        pointerEvents: isFetchingPapers ? 'none' : 'auto',
+                      }}
+                    >
                       {displayedPapers.map((paper) => (
                         <div
                           key={paper.paper_id}
@@ -1093,63 +1149,63 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
 
-                    {/* Preprints 5-per-page Dynamic Pagination */}
-                    {Math.ceil(papersTotal / 5) > 1 && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.85rem', padding: '0.5rem 0.85rem', background: 'rgba(8, 14, 28, 0.8)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '8px' }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={papersPage === 1 || isFetchingPapers}
-                          onClick={() => handleFetchPapersPage(papersPage - 1)}
-                          style={{ fontSize: '0.76rem', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <span>◀</span> Previous 5
-                        </button>
+                {/* Preprints 5-per-page Dynamic Pagination (Always Stable Under Cursor) */}
+                {Math.ceil(papersTotal / 5) > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.85rem', padding: '0.5rem 0.85rem', background: 'rgba(8, 14, 28, 0.8)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '8px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={papersPage === 1 || isFetchingPapers}
+                      onClick={() => handleFetchPapersPage(papersPage - 1)}
+                      style={{ fontSize: '0.76rem', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: papersPage === 1 || isFetchingPapers ? 'not-allowed' : 'pointer' }}
+                    >
+                      <span>◀</span> Previous 5
+                    </button>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          {[...Array(Math.min(5, Math.ceil(papersTotal / 5)))].map((_, idx) => {
-                            const totalPages = Math.max(1, Math.ceil(papersTotal / 5));
-                            const startPage = Math.max(1, Math.min(papersPage - 2, totalPages - 4));
-                            const pageNum = startPage + idx;
-                            if (pageNum > totalPages) return null;
-                            const isActive = pageNum === papersPage;
-                            return (
-                              <button
-                                key={pageNum}
-                                type="button"
-                                onClick={() => handleFetchPapersPage(pageNum)}
-                                disabled={isFetchingPapers}
-                                style={{
-                                  minWidth: '28px',
-                                  height: '28px',
-                                  borderRadius: '5px',
-                                  border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
-                                  background: isActive ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
-                                  color: isActive ? '#38bdf8' : '#94a3b8',
-                                  fontSize: '0.74rem',
-                                  fontWeight: isActive ? 700 : 500,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                {pageNum}
-                              </button>
-                            );
-                          })}
-                        </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {[...Array(Math.min(5, Math.ceil(papersTotal / 5)))].map((_, idx) => {
+                        const totalPages = Math.max(1, Math.ceil(papersTotal / 5));
+                        const startPage = Math.max(1, Math.min(papersPage - 2, totalPages - 4));
+                        const pageNum = startPage + idx;
+                        if (pageNum > totalPages) return null;
+                        const isActive = pageNum === papersPage;
+                        return (
+                          <button
+                            key={pageNum}
+                            type="button"
+                            onClick={() => handleFetchPapersPage(pageNum)}
+                            disabled={isFetchingPapers}
+                            style={{
+                              minWidth: '28px',
+                              height: '28px',
+                              borderRadius: '5px',
+                              border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                              background: isActive ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                              color: isActive ? '#38bdf8' : '#94a3b8',
+                              fontSize: '0.74rem',
+                              fontWeight: isActive ? 700 : 500,
+                              cursor: isFetchingPapers ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={papersPage >= Math.ceil(papersTotal / 5) || isFetchingPapers}
-                          onClick={() => handleFetchPapersPage(papersPage + 1)}
-                          style={{ fontSize: '0.76rem', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          Next 5 <span>▶</span>
-                        </button>
-                      </div>
-                    )}
-                  </>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={papersPage >= Math.ceil(papersTotal / 5) || isFetchingPapers}
+                      onClick={() => handleFetchPapersPage(papersPage + 1)}
+                      style={{ fontSize: '0.76rem', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: papersPage >= Math.ceil(papersTotal / 5) || isFetchingPapers ? 'not-allowed' : 'pointer' }}
+                    >
+                      Next 5 <span>▶</span>
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
