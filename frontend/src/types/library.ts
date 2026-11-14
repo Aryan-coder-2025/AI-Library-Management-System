@@ -878,3 +878,41 @@ export interface BookAutoCatalogPayload {
   copy_code_prefix?: string | null;
 }
 
+export interface ShelfBookNeighbor {
+  slot: number;
+  book_id?: number | null;
+  title: string;
+  author?: string | null;
+  call_number: string;
+  is_target: boolean;
+}
+
+export interface BookShelfLocation {
+  book_id: number;
+  title: string;
+  author: string;
+  category: string;
+  call_number: string;
+  floor_number: number;
+  floor_name: string;
+  aisle: string;
+  bay: string;
+  shelf_tier: number;
+  shelf_tier_name: string;
+  total_tiers: number;
+  slot_number: number;
+  position_from_left: number;
+  position_from_right: number;
+  direction: string;
+  shelf_capacity: number;
+  turn_by_turn_directions: string[];
+  guidance: string;
+  map_coordinates: {
+    x: number;
+    y: number;
+    normalized_x: number;
+    normalized_y: number;
+  };
+  shelf_neighbors: ShelfBookNeighbor[];
+}
+

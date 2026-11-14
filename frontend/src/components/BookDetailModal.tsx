@@ -3,6 +3,7 @@ import { apiFetch } from '../services/apiClient';
 import type { BookDetail, BookHold, BookRecommendationResponse, BookRecommendationResult } from '../types/library';
 import { BookCover } from './BookCover';
 import { QRCollectionModal } from './QRCollectionModal';
+import { BookShelfLocationModal } from './BookShelfLocationModal';
 
 interface BookDetailModalProps {
   bookId: number | null;
@@ -28,6 +29,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [recsError, setRecsError] = useState<string | null>(null);
 
   // Hold / Online Booking state
+  const [showShelfLocationModal, setShowShelfLocationModal] = useState<boolean>(false);
   const [placingHold, setPlacingHold] = useState(false);
   const [createdHold, setCreatedHold] = useState<BookHold | null>(null);
   const [showQRPassModal, setShowQRPassModal] = useState<boolean>(false);
@@ -159,7 +161,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '0.5rem' }}>
                     By <strong>{detail.author}</strong>
                   </p>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'center' }}>
                     <span className="badge badge-neutral">{detail.category}</span>
                     {detail.isbn && <span className="badge badge-neutral">ISBN: {detail.isbn}</span>}
                     <span className={`badge ${detail.available_copies > 0 ? 'badge-success' : 'badge-danger'}`}>
@@ -168,6 +170,27 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                         : 'Currently Unavailable'}
                     </span>
                     {detail.is_archived && <span className="badge badge-warning">Archived</span>}
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setShowShelfLocationModal(true)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.2rem 0.65rem',
+                        fontSize: '0.78rem',
+                        borderRadius: '6px',
+                        background: 'rgba(99, 102, 241, 0.15)',
+                        border: '1px solid rgba(99, 102, 241, 0.4)',
+                        color: '#a5b4fc',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                      title="Pinpoint exact bookcase, tier, and book number on floor plan"
+                    >
+                      <span>📍</span> Locate on Shelf
+                    </button>
                   </div>
                   <p style={{ fontSize: '0.885rem', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
                     {detail.description || 'No extended summary provided in the catalogue entry.'}
@@ -394,9 +417,31 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
 
               {/* Physical Inventory Copies */}
               <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '1.25rem' }}>
-                <h4 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>
-                  Physical Inventory Copies ({detail.copies?.length || 0})
-                </h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h4 style={{ fontSize: '1rem', margin: 0 }}>
+                    Physical Inventory Copies ({detail.copies?.length || 0})
+                  </h4>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowShelfLocationModal(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      padding: '0.35rem 0.75rem',
+                      fontSize: '0.8rem',
+                      borderRadius: '6px',
+                      background: 'rgba(99, 102, 241, 0.15)',
+                      border: '1px solid rgba(99, 102, 241, 0.4)',
+                      color: '#a5b4fc',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span>📍</span> Pinpoint Shelf Slot & Floor
+                  </button>
+                </div>
                 {detail.copies && detail.copies.length > 0 ? (
                   <div className="table-responsive">
                     <table className="data-table">
@@ -593,6 +638,14 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
           holdId={createdHold.id}
           bookTitle={detail?.title || 'Monograph Collection'}
           onClose={() => setShowQRPassModal(false)}
+        />
+      )}
+
+      {showShelfLocationModal && detail && (
+        <BookShelfLocationModal
+          bookId={detail.id}
+          isOpen={showShelfLocationModal}
+          onClose={() => setShowShelfLocationModal(false)}
         />
       )}
     </div>

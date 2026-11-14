@@ -21,9 +21,11 @@ from app.schemas import (
     MessageResponse,
     ISBNLookupResponse,
     BookAutoCatalogIn,
+    BookShelfLocationResponse,
 )
 from app.services import catalogue as catalogue_service
 from app.services import isbn_lookup as isbn_service
+from app.services import shelf_locator
 
 router = APIRouter(tags=["catalogue"])
 
@@ -137,6 +139,24 @@ def get_book_detail(
         is_guest=is_guest,
         user=current_user,
     )
+
+
+@router.get(
+    "/api/books/{book_id}/shelf-location",
+    response_model=BookShelfLocationResponse,
+    summary="Compute precise physical shelf micro-location and slot coordinates for a monograph",
+)
+def get_book_shelf_location(
+    book_id: int,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Computes exact physical stacks navigation down to Floor, Aisle, Bay, Shelf Tier (1-5),
+    and exact Book Slot position from left edge based on Dewey Decimal Classification.
+    Publicly accessible to guests and patrons.
+    """
+    return shelf_locator.locate_book_on_shelf_service(db=db, book_id=book_id)
 
 
 @router.patch(

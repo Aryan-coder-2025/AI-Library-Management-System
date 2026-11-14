@@ -7,7 +7,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0+-D71F00.svg)](https://www.sqlalchemy.org/)
-[![Test Suite](https://img.shields.io/badge/Tests-426%20Passed%20(2%20Skipped)-success.svg)]()
+[![Test Suite](https://img.shields.io/badge/Tests-428%20Passed%20(2%20Skipped)-success.svg)]()
 [![Academic Report](https://img.shields.io/badge/CSE%20276-28%20Page%20Report%20Verified-blue.svg)](./CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf)
 [![License](https://img.shields.io/badge/License-Pending%20Institutional%20Approval-lightgrey.svg)]()
 
@@ -148,6 +148,7 @@ For full sequence diagrams and component interactions, see [docs/ARCHITECTURE.md
 
 ### 🗺️ Spatial Floor Plans & Wayfinding
 - **Interactive SVG Canvas**: Multi-floor visual layout with zoom/pan, zone acoustic boundaries, and study desk markers.
+- **Physical Shelf Micro-Location Navigator**: Deterministic Dewey Decimal stack pin-pointing down to Floor, Aisle, Bookcase Bay, Shelf Tier (1-5), and the exact Book Slot Number from the left edge (1-25) with virtual shelf spine visualization and turn-by-turn guidance.
 - **Dijkstra Shortest-Path Wayfinding**: Graph-based shortest path navigation calculating turn-by-turn walking directions and distances.
 - **Real-Time Occupancy Telemetry**: Anti-collision seat and room reservations with check-in confirmation windows and grace periods.
 

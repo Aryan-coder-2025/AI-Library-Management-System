@@ -383,6 +383,39 @@ class BookAutoCatalogIn(BaseModel):
     copy_code_prefix: Optional[str] = None
 
 
+class ShelfBookNeighbor(BaseModel):
+    slot: int
+    book_id: Optional[int] = None
+    title: str
+    author: Optional[str] = None
+    call_number: str
+    is_target: bool = False
+
+
+class BookShelfLocationResponse(BaseModel):
+    book_id: int
+    title: str
+    author: str
+    category: str
+    call_number: str
+    floor_number: int
+    floor_name: str
+    aisle: str
+    bay: str
+    shelf_tier: int
+    shelf_tier_name: str
+    total_tiers: int = 5
+    slot_number: int
+    position_from_left: int
+    position_from_right: int
+    direction: str = "Left to Right"
+    shelf_capacity: int = 25
+    turn_by_turn_directions: List[str]
+    guidance: str
+    map_coordinates: Dict[str, float]
+    shelf_neighbors: List[ShelfBookNeighbor]
+
+
 # ── Loan Circulation Schemas ──────────────────────────────────────────────────
 
 class LoanIssueRequest(BaseModel):
