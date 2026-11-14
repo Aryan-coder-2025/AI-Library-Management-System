@@ -77,6 +77,12 @@ def generate_password_reset_token() -> Tuple[str, str]:
     return raw_token, token_hash
 
 
+# Server instance boot epoch: regenerated every time backend process starts up.
+# Guarantees that when the application is stopped and restarted,
+# previous session cookies are revoked, taking patrons cleanly to the login screen.
+SERVER_BOOT_EPOCH: str = secrets.token_hex(16)
+
+
 def create_access_token(
     user_id: int,
     role: str,
@@ -93,6 +99,7 @@ def create_access_token(
         "sub": str(user_id),
         "role": role,
         "type": "access",
+        "epoch": SERVER_BOOT_EPOCH,
         "exp": int(expire.timestamp()),
         "iat": int(now.timestamp()),
     }
@@ -100,7 +107,7 @@ def create_access_token(
 
 
 def decode_access_token(token: str) -> Dict[str, Any]:
-    """Decodes and validates a JWT access token, enforcing the type: 'access' claim."""
+    """Decodes and validates a JWT access token, enforcing the type: 'access' claim and boot epoch."""
     payload = jwt.decode(
         token,
         settings.JWT_SECRET_KEY,
@@ -109,6 +116,12 @@ def decode_access_token(token: str) -> Dict[str, Any]:
     token_type = payload.get("type")
     if not isinstance(token_type, str) or token_type != "access":
         raise JWTError("Invalid token type; expected 'access'.")
+
+    # Invalidate token if issued by a previous server run
+    token_epoch = payload.get("epoch")
+    if token_epoch is not None and token_epoch != SERVER_BOOT_EPOCH:
+        raise ExpiredSignatureError("Session expired due to application restart.")
+
     return payload
 
 

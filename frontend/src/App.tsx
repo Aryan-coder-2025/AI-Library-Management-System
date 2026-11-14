@@ -37,8 +37,8 @@ export const App: React.FC = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [resetToken, setResetToken] = useState<string | null>(null);
 
-  // Active navigation tab (defaults to unified futuristic Dashboard)
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  // Active navigation tab (defaults to login for unauthenticated arrivals)
+  const [activeTab, setActiveTab] = useState<string>('login');
 
   // Book Detail Modal state
   const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
@@ -99,10 +99,12 @@ export const App: React.FC = () => {
       .then((user) => {
         setCurrentUser(user);
         setAuthLoading(false);
+        setActiveTab('dashboard');
       })
       .catch(() => {
         setCurrentUser(null);
         setAuthLoading(false);
+        setActiveTab('login');
       });
   }, []);
 
