@@ -7,7 +7,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0+-D71F00.svg)](https://www.sqlalchemy.org/)
-[![Test Suite](https://img.shields.io/badge/Tests-404%20Passed%20(2%20Skipped)-success.svg)]()
+[![Test Suite](https://img.shields.io/badge/Tests-423%20Passed%20(2%20Skipped)-success.svg)]()
+[![Academic Report](https://img.shields.io/badge/CSE%20276-28%20Page%20Report%20Verified-blue.svg)](./CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf)
 [![License](https://img.shields.io/badge/License-Pending%20Institutional%20Approval-lightgrey.svg)]()
 
 **Athenaeum** is an enterprise-grade academic library automation and intelligence platform. It bridges physical resource circulation—monograph barcode tracking, patron quotas, study-space bookings, and course reserves—with modern dense semantic discovery, multi-floor interactive spatial wayfinding, external scholarly aggregation, an autonomous multi-step tool-executing AI Copilot, and multimodal omnichannel research discovery across audio lecture clips, PDFs, slide decks, and diagrams.
@@ -290,24 +291,25 @@ Restart the backend server after updating environment variables.
 
 ## 9. Testing & Quality Assurance
 
-Athenaeum enforces rigorous automated regression testing across 27 test suites:
+Athenaeum enforces rigorous automated regression testing across 30+ test suites:
 
 ```powershell
-pytest backend\tests -v
+pytest backend\tests -q
 ```
 
-**Verified Test Snapshot (November 8, 2026):**
+**Verified Test Snapshot (November 14, 2026):**
 ```
-============================= 393 passed, 2 skipped in 148.61s =============================
+============================= 423 passed, 2 skipped in 499.89s =============================
 ```
-- **0 Failures**: Full coverage across authentication, hybrid search, circulation, holds, spatial routing, and migrations.
+- **0 Failures**: 100% green coverage across authentication, hybrid search, circulation, holds, spatial routing, multimodal research, multi-agent copilot, and migrations.
 - **2 Skipped**: Windows non-admin symlink assertions (`test_database_protection.py:158`, `test_seed_safety.py:125`).
-- **Frontend Production Build**: `npm --prefix frontend run build` transforms 147 modules in 1.22s with zero TypeScript errors.
+- **Frontend Production Build**: `npm --prefix frontend run build` transforms 156 modules in 1.98s with zero TypeScript compiler errors.
 
 ---
 
 ## 10. Documentation Index
 
+- 📑 **[CSE 276 Capstone Technical Report (28 Pages PDF)](CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf)** — Formal academic technical report conforming to CSE 276 specifications (Times New Roman, 1.5 line spacing, half-page declaration, RRF k=60 mathematical formulations, embedded project photos, and exact Index page alignment).
 - 📖 [Comprehensive Technical Documentation (20+ Pages)](docs/TECHNICAL_DOCUMENTATION.md) — Exhaustive 21-chapter architectural reference report.
 - 📐 [Architecture & Sequence Diagrams](docs/ARCHITECTURE.md) — 14 Mermaid diagrams detailing request lifecycles.
 - 💻 [Technology Stack Rationale](docs/TECHNOLOGY_STACK.md) — Detailed design choices and dependency justifications.

@@ -30,6 +30,12 @@ Athenaeum strictly prohibits the reuse of cryptographic keys across different do
 - **Foreign Key Constraints**: SQLite engines are explicitly booted with `PRAGMA foreign_keys = ON` to enforce database-level relational integrity and prevent orphaned records.
 - **Patron Data Privacy**: The AI Copilot agent binds patron queries strictly to the authenticated user ID extracted from the verified JWT. Cross-patron loan or reservation querying is blocked by design.
 
+### 2.5 Multimodal Upload Sandboxing & Input Lockout
+- **MIME & Extension Enforcement**: Multimodal document and media ingestion enforces strict whitelist filtering (`image/*`, `audio/*`, `.pdf`, `.docx`, `.pptx`) with a maximum upload limit of 25MB, guarding against denial-of-service via decompression bombs.
+- **In-Flight Input Shielding**: Interactive form inputs, model selectors, and file dropzones are locked (`disabled={loading}`) during active async requests to prevent race conditions and payload substitution.
+- **CSRF Token Binding**: All state-modifying requests require verified `X-CSRF-Token` headers paired with secure cookies.
+- **Ephemeral Client API Keys**: Custom patron API keys (Groq, OpenAI, Anthropic, Gemini) are stored only in client-side memory/localStorage and transmitted via secure transient HTTP request headers (`X-Preferred-Provider`, `X-Gemini-API-Key`, etc.) without persisting on server disks.
+
 ---
 
 ## 3. Secret Management & API Key Policy
