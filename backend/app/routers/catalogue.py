@@ -159,6 +159,29 @@ def get_book_shelf_location(
     return shelf_locator.locate_book_on_shelf_service(db=db, book_id=book_id)
 
 
+@router.post(
+    "/api/books/{book_id}/report-missing",
+    response_model=MessageResponse,
+    summary="Crowdsourced patron missing shelf report to dispatch staff shelf-reading verification",
+)
+def report_missing_from_shelf(
+    book_id: int,
+    notes: Optional[str] = Query(None, description="Optional patron observations"),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_write_db),
+):
+    """
+    Logs an audit event and temporarily flags a monograph copy for staff shelf inspection,
+    eliminating 'ghost availability' and alerting circulation staff.
+    """
+    return shelf_locator.report_book_missing_service(
+        db=db,
+        book_id=book_id,
+        user_id=current_user.id if current_user else None,
+        notes=notes,
+    )
+
+
 @router.patch(
     "/api/books/{book_id}",
     response_model=BookResponse,

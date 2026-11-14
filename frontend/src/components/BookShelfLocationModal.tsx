@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../services/apiClient';
 import type { BookShelfLocation } from '../types/library';
+import { PrintableSpineLabelsModal } from './PrintableSpineLabelsModal';
 
 interface BookShelfLocationModalProps {
   bookId: number;
@@ -17,11 +18,15 @@ export const BookShelfLocationModal: React.FC<BookShelfLocationModalProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [directionMode, setDirectionMode] = useState<'left' | 'right'>('left');
+  const [reportingMissing, setReportingMissing] = useState(false);
+  const [missingReportNotice, setMissingReportNotice] = useState<string | null>(null);
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !bookId) return;
     setLoading(true);
     setError(null);
+    setMissingReportNotice(null);
 
     apiFetch<BookShelfLocation>(`/api/books/${bookId}/shelf-location`)
       .then((data) => {
@@ -35,6 +40,23 @@ export const BookShelfLocationModal: React.FC<BookShelfLocationModalProps> = ({
         setLoading(false);
       });
   }, [bookId, isOpen]);
+
+  const handleReportMissing = async () => {
+    if (!bookId || !location) return;
+    setReportingMissing(true);
+    setMissingReportNotice(null);
+    try {
+      const res = await apiFetch<{ message: string }>(`/api/books/${bookId}/report-missing`, {
+        method: 'POST',
+      });
+      setMissingReportNotice(res.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to log shelf report';
+      alert(`Error: ${msg}`);
+    } finally {
+      setReportingMissing(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -516,12 +538,93 @@ export const BookShelfLocationModal: React.FC<BookShelfLocationModalProps> = ({
                 </div>
               </div>
 
-              {/* Footer Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={onClose}>
-                  Close Navigator
+              {missingReportNotice && (
+                <div
+                  className="alert alert-warning"
+                  style={{
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <span>⚠️</span>
+                  <span>{missingReportNotice}</span>
+                </div>
+              )}
+
+              {/* Footer Actions */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                  marginTop: '1.25rem',
+                  borderTop: '1px solid var(--border-color, #1f2937)',
+                  paddingTop: '1rem',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleReportMissing}
+                  disabled={reportingMissing || !!missingReportNotice}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    color: '#f59e0b',
+                    borderColor: 'rgba(245, 158, 11, 0.4)',
+                    fontSize: '0.825rem',
+                  }}
+                  title="Flag if monograph is physically absent from Tier/Slot to eliminate ghost availability"
+                >
+                  <span>⚠️</span>
+                  <span>
+                    {reportingMissing
+                      ? 'Logging Notice...'
+                      : missingReportNotice
+                      ? 'Report Logged ✓'
+                      : 'Report Missing from Shelf'}
+                  </span>
                 </button>
+
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setShowPrintModal(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      fontSize: '0.825rem',
+                    }}
+                  >
+                    <span>🖨️</span> Print Spine Labels
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: '0.825rem' }}>
+                    Close Navigator
+                  </button>
+                </div>
               </div>
+
+              {showPrintModal && (
+                <PrintableSpineLabelsModal
+                  isOpen={showPrintModal}
+                  onClose={() => setShowPrintModal(false)}
+                  bookTitle={location.title}
+                  author={location.author}
+                  category={location.category}
+                  callNumber={location.call_number}
+                  floorAisle={`FL ${location.floor_number} • ${location.aisle}`}
+                  copies={[{ id: location.book_id, copy_code: `BC-${String(location.book_id).padStart(4, '0')}-01` }]}
+                />
+              )}
             </div>
           )}
         </div>

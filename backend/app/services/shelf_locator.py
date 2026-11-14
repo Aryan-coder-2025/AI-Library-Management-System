@@ -280,3 +280,61 @@ def locate_book_on_shelf_service(db: Session, book_id: int) -> BookShelfLocation
         },
         shelf_neighbors=neighbors,
     )
+
+
+def report_book_missing_service(
+    db: Session,
+    book_id: int,
+    user_id: Optional[int] = None,
+    notes: Optional[str] = None,
+) -> Dict[str, str]:
+    """
+    Logs an audit event and temporarily flags an available copy for staff shelf inspection,
+    eliminating 'ghost availability' and updating staff audit logs.
+    """
+    from app.database import atomic_write
+    from app.models import BookCopy, Loan, InventoryEvent
+
+    with atomic_write(db):
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Book #{book_id} not found in catalogue.",
+            )
+
+        copies = db.query(BookCopy).filter(
+            BookCopy.book_id == book_id,
+            BookCopy.operational_status == "available",
+        ).all()
+
+        active_loans = db.query(Loan.copy_id).filter(Loan.returned_at.is_(None)).all()
+        active_loan_ids = {l[0] for l in active_loans}
+
+        target_copy = next((c for c in copies if c.id not in active_loan_ids), None)
+        if target_copy:
+            prev_status = target_copy.operational_status
+            target_copy.operational_status = "maintenance"
+            target_copy.notes = f"Flagged by patron for physical shelf verification: {notes or 'Reported missing from tier/slot'}"
+
+            from app.models import User
+            auditor = None
+            if user_id:
+                auditor = db.query(User).filter(User.id == user_id).first()
+            if not auditor:
+                auditor = db.query(User).first()
+
+            if auditor:
+                event = InventoryEvent(
+                    copy_id=target_copy.id,
+                    auditor_id=auditor.id,
+                    event_type="shelf_check",
+                    previous_status=prev_status,
+                    new_status="maintenance",
+                    notes=f"Patron missing shelf report: {notes or 'Not found at expected micro-location'}",
+                )
+                db.add(event)
+
+        return {
+            "message": f"Shelf audit report logged for '{book.title}'. Physical copy status marked for staff inspection to prevent ghost availability."
+        }

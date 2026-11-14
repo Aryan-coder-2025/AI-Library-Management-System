@@ -49,3 +49,36 @@ def test_book_shelf_location_not_found(client):
     """Verifies that querying a non-existent book returns 404."""
     resp = client.get("/api/books/9999999/shelf-location")
     assert resp.status_code == 404
+
+
+def test_report_book_missing_success(client, db: Session):
+    """Verifies crowdsourced patron missing shelf reporting logs an audit notice."""
+    from app.models import BookCopy
+    with atomic_write(db):
+        test_book = Book(
+            title="Missing Monograph Audit Test",
+            author="Test Author",
+            category="Software Engineering",
+        )
+        db.add(test_book)
+        db.flush()
+        copy = BookCopy(
+            book_id=test_book.id,
+            copy_code="BC-TEST-MISS-01",
+            operational_status="available",
+        )
+        db.add(copy)
+        db.flush()
+        book_id = test_book.id
+
+    csrf_val = "test-csrf-token-shelf"
+    client.cookies.set("csrf_token", csrf_val)
+    headers = {"Origin": "http://localhost:5173", "X-CSRF-Token": csrf_val}
+    resp = client.post(f"/api/books/{book_id}/report-missing?notes=Cannot+find+on+shelf", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "report logged" in data["message"].lower()
+
+    # Verify copy was marked for maintenance/audit inspection
+    updated_copy = db.query(BookCopy).filter(BookCopy.copy_code == "BC-TEST-MISS-01").first()
+    assert updated_copy.operational_status == "maintenance"

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser';
 import { apiFetch } from '../services/apiClient';
 import type { BookDetail, ISBNLookupResult, BookAutoCatalogPayload } from '../types/library';
+import { PrintableSpineLabelsModal } from './PrintableSpineLabelsModal';
 
 interface PhysicalBookScannerModalProps {
   isOpen: boolean;
@@ -36,6 +37,7 @@ export const PhysicalBookScannerModal: React.FC<PhysicalBookScannerModalProps> =
   const [copyCodePrefix, setCopyCodePrefix] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [catalogSuccess, setCatalogSuccess] = useState<BookDetail | null>(null);
+  const [showPrintLabels, setShowPrintLabels] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
@@ -357,11 +359,25 @@ export const PhysicalBookScannerModal: React.FC<PhysicalBookScannerModalProps> =
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setShowPrintLabels(true)}
+                  style={{
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <span>🖨️</span> Print Spine & Barcode Labels
+                </button>
                 <button type="button" className="btn btn-secondary" onClick={onClose}>
                   Done & Close
                 </button>
-                <button type="button" className="btn btn-primary" onClick={handleReset}>
+                <button type="button" className="btn btn-secondary" onClick={handleReset}>
                   + Scan Another Physical Book
                 </button>
               </div>
@@ -825,6 +841,17 @@ export const PhysicalBookScannerModal: React.FC<PhysicalBookScannerModalProps> =
           )}
         </div>
       </div>
+
+      {showPrintLabels && catalogSuccess && (
+        <PrintableSpineLabelsModal
+          isOpen={showPrintLabels}
+          onClose={() => setShowPrintLabels(false)}
+          bookTitle={catalogSuccess.title}
+          author={catalogSuccess.author}
+          category={catalogSuccess.category}
+          copies={catalogSuccess.copies || []}
+        />
+      )}
 
       <style>{`
         @keyframes scannerLaser {
