@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 import bcrypt
 from fastapi import Response
-from jose import JWTError, jwt
+from jose import ExpiredSignatureError, JWTError, jwt
 
 from app.config import get_settings
 
@@ -117,9 +117,9 @@ def decode_access_token(token: str) -> Dict[str, Any]:
     if not isinstance(token_type, str) or token_type != "access":
         raise JWTError("Invalid token type; expected 'access'.")
 
-    # Invalidate token if issued by a previous server run
+    # Invalidate token if epoch is missing or issued by a previous server run
     token_epoch = payload.get("epoch")
-    if token_epoch is not None and token_epoch != SERVER_BOOT_EPOCH:
+    if token_epoch != SERVER_BOOT_EPOCH:
         raise ExpiredSignatureError("Session expired due to application restart.")
 
     return payload
@@ -128,14 +128,14 @@ def decode_access_token(token: str) -> Dict[str, Any]:
 def set_auth_cookies(response: Response, user_id: int, role: str, is_public_device: bool = False) -> str:
     """
     Sets the secure HttpOnly access_token cookie and the non-HttpOnly csrf_token cookie.
-    When is_public_device is True (shared library kiosks / lab computers), max_age and expires
-    are omitted so the browser retains cookies only for the duration of the browser session.
+    Uses browser session cookies (max_age and expires omitted) so cookies live strictly in memory
+    and are purged when the browser or tab closes, preventing persistent security leaks.
     Returns the generated csrf_token.
     """
     token = create_access_token(user_id=user_id, role=role)
     csrf_token = secrets.token_urlsafe(32)
-    cookie_max_age = None if is_public_device else (settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
-    cookie_expires = None if is_public_device else cookie_max_age
+    cookie_max_age = None
+    cookie_expires = None
 
     # 1. HttpOnly access_token cookie
     response.set_cookie(

@@ -1020,6 +1020,40 @@ def test_public_workstation_session_cookie(client, test_users):
         assert "Max-Age=" not in ac
 
 
+def test_server_restart_invalidates_previous_session(client, test_users):
+    """
+    Verifies that restarting the server (which cycles SERVER_BOOT_EPOCH) immediately
+    invalidates any tokens issued during previous runs, preventing cross-restart session leakage.
+    """
+    import app.auth
+
+    # 1. Login normally to get a valid session
+    res = client.post(
+        "/api/auth/login",
+        json={
+            "email": "active_student@university.edu",
+            "password": "StudentPass123!",
+        },
+    )
+    assert res.status_code == 200
+
+    # 2. Verify /api/auth/me succeeds with current epoch
+    me_resp = client.get("/api/auth/me")
+    assert me_resp.status_code == 200
+
+    # 3. Simulate server restart by changing SERVER_BOOT_EPOCH
+    original_epoch = app.auth.SERVER_BOOT_EPOCH
+    try:
+        app.auth.SERVER_BOOT_EPOCH = "new_reboot_epoch_123456"
+
+        # 4. Same client with old cookie must now be rejected with 401
+        reboot_me = client.get("/api/auth/me")
+        assert reboot_me.status_code == 401
+        assert "Session has expired" in reboot_me.json()["detail"]
+    finally:
+        app.auth.SERVER_BOOT_EPOCH = original_epoch
+
+
 
 
 
