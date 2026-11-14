@@ -103,6 +103,34 @@ def _extract_pdf_text_fallback(file_bytes: bytes) -> str:
         return ""
 
 
+def _parse_local_doc_intelligence(text: str, user_prompt: Optional[str] = None) -> Dict[str, Any]:
+    """Fallback local document intelligence parser when external LLM providers are omitted ($0.00 token cost)."""
+    clean_lines = [l.strip() for l in text.split("\n") if l.strip()]
+    first_chunk = " ".join(clean_lines[:12])
+    abstract_m = re.search(r"abstract[:\s]*(.+?)(introduction|keywords|1\.|I\.)", text, re.IGNORECASE | re.DOTALL)
+    summary = abstract_m.group(1).strip()[:500] if abstract_m else (first_chunk[:450] if first_chunk else "Academic research document analyzed successfully.")
+    
+    words = re.findall(r"\b[A-Z][a-z]{3,}\b", text)
+    from collections import Counter
+    stopwords = {"this", "that", "with", "from", "have", "were", "also", "their", "which", "these", "about", "paper", "using", "such", "than"}
+    top_words = [w for w, _ in Counter(words).most_common(12) if w.lower() not in stopwords]
+    concepts = top_words[:5] or ["Systems Architecture", "Computer Science"]
+    
+    cat_q = user_prompt or (" ".join(concepts[:2]))
+    scholarly_q = user_prompt or (" ".join(concepts[:3]))
+    
+    return {
+        "summary": summary,
+        "detected_type": "pdf_document",
+        "academic_field": "Computer Science & Engineering",
+        "extracted_latex": [],
+        "key_concepts": concepts,
+        "transcription": None,
+        "suggested_catalogue_search": cat_q,
+        "suggested_scholarly_search": scholarly_q,
+    }
+
+
 def _call_multimodal_engine(
     file_bytes: bytes,
     mime_type: str,
@@ -110,8 +138,10 @@ def _call_multimodal_engine(
     custom_api_key: Optional[str] = None,
     keys_vault: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
-    """Sends multimodal data to Gemini, OpenAI (GPT-4o), or Anthropic (Claude 3.5) with automatic gateway failover."""
+    """Sends multimodal data to Groq, OpenAI (GPT-4o), Anthropic (Claude 3.5), Gemini, or Local Engine."""
     vault = keys_vault or {}
+    preferred_provider = vault.get("preferred_provider", "auto").lower()
+
     gemini_key = (
         vault.get("gemini")
         or custom_api_key
@@ -123,6 +153,7 @@ def _call_multimodal_engine(
     ).strip()
     openai_key = (vault.get("openai") or os.environ.get("OPENAI_API_KEY") or "").strip()
     anthropic_key = (vault.get("anthropic") or os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+    groq_key = (vault.get("groq") or os.environ.get("GROQ_API_KEY") or "").strip()
 
     # Format-specific preparation
     is_docx = "wordprocessingml" in mime_type or mime_type.endswith("docx")
@@ -140,6 +171,10 @@ def _call_multimodal_engine(
         pdf_text = _extract_pdf_text_fallback(file_bytes)
         if pdf_text and len(pdf_text.strip()) > 30:
             extracted_doc_text = pdf_text
+
+    # If user explicitly ordered local document intelligence
+    if preferred_provider == "local" and extracted_doc_text:
+        return _parse_local_doc_intelligence(extracted_doc_text, user_prompt=user_prompt)
 
     # Content parts construction
     parts: List[Dict[str, Any]] = []
@@ -177,7 +212,87 @@ def _call_multimodal_engine(
             )
         parts.append({"text": prompt_text})
 
-    # Strategy 1: Google Gemini (Multimodal Audio & Vision)
+    # Strategy: Groq Llama 3.3 70B (High-Speed Document Intelligence for PDFs/DOCX/PPTX)
+    if (preferred_provider == "groq" or (groq_key and extracted_doc_text and preferred_provider in ("auto", "groq"))) and groq_key:
+        try:
+            g_url = "https://api.groq.com/openai/v1/chat/completions"
+            g_payload = {
+                "model": "llama-3.3-70b-versatile",
+                "messages": [
+                    {"role": "system", "content": GEMINI_MULTIMODAL_SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Document content:\n{extracted_doc_text[:8000]}\nQuestion: {user_prompt or 'Analyze this document and extract key concepts'}"},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.2,
+                "max_tokens": 1024,
+            }
+            with httpx.Client(timeout=8.0) as client:
+                g_resp = client.post(g_url, headers={"Authorization": f"Bearer {groq_key}"}, json=g_payload)
+                if g_resp.status_code == 200:
+                    raw_text = g_resp.json()["choices"][0]["message"]["content"]
+                    clean_json = re.sub(r"^```json\s*", "", raw_text.strip())
+                    clean_json = re.sub(r"\s*```$", "", clean_json)
+                    return json.loads(clean_json)
+        except Exception as e:
+            logger.warning(f"Groq document intelligence failed: {e}")
+
+    # Strategy: OpenAI GPT-4o-mini Vision (if preferred or available)
+    if (preferred_provider == "openai" or (openai_key and preferred_provider == "auto")) and openai_key and (is_image or extracted_doc_text):
+        try:
+            o_url = "https://api.openai.com/v1/chat/completions"
+            o_content: List[Dict[str, Any]] = []
+            if extracted_doc_text:
+                o_content.append({"type": "text", "text": f"Document content:\n{extracted_doc_text[:6000]}\nQuestion: {user_prompt or 'Analyze'}"})
+            else:
+                o_content.append({"type": "text", "text": user_prompt or "Analyze this image, extract equations, and detect key concepts."})
+                o_content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}})
+
+            o_payload = {
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {"role": "system", "content": GEMINI_MULTIMODAL_SYSTEM_PROMPT},
+                    {"role": "user", "content": o_content},
+                ],
+                "response_format": {"type": "json_object"},
+                "max_tokens": 1024,
+            }
+            with httpx.Client(timeout=10.0) as client:
+                o_resp = client.post(o_url, headers={"Authorization": f"Bearer {openai_key}"}, json=o_payload)
+                if o_resp.status_code == 200:
+                    raw_text = o_resp.json()["choices"][0]["message"]["content"]
+                    return json.loads(raw_text)
+        except Exception as e:
+            logger.warning(f"OpenAI multimodal gateway failed: {e}")
+
+    # Strategy: Anthropic Claude 3.5 Haiku Vision (if preferred or available)
+    if (preferred_provider == "anthropic" or (anthropic_key and preferred_provider == "auto")) and anthropic_key and (is_image or extracted_doc_text):
+        try:
+            a_url = "https://api.anthropic.com/v1/messages"
+            a_content: List[Dict[str, Any]] = []
+            if extracted_doc_text:
+                a_content.append({"type": "text", "text": f"Document content:\n{extracted_doc_text[:6000]}\nQuestion: {user_prompt or 'Analyze'}"})
+            else:
+                a_content.append({"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": b64_data}})
+                a_content.append({"type": "text", "text": user_prompt or "Analyze this image, extract equations, and detect key concepts."})
+
+            a_payload = {
+                "model": "claude-3-5-haiku-20241022",
+                "max_tokens": 1024,
+                "system": GEMINI_MULTIMODAL_SYSTEM_PROMPT,
+                "messages": [{"role": "user", "content": a_content}],
+            }
+            headers = {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+            with httpx.Client(timeout=10.0) as client:
+                a_resp = client.post(a_url, headers=headers, json=a_payload)
+                if a_resp.status_code == 200:
+                    txt = a_resp.json()["content"][0]["text"]
+                    clean_json = re.sub(r"^```json\s*", "", txt.strip())
+                    clean_json = re.sub(r"\s*```$", "", clean_json)
+                    return json.loads(clean_json)
+        except Exception as e:
+            logger.warning(f"Anthropic multimodal gateway failed: {e}")
+
+    # Strategy: Google Gemini (Multimodal Audio & Vision)
     if gemini_key:
         models_to_try = [
             "gemini-3.5-flash-lite",
@@ -213,63 +328,11 @@ def _call_multimodal_engine(
             except Exception as e:
                 logger.warning(f"Error calling {model_name}: {e}")
 
-    # Strategy 2: OpenAI GPT-4o-mini Vision (if image or extracted text available)
-    if openai_key and (is_image or extracted_doc_text):
-        try:
-            o_url = "https://api.openai.com/v1/chat/completions"
-            o_content: List[Dict[str, Any]] = []
-            if extracted_doc_text:
-                o_content.append({"type": "text", "text": f"Document content:\n{extracted_doc_text[:6000]}\nQuestion: {user_prompt or 'Analyze'}"})
-            else:
-                o_content.append({"type": "text", "text": user_prompt or "Analyze this image, extract equations, and detect key concepts."})
-                o_content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}})
+    # If text is available from PDF / Word / PPTX, fallback to local document intelligence
+    if extracted_doc_text:
+        return _parse_local_doc_intelligence(extracted_doc_text, user_prompt=user_prompt)
 
-            o_payload = {
-                "model": "gpt-4o-mini",
-                "messages": [
-                    {"role": "system", "content": GEMINI_MULTIMODAL_SYSTEM_PROMPT},
-                    {"role": "user", "content": o_content},
-                ],
-                "response_format": {"type": "json_object"},
-                "max_tokens": 1024,
-            }
-            with httpx.Client(timeout=10.0) as client:
-                o_resp = client.post(o_url, headers={"Authorization": f"Bearer {openai_key}"}, json=o_payload)
-                if o_resp.status_code == 200:
-                    raw_text = o_resp.json()["choices"][0]["message"]["content"]
-                    return json.loads(raw_text)
-        except Exception as e:
-            logger.warning(f"OpenAI multimodal gateway failed: {e}")
-
-    # Strategy 3: Anthropic Claude 3.5 Haiku Vision
-    if anthropic_key and (is_image or extracted_doc_text):
-        try:
-            a_url = "https://api.anthropic.com/v1/messages"
-            a_content: List[Dict[str, Any]] = []
-            if extracted_doc_text:
-                a_content.append({"type": "text", "text": f"Document content:\n{extracted_doc_text[:6000]}\nQuestion: {user_prompt or 'Analyze'}"})
-            else:
-                a_content.append({"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": b64_data}})
-                a_content.append({"type": "text", "text": user_prompt or "Analyze this image, extract equations, and detect key concepts."})
-
-            a_payload = {
-                "model": "claude-3-5-haiku-20241022",
-                "max_tokens": 1024,
-                "system": GEMINI_MULTIMODAL_SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": a_content}],
-            }
-            headers = {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
-            with httpx.Client(timeout=10.0) as client:
-                a_resp = client.post(a_url, headers=headers, json=a_payload)
-                if a_resp.status_code == 200:
-                    txt = a_resp.json()["content"][0]["text"]
-                    clean_json = re.sub(r"^```json\s*", "", txt.strip())
-                    clean_json = re.sub(r"\s*```$", "", clean_json)
-                    return json.loads(clean_json)
-        except Exception as e:
-            logger.warning(f"Anthropic multimodal gateway failed: {e}")
-
-    # Fallback response
+    # Fallback generic response
     detected_kind = "audio_lecture" if is_audio else ("pdf_document" if is_pdf else ("slide_deck" if is_pptx else "diagram"))
     return {
         "summary": "Academic media processed successfully. Conceptual keywords extracted for cross-repository retrieval.",

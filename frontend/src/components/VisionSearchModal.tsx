@@ -14,6 +14,7 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileCategory, setFileCategory] = useState<'image' | 'audio' | 'document'>('image');
   const [userQuery, setUserQuery] = useState<string>('');
+  const [selectedEngine, setSelectedEngine] = useState<string>('auto');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<VisionResearchResponse | null>(null);
@@ -195,6 +196,7 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
         if (anthropicKey) headers['X-Anthropic-API-Key'] = anthropicKey.trim();
         const groqKey = localStorage.getItem('patron_custom_groq_key');
         if (groqKey) headers['X-Groq-API-Key'] = groqKey.trim();
+        headers['X-Preferred-Provider'] = selectedEngine;
       }
 
       const res = await fetch('/api/research/vision-search', {
@@ -531,6 +533,34 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                 />
               </div>
 
+              {/* Multi-Engine Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.45rem 0.75rem', background: 'rgba(8, 14, 28, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '8px' }}>
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span>⚙️ Analysis Engine:</span>
+                </span>
+                <select
+                  value={selectedEngine}
+                  onChange={(e) => setSelectedEngine(e.target.value)}
+                  style={{
+                    background: '#040711',
+                    border: '1px solid #1e293b',
+                    color: '#38bdf8',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="auto">⚡ Auto-Select (Multi-Engine)</option>
+                  <option value="groq">⚡ Groq (Llama 3.3 70B Fast)</option>
+                  <option value="openai">🤖 OpenAI (GPT-4o Vision)</option>
+                  <option value="anthropic">🧠 Anthropic (Claude 3.5)</option>
+                  <option value="gemini">🌐 Google Gemini Multimodal</option>
+                  <option value="local">📁 Local Document Engine ($0.00)</option>
+                </select>
+              </div>
+
               {/* Submit Buttons */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                 <button type="button" onClick={onClose} className="btn btn-secondary" disabled={loading}>
@@ -545,7 +575,17 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                   {loading ? (
                     <>
                       <span className="spinner" style={{ width: '14px', height: '14px' }} />
-                      <span>Gemini Analyzing Media...</span>
+                      <span>
+                        {selectedEngine === 'groq'
+                          ? 'Groq Analyzing Document...'
+                          : selectedEngine === 'openai'
+                          ? 'GPT-4o Analyzing Media...'
+                          : selectedEngine === 'anthropic'
+                          ? 'Claude 3.5 Analyzing Media...'
+                          : selectedEngine === 'local'
+                          ? 'Local Engine Analyzing Document...'
+                          : 'AI Multimodal Engine Analyzing...'}
+                      </span>
                     </>
                   ) : (
                     <>

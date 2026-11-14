@@ -87,6 +87,7 @@ async def vision_research_search(
     x_openai_api_key: Optional[str] = Header(None, alias="X-OpenAI-API-Key"),
     x_anthropic_api_key: Optional[str] = Header(None, alias="X-Anthropic-API-Key"),
     x_groq_api_key: Optional[str] = Header(None, alias="X-Groq-API-Key"),
+    x_preferred_provider: Optional[str] = Header("auto", alias="X-Preferred-Provider"),
 ):
     """
     Analyzes multimodal academic media (diagrams, whiteboard math, audio lecture clips,
@@ -145,6 +146,7 @@ async def vision_research_search(
         "openai": (x_openai_api_key or "").strip(),
         "anthropic": (x_anthropic_api_key or "").strip(),
         "groq": (x_groq_api_key or "").strip(),
+        "preferred_provider": (x_preferred_provider or "auto").strip().lower(),
     }
 
     return analyze_academic_image_service(
