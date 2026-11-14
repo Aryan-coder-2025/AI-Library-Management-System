@@ -846,5 +846,7 @@ export interface VisionResearchResponse {
   analysis: VisionResearchAnalysis;
   catalogue_matches: VisionCatalogueMatch[];
   scholarly_papers: VisionPaperMatch[];
+  total_catalogue_matches?: number;
+  total_scholarly_papers?: number;
 }
 

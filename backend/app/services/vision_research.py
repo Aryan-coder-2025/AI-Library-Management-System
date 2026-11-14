@@ -397,10 +397,12 @@ def analyze_academic_image_service(
 
     # 2. Local Catalogue Search
     catalogue_matches: List[VisionCatalogueMatch] = []
+    total_cat_count: int = 0
     cat_query = analysis.suggested_catalogue_search or (analysis.key_concepts[0] if analysis.key_concepts else "")
     if cat_query:
         try:
             local_results = hybrid_search_service(db=db, query=cat_query, page_size=20)
+            total_cat_count = getattr(local_results, "total", len(local_results.items))
             for b in local_results.items:
                 catalogue_matches.append(
                     VisionCatalogueMatch(
@@ -418,6 +420,7 @@ def analyze_academic_image_service(
 
     # 3. External Scholarly Research Search (arXiv, OpenAlex, Crossref)
     scholarly_papers: List[VisionPaperMatch] = []
+    total_schol_count: int = 0
     paper_query = analysis.suggested_scholarly_search or cat_query
     if paper_query:
         try:
@@ -428,6 +431,7 @@ def analyze_academic_image_service(
                 skip_ai_notes=True,
                 providers=["openalex", "crossref", "arxiv"],
             )
+            total_schol_count = getattr(res, "total_results", len(res.results))
             for p in res.results:
                 scholarly_papers.append(
                     VisionPaperMatch(
@@ -449,4 +453,6 @@ def analyze_academic_image_service(
         analysis=analysis,
         catalogue_matches=catalogue_matches,
         scholarly_papers=scholarly_papers,
+        total_catalogue_matches=total_cat_count,
+        total_scholarly_papers=total_schol_count,
     )

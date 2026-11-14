@@ -228,15 +228,21 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
       setResults(data);
 
       const catMatches = data.catalogue_matches || [];
-      setDisplayedBooks(catMatches);
-      setBooksTotal(catMatches.length >= 8 ? 25 : catMatches.length);
+      setDisplayedBooks(catMatches.slice(0, 4));
+      const estimatedBooksTotal = data.total_catalogue_matches && data.total_catalogue_matches > 0
+        ? data.total_catalogue_matches
+        : (catMatches.length >= 4 ? 20 : catMatches.length);
+      setBooksTotal(estimatedBooksTotal);
       setBooksPage(1);
       const initialCatQ = data.analysis?.suggested_catalogue_search || data.analysis?.key_concepts?.[0] || userQuery || '';
       setActiveCatalogueQuery(initialCatQ);
 
       const scholMatches = data.scholarly_papers || [];
-      setDisplayedPapers(scholMatches);
-      setPapersTotal(scholMatches.length >= 10 ? 40 : scholMatches.length);
+      setDisplayedPapers(scholMatches.slice(0, 5));
+      const estimatedPapersTotal = data.total_scholarly_papers && data.total_scholarly_papers > 0
+        ? data.total_scholarly_papers
+        : (scholMatches.length >= 5 ? 50 : scholMatches.length);
+      setPapersTotal(estimatedPapersTotal);
       setPapersPage(1);
       const initialScholQ = data.analysis?.suggested_scholarly_search || data.analysis?.key_concepts?.[0] || userQuery || '';
       setActiveScholarlyQuery(initialScholQ);
@@ -267,8 +273,15 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
         }));
         setDisplayedPapers(mapped);
         setPapersPage(targetPage);
-        if (json.total_results !== undefined) {
-          setPapersTotal(Math.max(json.total_results, mapped.length));
+        if (json.total_results !== undefined && json.total_results > 0) {
+          const resolvedTotal = mapped.length === 5
+            ? Math.max(json.total_results, targetPage * 5 + 15)
+            : (targetPage - 1) * 5 + mapped.length;
+          setPapersTotal(resolvedTotal);
+        } else if (mapped.length === 5) {
+          setPapersTotal(targetPage * 5 + 15);
+        } else {
+          setPapersTotal((targetPage - 1) * 5 + mapped.length);
         }
       }
     } catch (err) {
@@ -396,8 +409,9 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            disabled={loading}
             className="btn btn-secondary btn-sm"
-            style={{ padding: '0.25rem 0.6rem', color: '#94a3b8' }}
+            style={{ padding: '0.25rem 0.6rem', color: '#94a3b8', cursor: loading ? 'not-allowed' : 'pointer' }}
           >
             ✕
           </button>
@@ -498,9 +512,11 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          triggerFilePicker();
+                          if (!loading) triggerFilePicker();
                         }}
+                        disabled={loading}
                         className="btn btn-secondary btn-xs"
+                        style={{ cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
                       >
                         📁 Choose Different File
                       </button>
@@ -508,10 +524,11 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          clearSelection();
+                          if (!loading) clearSelection();
                         }}
+                        disabled={loading}
                         className="btn btn-secondary btn-xs"
-                        style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+                        style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.4)', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
                       >
                         ✕ Remove
                       </button>
@@ -632,27 +649,36 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                   placeholder="e.g. 'Explain this concept and find related books' or 'Which papers cite this theory?'"
                   value={userQuery}
                   onChange={(e) => setUserQuery(e.target.value)}
-                  style={{ width: '100%', background: '#080d1a', border: '1px solid #1e293b', color: '#f8fafc' }}
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    background: loading ? '#040711' : '#080d1a',
+                    border: '1px solid #1e293b',
+                    color: loading ? '#64748b' : '#f8fafc',
+                    cursor: loading ? 'not-allowed' : 'text',
+                    opacity: loading ? 0.6 : 1,
+                  }}
                 />
               </div>
 
               {/* Multi-Engine Selector */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.45rem 0.75rem', background: 'rgba(8, 14, 28, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.45rem 0.75rem', background: 'rgba(8, 14, 28, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '8px', opacity: loading ? 0.6 : 1 }}>
                 <span style={{ fontSize: '0.78rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <span>⚙️ Analysis Engine:</span>
                 </span>
                 <select
                   value={selectedEngine}
                   onChange={(e) => setSelectedEngine(e.target.value)}
+                  disabled={loading}
                   style={{
                     background: '#040711',
                     border: '1px solid #1e293b',
-                    color: '#38bdf8',
+                    color: loading ? '#64748b' : '#38bdf8',
                     borderRadius: '6px',
                     padding: '3px 8px',
                     fontSize: '0.75rem',
                     fontWeight: 600,
-                    cursor: 'pointer'
+                    cursor: loading ? 'not-allowed' : 'pointer',
                   }}
                 >
                   <option value="auto">⚡ Auto-Select (Multi-Engine)</option>
@@ -801,6 +827,7 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                     type="text"
                     value={activeCatalogueQuery}
                     onChange={(e) => setActiveCatalogueQuery(e.target.value)}
+                    disabled={isFetchingBooks}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -810,19 +837,22 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                     placeholder="Refine campus library shelf keyword (e.g. Operating Systems, Robotics)..."
                     style={{
                       flex: 1,
-                      background: '#080d1a',
+                      background: isFetchingBooks ? '#040711' : '#080d1a',
                       border: '1px solid #1e293b',
                       borderRadius: '6px',
                       padding: '0.35rem 0.65rem',
                       fontSize: '0.78rem',
-                      color: '#f8fafc',
+                      color: isFetchingBooks ? '#64748b' : '#f8fafc',
+                      cursor: isFetchingBooks ? 'not-allowed' : 'text',
+                      opacity: isFetchingBooks ? 0.6 : 1,
                     }}
                   />
                   <button
                     type="button"
                     className="btn btn-secondary btn-xs"
+                    disabled={isFetchingBooks}
                     onClick={() => handleFetchBooksPage(1, activeCatalogueQuery)}
-                    style={{ padding: '0.35rem 0.75rem' }}
+                    style={{ padding: '0.35rem 0.75rem', cursor: isFetchingBooks ? 'not-allowed' : 'pointer' }}
                   >
                     🔍 Filter Shelves
                   </button>
@@ -961,7 +991,7 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                   <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <span>🎓</span> Global Scholarly Preprints (arXiv / OpenAlex)
                     <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600 }}>
-                      ({papersTotal > 0 ? `${papersTotal.toLocaleString()} papers available` : 'Peer-reviewed articles'})
+                      ({papersTotal > 0 ? `${papersTotal.toLocaleString()} papers retrieved (5 per page)` : 'Peer-reviewed articles'})
                     </span>
                   </h4>
                   <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
@@ -975,6 +1005,7 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                     type="text"
                     value={activeScholarlyQuery}
                     onChange={(e) => setActiveScholarlyQuery(e.target.value)}
+                    disabled={isFetchingPapers}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -984,19 +1015,22 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                     placeholder="Refine research topic keyword (e.g. Nanorobotics, Swarm intelligence, Bio-sensors)..."
                     style={{
                       flex: 1,
-                      background: '#080d1a',
+                      background: isFetchingPapers ? '#040711' : '#080d1a',
                       border: '1px solid #1e293b',
                       borderRadius: '6px',
                       padding: '0.35rem 0.65rem',
                       fontSize: '0.78rem',
-                      color: '#f8fafc',
+                      color: isFetchingPapers ? '#64748b' : '#f8fafc',
+                      cursor: isFetchingPapers ? 'not-allowed' : 'text',
+                      opacity: isFetchingPapers ? 0.6 : 1,
                     }}
                   />
                   <button
                     type="button"
                     className="btn btn-secondary btn-xs"
+                    disabled={isFetchingPapers}
                     onClick={() => handleFetchPapersPage(1, activeScholarlyQuery)}
-                    style={{ padding: '0.35rem 0.75rem' }}
+                    style={{ padding: '0.35rem 0.75rem', cursor: isFetchingPapers ? 'not-allowed' : 'pointer' }}
                   >
                     🔍 Search Preprints
                   </button>

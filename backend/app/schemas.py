@@ -1925,6 +1925,8 @@ class VisionResearchResponse(BaseModel):
     analysis: VisionResearchAnalysis
     catalogue_matches: List[VisionCatalogueMatch] = Field(default_factory=list)
     scholarly_papers: List[VisionPaperMatch] = Field(default_factory=list)
+    total_catalogue_matches: int = 0
+    total_scholarly_papers: int = 0
 
 
 
