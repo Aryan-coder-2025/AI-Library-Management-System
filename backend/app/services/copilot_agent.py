@@ -1558,7 +1558,10 @@ def execute_librarian_agent_rag(
         subject_query = query.strip()
         for pfx in [
             "and provide me with an image of", "provide me with an image of", "provide an image of",
-            "give me an image of", "show me an image of", "an image of", "a photo of",
+            "give me an image of", "give me a picture of", "give me a photo of", "give me a portrait of",
+            "show me an image of", "show me a picture of", "show me a photo of", "show me a portrait of",
+            "show an image of", "show a picture of", "show a photo of", "show a portrait of",
+            "an image of", "a photo of", "a picture of", "a portrait of",
             "image of", "photo of", "portrait of", "picture of", "photograph of",
             "show image", "show photo", "show portrait", "show picture"
         ]:
