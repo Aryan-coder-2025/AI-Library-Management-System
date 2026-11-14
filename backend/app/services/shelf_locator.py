@@ -15,6 +15,7 @@ from app.schemas import (
     ShelfBookNeighbor,
     ShelfReadingAuditResponse,
     ExitGateVerificationResponse,
+    SelfCheckoutResponse,
 )
 
 
@@ -613,6 +614,37 @@ def verify_exit_gate_service(
             due_date=str(active_loan.due_date),
             timestamp=now_iso,
         )
+
+    # Cross-check: Did an innocent student have an active hold on this copy where the checkout scan was missed?
+    from app.models import BookHold
+    active_hold = db.query(BookHold).filter(
+        BookHold.copy_id == copy.id,
+        BookHold.status.in_(["ready_for_pickup", "waiting"]),
+    ).first()
+
+    if active_hold:
+        held_student = db.query(User).filter(User.id == active_hold.user_id).first()
+        held_name = held_student.full_name if held_student else f"Student #{active_hold.user_id}"
+        held_email = held_student.email if held_student else ""
+
+        return ExitGateVerificationResponse(
+            allow_exit=False,
+            alarm_triggered=False,
+            advisory_only=True,
+            status="HOLD_CHECKOUT_INCOMPLETE",
+            message=(
+                f"🟡 CHECKOUT INCOMPLETE ADVISORY: '{book_title}' ({copy.copy_code}) was reserved by {held_name}, "
+                f"but the desk or self-kiosk checkout scan was skipped! Please tap at the Express Kiosk to finalize."
+            ),
+            copy_code=copy.copy_code,
+            book_title=book_title,
+            borrower_name=None,
+            borrower_email=None,
+            held_by_name=held_name,
+            loan_id=None,
+            due_date=None,
+            timestamp=now_iso,
+        )
     else:
         with atomic_write(db):
             admin = db.query(User).first()
@@ -650,3 +682,194 @@ def verify_exit_gate_service(
             due_date=None,
             timestamp=now_iso,
         )
+
+
+def execute_self_checkout_service(
+    db: Session,
+    student_id_or_email: str,
+    copy_code: str,
+) -> SelfCheckoutResponse:
+    """
+    Automated self-service checkout with:
+    1. Patron resolution (ID or email).
+    2. Hold verification.
+    3. Wrong title mismatch rejection with exact shelf slot guidance.
+    4. Smart Copy Swapping: if patron grabbed another available copy of the same title,
+       dynamically rebinds reservation to the copy in hand.
+    5. Restricted copy protection: blocks taking another patron's reserved copy.
+    6. Walk-in loan issuance if unreserved.
+    """
+    from datetime import datetime, timedelta
+    from app.database import atomic_write
+    from app.models import User, Book, BookCopy, BookHold, Loan, InventoryEvent
+
+    clean_user = student_id_or_email.strip()
+    clean_code = copy_code.strip()
+
+    # 1. Resolve student
+    student = None
+    if clean_user.isdigit():
+        student = db.query(User).filter(User.id == int(clean_user)).first()
+    if not student:
+        student = db.query(User).filter(User.email.ilike(clean_user)).first()
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Student account '{clean_user}' not found. Please verify your University ID or Email.",
+        )
+
+    # 2. Resolve scanned copy
+    copy = db.query(BookCopy).filter(BookCopy.copy_code == clean_code).first()
+    if not copy:
+        clean_isbn = clean_code.replace("-", "").replace(" ", "")
+        book_match = db.query(Book).filter(Book.isbn == clean_isbn).first()
+        if book_match:
+            copy = db.query(BookCopy).filter(
+                BookCopy.book_id == book_match.id,
+                BookCopy.operational_status == "available",
+            ).first()
+
+    if not copy:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Physical barcode '{clean_code}' was not found in library inventory.",
+        )
+
+    scanned_book = db.query(Book).filter(Book.id == copy.book_id).first()
+    if not scanned_book:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Monograph metadata for this physical copy is missing.",
+        )
+
+    with atomic_write(db):
+        # Check if this specific physical copy is already checked out by someone
+        active_loan = db.query(Loan).filter(
+            Loan.copy_id == copy.id,
+            Loan.returned_at.is_(None),
+        ).first()
+        if active_loan:
+            borrower = db.query(User).filter(User.id == active_loan.student_id).first()
+            borrower_label = borrower.full_name if borrower else "another patron"
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Physical copy '{copy.copy_code}' is currently on an active loan to {borrower_label}. It cannot be borrowed again until discharged.",
+            )
+
+        # Check if copy is in maintenance / lost
+        if copy.operational_status not in ("available", "in_reshelving"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Physical copy '{copy.copy_code}' is marked under '{copy.operational_status}' and cannot be issued.",
+            )
+
+        # Check if the student has any active holds
+        student_holds = db.query(BookHold).filter(
+            BookHold.user_id == student.id,
+            BookHold.status.in_(["ready_for_pickup", "waiting"]),
+        ).all()
+
+        matching_hold = next((h for h in student_holds if h.book_id == scanned_book.id), None)
+        other_active_hold = next((h for h in student_holds if h.book_id != scanned_book.id), None)
+
+        # Check if this copy is held by SOMEONE ELSE
+        someone_elses_hold = db.query(BookHold).filter(
+            BookHold.copy_id == copy.id,
+            BookHold.user_id != student.id,
+            BookHold.status.in_(["ready_for_pickup", "waiting"]),
+        ).first()
+
+        if someone_elses_hold:
+            other_user = db.query(User).filter(User.id == someone_elses_hold.user_id).first()
+            other_name = other_user.full_name if other_user else "another patron"
+            loc = locate_book_on_shelf_service(db, scanned_book.id)
+            return SelfCheckoutResponse(
+                success=False,
+                status="COPY_RESTRICTED",
+                message=(
+                    f"⚠️ COPY RESERVED FOR ANOTHER STUDENT: Physical copy '{copy.copy_code}' is currently allocated "
+                    f"to a pending hold for {other_name}. You cannot borrow this specific copy."
+                ),
+                copy_code=copy.copy_code,
+                book_title=scanned_book.title,
+                student_name=student.full_name,
+                guidance=f"Please return this copy to {loc.aisle}, {loc.bay}, {loc.shelf_tier_name}. Take your assigned copy.",
+            )
+
+        # Case 1: Student reserved a DIFFERENT book, but picked this book!
+        if other_active_hold and not matching_hold:
+            reserved_book = db.query(Book).filter(Book.id == other_active_hold.book_id).first()
+            target_title = reserved_book.title if reserved_book else "your reserved monograph"
+            loc = locate_book_on_shelf_service(db, other_active_hold.book_id)
+            return SelfCheckoutResponse(
+                success=False,
+                status="WRONG_BOOK",
+                message=(
+                    f"❌ WRONG TITLE SCANNED: You scanned '{scanned_book.title}' ({copy.copy_code}), "
+                    f"but your pending reservation is for '{target_title}'!"
+                ),
+                copy_code=copy.copy_code,
+                book_title=scanned_book.title,
+                student_name=student.full_name,
+                guidance=(
+                    f"Please put '{scanned_book.title}' back. Your reserved monograph '{target_title}' "
+                    f"is located on {loc.aisle} ({loc.floor_name.split('—')[0].strip()}), {loc.bay}, {loc.shelf_tier_name}, Slot #{loc.slot_number}."
+                ),
+            )
+
+        # Case 2: Smart Copy Swapping:
+        # Student reserved this book, but was allocated copy X, while scanning copy Y!
+        swap_applied = False
+        original_code = None
+
+        if matching_hold:
+            if matching_hold.copy_id and matching_hold.copy_id != copy.id:
+                old_copy = db.query(BookCopy).filter(BookCopy.id == matching_hold.copy_id).first()
+                original_code = old_copy.copy_code if old_copy else f"Copy #{matching_hold.copy_id}"
+                matching_hold.copy_id = copy.id
+                swap_applied = True
+
+            matching_hold.status = "fulfilled"
+            matching_hold.fulfilled_at = datetime.utcnow()
+
+        # Issue the loan
+        due = datetime.utcnow().date() + timedelta(days=14)
+        loan = Loan(
+            student_id=student.id,
+            copy_id=copy.id,
+            issued_by_id=student.id,
+            due_date=due,
+        )
+        db.add(loan)
+        copy.operational_status = "available"
+        copy.notes = f"Checked out via Self-Service Kiosk by {student.full_name} on {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
+
+        event = InventoryEvent(
+            copy_id=copy.id,
+            auditor_id=student.id,
+            event_type="self_checkout",
+            previous_status="available",
+            new_status="available",
+            notes=f"Self-service loan #{loan.id} issued. Smart swap: {swap_applied}.",
+        )
+        db.add(event)
+
+    msg = (
+        f"⚡ SMART COPY SWAP APPLIED: You picked Copy '{copy.copy_code}' instead of assigned '{original_code}'. "
+        f"Since '{copy.copy_code}' was available, your reservation was dynamically rebound. Enjoy your reading!"
+        if swap_applied
+        else f"✓ CHECKOUT SUCCESSFUL: Monograph '{scanned_book.title}' ({copy.copy_code}) is now checked out to {student.full_name}. Due on {due}."
+    )
+
+    return SelfCheckoutResponse(
+        success=True,
+        status="SMART_SWAP_ISSUED" if swap_applied else "LOAN_ISSUED",
+        message=msg,
+        loan_id=loan.id,
+        copy_code=copy.copy_code,
+        book_title=scanned_book.title,
+        student_name=student.full_name,
+        due_date=str(due),
+        swap_applied=swap_applied,
+        original_copy_code=original_code,
+    )

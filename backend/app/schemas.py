@@ -453,7 +453,7 @@ class ExitGateVerificationRequest(BaseModel):
 class ExitGateVerificationResponse(BaseModel):
     allow_exit: bool
     alarm_triggered: bool
-    status: str  # AUTHORIZED_CHECKOUT, UNAUTHORIZED_ALARM, UNKNOWN_ITEM
+    status: str  # AUTHORIZED_CHECKOUT, UNAUTHORIZED_ALARM, UNKNOWN_ITEM, HOLD_CHECKOUT_INCOMPLETE
     message: str
     copy_code: str
     book_title: Optional[str] = None
@@ -462,6 +462,27 @@ class ExitGateVerificationResponse(BaseModel):
     loan_id: Optional[int] = None
     due_date: Optional[str] = None
     timestamp: str
+    advisory_only: bool = False
+    held_by_name: Optional[str] = None
+
+
+class SelfCheckoutRequest(BaseModel):
+    student_id_or_email: str = Field(..., description="Student University ID or Institutional Email")
+    copy_code: str = Field(..., description="Accession barcode on the physical book in hand (e.g. BC-0001-01)")
+
+
+class SelfCheckoutResponse(BaseModel):
+    success: bool
+    status: str  # LOAN_ISSUED, SMART_SWAP_ISSUED, WRONG_BOOK, COPY_RESTRICTED, COPY_UNAVAILABLE
+    message: str
+    loan_id: Optional[int] = None
+    copy_code: str
+    book_title: str
+    student_name: str
+    due_date: Optional[str] = None
+    swap_applied: bool = False
+    original_copy_code: Optional[str] = None
+    guidance: Optional[str] = None
 
 
 # ── Loan Circulation Schemas ──────────────────────────────────────────────────

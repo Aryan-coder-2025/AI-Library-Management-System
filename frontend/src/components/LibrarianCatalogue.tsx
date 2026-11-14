@@ -11,6 +11,7 @@ import { CopyStatusModal } from './CopyStatusModal';
 import { PhysicalBookScannerModal } from './PhysicalBookScannerModal';
 import { ShelfReadingAuditModal } from './ShelfReadingAuditModal';
 import { ExitSecurityGateModal } from './ExitSecurityGateModal';
+import { SelfCheckoutKioskModal } from './SelfCheckoutKioskModal';
 
 interface DisplayBook extends Book {
   match_channels?: string[];
@@ -35,6 +36,7 @@ export const LibrarianCatalogue: React.FC = () => {
   const [showPhysicalScanner, setShowPhysicalScanner] = useState(false);
   const [showShelfAudit, setShowShelfAudit] = useState(false);
   const [showExitGate, setShowExitGate] = useState(false);
+  const [showSelfCheckout, setShowSelfCheckout] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
   const [selectedBookForCopies, setSelectedBookForCopies] = useState<BookDetail | null>(null);
@@ -344,6 +346,22 @@ export const LibrarianCatalogue: React.FC = () => {
             onClick={() => setShowExitGate(true)}
           >
             <span>🚨</span> Exit Security Gate
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: '#064e3b',
+              borderColor: '#059669',
+              color: '#34d399',
+              fontWeight: 600,
+            }}
+            onClick={() => setShowSelfCheckout(true)}
+          >
+            <span>⚡</span> Express Self-Checkout
           </button>
           <button type="button" data-tour="librarian-add-book" className="btn btn-secondary" onClick={openAddModal}>
             + Manual Entry
@@ -914,6 +932,15 @@ export const LibrarianCatalogue: React.FC = () => {
       <ExitSecurityGateModal
         isOpen={showExitGate}
         onClose={() => setShowExitGate(false)}
+      />
+
+      {/* Express Self-Checkout Kiosk with Smart Copy Swapping & Mismatch Guard */}
+      <SelfCheckoutKioskModal
+        isOpen={showSelfCheckout}
+        onClose={() => setShowSelfCheckout(false)}
+        onCheckoutComplete={() => {
+          fetchBooks();
+        }}
       />
     </div>
   );
