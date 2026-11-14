@@ -617,33 +617,6 @@ export const VisionSearchModal: React.FC<VisionSearchModalProps> = ({
                   {results.analysis.summary}
                 </p>
 
-                {/* Extracted LaTeX Equations */}
-                {results.analysis.extracted_latex && results.analysis.extracted_latex.length > 0 && (
-                  <div style={{ margin: '0.75rem 0' }}>
-                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600, marginBottom: '0.35rem' }}>
-                      Transcribed Mathematical Formulation:
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                      {results.analysis.extracted_latex.map((formula, idx) => (
-                        <code
-                          key={idx}
-                          style={{
-                            background: '#080d1a',
-                            border: '1px solid #1e293b',
-                            padding: '0.4rem 0.75rem',
-                            borderRadius: '6px',
-                            color: '#38bdf8',
-                            fontFamily: 'ui-monospace, monospace',
-                            fontSize: '0.82rem',
-                          }}
-                        >
-                          {formula}
-                        </code>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* Key Concepts Tags */}
                 {results.analysis.key_concepts && results.analysis.key_concepts.length > 0 && (
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
