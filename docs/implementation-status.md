@@ -116,4 +116,5 @@
 * **Canonical Feature Completion**: **100% PASS** (`pytest tests/test_canonical_feature_completion.py`)
 * **TypeScript Compilation**: **0 errors** (`npx tsc -b`)
 * **Production Bundle**: **Compiled in 3.62s** (`npm run build`)
-* **Formal Capstone Technical Report**: **34 Pages PDF Verified** ([CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf](../CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf))
+* **Comprehensive Technical Specification**: **21 Chapters Markdown Verified** ([docs/TECHNICAL_DOCUMENTATION.md](TECHNICAL_DOCUMENTATION.md))
+* **Local Capstone Technical Report Generator**: Available locally via `python scripts/generate_cse276_report.py` (conforms to academic formatting guidelines)

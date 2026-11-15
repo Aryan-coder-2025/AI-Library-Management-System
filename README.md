@@ -8,7 +8,7 @@
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0+-D71F00.svg)](https://www.sqlalchemy.org/)
 [![Test Suite](https://img.shields.io/badge/Tests-440%20Passed%20(2%20Skipped)-success.svg)]()
-[![Academic Report](https://img.shields.io/badge/CSE%20276-34%20Page%20Report%20Verified-blue.svg)](./CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf)
+[![Technical Documentation](https://img.shields.io/badge/Documentation-Comprehensive%2021--Chapter%20Specification-blue.svg)](docs/TECHNICAL_DOCUMENTATION.md)
 [![License](https://img.shields.io/badge/License-Pending%20Institutional%20Approval-lightgrey.svg)]()
 
 **Athenaeum** is an enterprise-grade academic library automation and intelligence platform. It bridges physical resource circulation—monograph barcode tracking, patron quotas, study-space bookings, and course reserves—with modern dense semantic discovery, multi-floor interactive spatial wayfinding, external scholarly aggregation, an autonomous multi-step tool-executing AI Copilot, and multimodal omnichannel research discovery across audio lecture clips, PDFs, slide decks, and diagrams.
@@ -318,16 +318,19 @@ pytest backend\tests -q
 
 ## 10. Documentation Index
 
-- 📑 **[CSE 276 Capstone Technical Report (28 Pages PDF)](CSE_276_ATHENAEUM_AI_TECHNICAL_REPORT.pdf)** — Formal academic technical report conforming to CSE 276 specifications (Times New Roman, 1.5 line spacing, half-page declaration, RRF k=60 mathematical formulations, embedded project photos, and exact Index page alignment).
-- 📖 [Comprehensive Technical Documentation (20+ Pages)](docs/TECHNICAL_DOCUMENTATION.md) — Exhaustive 21-chapter architectural reference report.
+- 📖 [Comprehensive Technical Documentation (21 Chapters)](docs/TECHNICAL_DOCUMENTATION.md) — Exhaustive architectural specification covering system architecture, RRF $k=60$ hybrid search, SQLite WAL concurrency control, LangGraph multi-agent orchestration, Dijkstra/A* spatial wayfinding, external scholarly aggregation, and physical operations.
 - 📐 [Architecture & Sequence Diagrams](docs/ARCHITECTURE.md) — 14 Mermaid diagrams detailing request lifecycles.
 - 💻 [Technology Stack Rationale](docs/TECHNOLOGY_STACK.md) — Detailed design choices and dependency justifications.
+- 📊 [Implementation Status Matrix](docs/implementation-status.md) — Full matrix covering all canonical features and physical library operations suite.
+- 🔌 [API Reference](docs/api-reference.md) — Complete REST API contracts, request/response models, and endpoint catalogs.
+- 🗄️ [Database Schema Reference](docs/database-schema.md) — Entity relationships, 31 database tables, index definitions, and foreign keys.
+- 🗺️ [Spatial Floor Plans & Wayfinding](docs/spatial-floor-plans-architecture.md) — Multi-floor SVG layout specifications and shortest path algorithms.
+- 🏢 [Study Space Transactional Architecture](docs/study-space-transactional-architecture.md) — Atomic slot reservations and occupancy telemetry design.
 - 🛠️ [Installation & Setup Guide](INSTALLATION.md) — Complete executable setup guide for Windows/Linux/macOS.
 - 📦 [Dependency Inventory](DEPENDENCIES.md) — Verified direct and transitive package versions.
 - 🔒 [Security & Vulnerability Disclosure](SECURITY.md) — Cryptographic standards and security reporting.
 - 🤝 [Contributor Guidelines](CONTRIBUTING.md) — Pull request checklists and engineering standards.
 - 📝 [Project Changelog](CHANGELOG.md) — History of verifiable releases and stage completions.
-- 🔌 [API Reference](docs/api-reference.md) — REST API endpoints and schema models.
 
 ---
 

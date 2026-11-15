@@ -72,3 +72,7 @@ yarn-error.log*
 # OS files
 Thumbs.db
 .DS_Store
+
+# Local PDF reports and evaluation documents
+*.pdf
+
